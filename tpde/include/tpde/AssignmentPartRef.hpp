@@ -16,10 +16,12 @@ class AssignmentPartRef {
 
   // note for how parts are structured:
   // |15|14|13|12|11|10|09|08|07|06|05|04|03|02|01|00|
-  // |  |   PS   |RV|  |IM|FA|  bank  |    reg_id    |
+  // |PF|   PS   |RV|  |IM|FA|  bank  |    reg_id    |
   //                         |      full_reg_id      |
   //
-  // PS: 1 << PS = part size (TODO(ts): maybe swap with NP so that it can be
+  // PF: Part has a preferred register assignment (this is not fixed and may be
+  // ignored during codegen) PS: 1 << PS = part size (TODO(ts): maybe swap with
+  // NP so that it can be
   //     extracted easier?)
   // RV: Register Valid
   // IM: Is the current register value not on the stack?
@@ -57,9 +59,14 @@ public:
     return Reg(va->parts[part] & 0xFF);
   }
 
-  void set_reg(Reg reg) noexcept {
+  void set_reg(Reg reg, const bool is_pref = false) noexcept {
     assert(bank().id() == ((reg.id() >> 5) & 0b111));
-    va->parts[part] = (va->parts[part] & 0xFF00) | reg.id();
+    va->parts[part] = (va->parts[part] & 0xFF00) | reg.id() | (is_pref << 15);
+  }
+
+  [[nodiscard]]
+  bool reg_recommended() const noexcept {
+    return va->parts[part] & (1 << 15);
   }
 
   [[nodiscard]] bool modified() const noexcept {

@@ -830,6 +830,13 @@ void CompilerBase<Adaptor, Derived, Config>::init_assignment(
     assert(size > 0);
     max_part_size = std::max(max_part_size, size);
     ap.set_part_size(size);
+    // todo(salto): multi-part values
+    if (part_idx == 0) {
+      auto reg = analyzer.get_recommended_reg(local_idx);
+      if (reg.valid()) {
+        ap.set_reg(reg, true);
+      }
+    }
   }
 
   const auto &liveness = analyzer.liveness_info(local_idx);

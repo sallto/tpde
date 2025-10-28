@@ -2,6 +2,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #pragma once
+#include "ValuePartRef.hpp"
 
 namespace tpde {
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
@@ -37,6 +38,8 @@ public:
   /// non-fixed registers. Spilling can be disabled for spill code to avoid
   /// recursion; if spilling is disabled, the allocation can fail.
   AsmReg alloc(RegBank bank) noexcept;
+  /// Allocate register, try to match the recommended registor of target
+  AsmReg alloc_rec(RegBank bank, ValuePart &target) noexcept;
 
   AsmReg release() noexcept {
     AsmReg res = reg;
@@ -103,14 +106,42 @@ CompilerBase<Adaptor, Derived, Config>::AsmReg
     assert(bank == reg_file.reg_bank(reg));
     return reg;
   }
-
+  TPDE_LOG_INFO("Allocating new register");
   reg = compiler->select_reg(bank, /*exclusion_mask=*/0);
   reg_file.mark_used(reg, INVALID_VAL_LOCAL_IDX, 0);
   reg_file.mark_clobbered(reg);
   reg_file.mark_fixed(reg);
   return reg;
 }
+template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+CompilerBase<Adaptor, Derived, Config>::AsmReg
+    CompilerBase<Adaptor, Derived, Config>::ScratchReg::alloc_rec(
+        RegBank bank, ValuePart &target) noexcept {
+  assert(compiler->may_change_value_state());
 
+  auto &reg_file = compiler->register_file;
+  // todo(salto): should the scratch be moved?
+  if (!reg.invalid()) {
+    assert(bank == reg_file.reg_bank(reg));
+    return reg;
+  }
+  if (target.preferred_register() == 255) {
+    return alloc(bank);
+  }
+  auto ideal_reg = Reg{target.preferred_register()};
+  if (compiler->register_file.is_fixed(ideal_reg)) {
+    return alloc(bank);
+  }
+  if (compiler->register_file.is_used(ideal_reg)) {
+    compiler->evict_reg(ideal_reg);
+    reset();
+  }
+  reg = ideal_reg;
+  reg_file.mark_used(reg, INVALID_VAL_LOCAL_IDX, 0);
+  reg_file.mark_clobbered(reg);
+  reg_file.mark_fixed(reg);
+  return reg;
+}
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::ScratchReg::reset() noexcept {
   if (reg.invalid()) {

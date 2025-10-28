@@ -29,6 +29,7 @@ private:
 
   struct ValueData {
     AsmReg reg = AsmReg::make_invalid(); // only valid if fixed/locked
+
     bool has_assignment = true;
     bool owned;
     ValLocalIdx local_idx;
@@ -66,6 +67,7 @@ public:
     assert(this->assignment().variable_ref() ||
            state.v.assignment->references_left);
     assert(!owned || state.v.assignment->references_left == 1);
+// todo salto    if ()
   }
 
   ValuePart(const u64 *data, u32 size, RegBank bank) noexcept
@@ -165,7 +167,19 @@ public:
 
   bool has_reg() const noexcept { return state.v.reg.valid(); }
 
+  u8 preferred_register() const noexcept {
+    if (has_assignment()) {
+      auto ap = assignment();
+      if (ap.reg_recommended()) {
+        return ap.get_reg().id();
+      }
+    }
+    return 255;
+  }
+
+
 private:
+  // Optionally use a recommended register if available
   AsmReg alloc_reg_impl(CompilerBase *compiler,
                         u64 exclusion_mask,
                         bool reload) noexcept;
@@ -177,6 +191,16 @@ public:
   /// Allocate and lock a register for the value part, *without* reloading the
   /// value. Does nothing if a register is already allocated.
   AsmReg alloc_reg(CompilerBase *compiler, u64 exclusion_mask = 0) noexcept {
+    if (preferred_register()!=255) {
+      AsmReg reg = AsmReg{preferred_register()};
+      auto &reg_file = compiler->register_file;
+      // Check if the preferred register is available in the bank and not used
+      // and not excluded
+      if (RegBank b = bank(); (reg_file.bank_regs(b) & (1ull << reg.id())) && !(preferred_register()& exclusion_mask) &&
+          !reg_file.is_used(reg)) {
+        return alloc_specific_impl(compiler,reg,false);
+      }
+    }
     return alloc_reg_impl(compiler, exclusion_mask, /*reload=*/false);
   }
 
@@ -197,7 +221,7 @@ public:
   ///   }
   AsmReg alloc_try_reuse(CompilerBase *compiler, ValuePart &ref) noexcept {
     assert(ref.has_reg());
-    if (!has_assignment() || !assignment().register_valid()) {
+    if ((preferred_register()==255|| ref.is_in_reg(Reg{preferred_register()})) &&(!has_assignment() || !assignment().register_valid())) { // todo(salto): can be simplified
       assert(!has_assignment() || !assignment().fixed_assignment());
       if (ref.can_salvage()) {
         set_value(compiler, std::move(ref));
@@ -218,7 +242,23 @@ public:
   void alloc_specific(CompilerBase *compiler, AsmReg reg) noexcept {
     alloc_specific_impl(compiler, reg, false);
   }
-
+  /// Try to allocate the preferred register for this value part.
+  /// If allocation fails (register is unavailable), fall back to load_to_reg.
+  AsmReg load_to_preferred_reg(CompilerBase *compiler) noexcept {
+    if (preferred_register() != 255) {
+      AsmReg reg = AsmReg{preferred_register()};
+      auto &reg_file = compiler->register_file;
+      RegBank b = bank();
+      // Check if the preferred register is available in the bank and not used
+      if ((reg_file.bank_regs(b) & (1ull << reg.id())) &&
+          !reg_file.is_used(reg)) {
+         alloc_specific_impl(compiler, reg, true);
+        return reg;
+      }
+    }
+    // Fallback: allocate any available register
+    return load_to_reg(compiler);
+  }
   /// Allocate, fill, and lock a register for the value part, reloading from
   /// the stack or materializing the constant if necessary. Requires that the
   /// value is currently unlocked (i.e., has_reg() is false).
@@ -398,24 +438,24 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
   // The caller has no control over the selected register, so it must assume
   // that this function evicts some register. This is not permitted if the value
   // state ought to be the same.
-  assert(compiler->may_change_value_state());
-  assert(!state.c.reg.valid());
+      assert(compiler->may_change_value_state());
+      assert(!state.c.reg.valid());
 
-  RegBank bank;
-  if (has_assignment()) {
-    auto ap = assignment();
-    if (ap.register_valid()) {
-      lock(compiler);
+      RegBank bank;
+      if (has_assignment()) {
+        auto ap = assignment();
+        if (ap.register_valid()) {
+          lock(compiler);
       // TODO: implement this if needed
-      assert((exclusion_mask & (1ull << state.v.reg.id())) == 0 &&
-             "moving registers in alloc_reg is unsupported");
-      return state.v.reg;
-    }
+          assert((exclusion_mask & (1ull << state.v.reg.id())) == 0 &&
+                 "moving registers in alloc_reg is unsupported");
+          return state.v.reg;
+        }
 
-    bank = ap.bank();
-  } else {
-    bank = state.c.bank;
-  }
+        bank = ap.bank();
+      } else {
+        bank = state.c.bank;
+      }
 
   Reg reg = compiler->select_reg(bank, exclusion_mask);
   auto &reg_file = compiler->register_file;
@@ -874,6 +914,10 @@ struct CompilerBase<Adaptor, Derived, Config>::ValuePartRef : ValuePart {
     ValuePart::alloc_specific(compiler, reg);
   }
 
+  AsmReg load_to_preferred_reg() noexcept {
+    return ValuePart::load_to_preferred_reg(compiler);
+  }
+
   AsmReg load_to_reg() noexcept { return ValuePart::load_to_reg(compiler); }
 
   void load_to_specific(AsmReg reg) noexcept {
@@ -923,6 +967,10 @@ struct CompilerBase<Adaptor, Derived, Config>::ValuePartRef : ValuePart {
 
   void set_value_reg(AsmReg value_reg) noexcept {
     ValuePart::set_value_reg(compiler, value_reg);
+  }
+
+  void set_recommended_reg(u8 reg) noexcept {
+    ValuePart::set_recommended_reg( reg);
   }
 
   AsmReg salvage() noexcept { return ValuePart::salvage(compiler); }

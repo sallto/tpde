@@ -8,6 +8,7 @@
 #include <ostream>
 
 #include "IRAdaptor.hpp"
+#include "RegisterFile.hpp"
 #include "tpde/ValLocalIdx.hpp"
 #include "tpde/base.hpp"
 #include "util/SmallBitSet.hpp"
@@ -84,6 +85,9 @@ struct Analyzer {
   u16 liveness_epoch = 0;
   u32 liveness_max_value;
 
+  util::SmallVector<Reg, SMALL_VALUE_NUM> recommended_registers = {};
+  // todo(salto): this will change into colors instead of registers later on.
+
   u32 num_insts;
 
   explicit Analyzer(Adaptor *adaptor) : adaptor(adaptor) {}
@@ -111,6 +115,19 @@ struct Analyzer {
     assert(liveness[static_cast<u32>(val_idx)].epoch == liveness_epoch &&
            "access to liveness of ignored value");
     return liveness[static_cast<u32>(val_idx)];
+  }
+
+  void recommend_register(IRValueRef value, const Reg reg) {
+    recommended_registers[static_cast<u32>(adaptor->val_local_idx(value))] =
+        reg;
+  }
+
+  [[nodiscard]] Reg
+      get_recommended_reg(const ValLocalIdx val_idx) const noexcept {
+    if (static_cast<u32>(val_idx) >= recommended_registers.size()) {
+      return Reg::make_invalid();
+    }
+    return recommended_registers[static_cast<u32>(val_idx)];
   }
 
   u32 block_loop_idx(const BlockIndex idx) const noexcept {
