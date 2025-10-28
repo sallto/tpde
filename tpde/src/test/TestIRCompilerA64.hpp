@@ -9,5 +9,6 @@
 namespace tpde::test {
 bool compile_ir_arm64(TestIR *ir,
                       bool no_fixed_assignments,
-                      const std::string &obj_out_path);
+                      const std::string &obj_out_path,
+                      std::vector<Reg> registers);
 }

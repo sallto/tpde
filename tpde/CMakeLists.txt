@@ -122,6 +122,7 @@ target_sources(tpde_test PRIVATE
         src/test/TestIR.hpp
         src/test/TestIRCompiler.hpp
         src/test/TestIRCompilerA64.hpp
+        src/test/TestIRCompilerBase.hpp
 )
 
 

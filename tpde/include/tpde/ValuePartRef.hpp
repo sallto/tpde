@@ -191,14 +191,15 @@ public:
   /// Allocate and lock a register for the value part, *without* reloading the
   /// value. Does nothing if a register is already allocated.
   AsmReg alloc_reg(CompilerBase *compiler, u64 exclusion_mask = 0) noexcept {
-    if (preferred_register()!=255) {
+    if (preferred_register() != 255) {
       AsmReg reg = AsmReg{preferred_register()};
       auto &reg_file = compiler->register_file;
       // Check if the preferred register is available in the bank and not used
       // and not excluded
-      if (RegBank b = bank(); (reg_file.bank_regs(b) & (1ull << reg.id())) && !(preferred_register()& exclusion_mask) &&
-          !reg_file.is_used(reg)) {
-        return alloc_specific_impl(compiler,reg,false);
+      if (RegBank b = bank(); (reg_file.bank_regs(b) & (1ull << reg.id())) &&
+                              !(preferred_register() & exclusion_mask) &&
+                              !reg_file.is_used(reg)) {
+        return alloc_specific_impl(compiler, reg, false);
       }
     }
     return alloc_reg_impl(compiler, exclusion_mask, /*reload=*/false);
@@ -221,7 +222,10 @@ public:
   ///   }
   AsmReg alloc_try_reuse(CompilerBase *compiler, ValuePart &ref) noexcept {
     assert(ref.has_reg());
-    if ((preferred_register()==255|| ref.is_in_reg(Reg{preferred_register()})) &&(!has_assignment() || !assignment().register_valid())) { // todo(salto): can be simplified
+    if ((preferred_register() == 255 ||
+         ref.is_in_reg(Reg{preferred_register()})) &&
+        (!has_assignment() ||
+         !assignment().register_valid())) { // todo(salto): can be simplified
       assert(!has_assignment() || !assignment().fixed_assignment());
       if (ref.can_salvage()) {
         set_value(compiler, std::move(ref));
@@ -252,7 +256,7 @@ public:
       // Check if the preferred register is available in the bank and not used
       if ((reg_file.bank_regs(b) & (1ull << reg.id())) &&
           !reg_file.is_used(reg)) {
-         alloc_specific_impl(compiler, reg, true);
+        alloc_specific_impl(compiler, reg, true);
         return reg;
       }
     }
@@ -438,22 +442,22 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
   // The caller has no control over the selected register, so it must assume
   // that this function evicts some register. This is not permitted if the value
   // state ought to be the same.
-      assert(compiler->may_change_value_state());
-      assert(!state.c.reg.valid());
+  assert(compiler->may_change_value_state());
+  assert(!state.c.reg.valid());
 
-      RegBank bank;
-      if (has_assignment()) {
-        auto ap = assignment();
+  RegBank bank;
+  if (has_assignment()) {
+    auto ap = assignment();
         if (ap.register_valid()) {
-          lock(compiler);
+      lock(compiler);
       // TODO: implement this if needed
-          assert((exclusion_mask & (1ull << state.v.reg.id())) == 0 &&
-                 "moving registers in alloc_reg is unsupported");
-          return state.v.reg;
+      assert((exclusion_mask & (1ull << state.v.reg.id())) == 0 &&
+             "moving registers in alloc_reg is unsupported");
+      return state.v.reg;
         }
 
         bank = ap.bank();
-      } else {
+  } else {
         bank = state.c.bank;
       }
 

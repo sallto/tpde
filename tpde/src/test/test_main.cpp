@@ -99,6 +99,13 @@ int main(int argc, char *argv[]) {
       "Path where the output object file should be written",
       {'o', "obj-out"});
 
+  args::ValueFlag<std::string> register_list(
+      parser,
+      "register_list",
+      "Comma-seperated list of registers-numbers to assign to values",
+      {"reg", "reg_list"},
+      "");
+
   args::Positional<std::string> ir_path(
       parser, "ir_path", "Path to the input IR file");
 
@@ -217,11 +224,20 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
+  auto reg_str = args::get(register_list);
+  std::vector<Reg> registers = {};
+  if (!reg_str.empty()) {
+    auto view = reg_str | std::ranges::views::split(',') |
+                std::ranges::views::transform([](auto &&rng) {
+                  std::string token(&*rng.begin(), std::ranges::distance(rng));
+                  return Reg{std::stoul(token)};
+                });
+    registers.assign(view.begin(), view.end());
+  }
   // TODO(ts): multiple arch select
   if (arch.Get() == Arch::x64) {
     test::TestIRAdaptor adaptor{&ir};
-    test::TestIRCompilerX64 compiler{&adaptor, no_fixed_assignments};
-
+    test::TestIRCompilerX64 compiler{&adaptor, no_fixed_assignments, registers};
     if (!compiler.compile()) {
       TPDE_LOG_ERR("Failed to compile IR");
       return 1;
@@ -241,7 +257,7 @@ int main(int argc, char *argv[]) {
   } else {
     assert(arch.Get() == Arch::a64);
     if (!test::compile_ir_arm64(
-            &ir, no_fixed_assignments.Get(), obj_out_path.Get())) {
+            &ir, no_fixed_assignments.Get(), obj_out_path.Get(), registers)) {
       TPDE_LOG_ERR("Failed to compiler IR");
       return 1;
     }

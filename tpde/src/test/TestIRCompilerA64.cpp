@@ -4,18 +4,23 @@
 
 #include <fstream>
 #include <iostream>
+#include <utility>
 
 #include "tpde/arm64/CompilerA64.hpp"
 
 #include "TestIR.hpp"
 #include "TestIRCompilerA64.hpp"
 
+#include "TestIRCompilerBase.hpp"
+
 namespace {
 using namespace tpde;
 using namespace tpde::test;
 
-struct TestIRCompilerA64 : a64::CompilerA64<TestIRAdaptor, TestIRCompilerA64> {
-  using Base = a64::CompilerA64<TestIRAdaptor, TestIRCompilerA64>;
+struct TestIRCompilerA64
+    : a64::CompilerA64<TestIRAdaptor, TestIRCompilerA64, TestCompilerBase> {
+  using Base =
+      a64::CompilerA64<TestIRAdaptor, TestIRCompilerA64, TestCompilerBase>;
 
   using IRValueRef = typename Base::IRValueRef;
   using IRFuncRef = typename Base::IRFuncRef;
@@ -25,9 +30,14 @@ struct TestIRCompilerA64 : a64::CompilerA64<TestIRAdaptor, TestIRCompilerA64> {
   using InstRange = typename Base::InstRange;
 
   bool no_fixed_assignments;
+  std::vector<Reg> recommended_registers;
 
-  explicit TestIRCompilerA64(TestIRAdaptor *adaptor, bool no_fixed_assignments)
-      : Base{adaptor}, no_fixed_assignments(no_fixed_assignments) {}
+  explicit TestIRCompilerA64(TestIRAdaptor *adaptor,
+                             bool no_fixed_assignments,
+                             std::vector<Reg> recommended_registers)
+      : Base{adaptor},
+        no_fixed_assignments(no_fixed_assignments),
+        recommended_registers(std::move(recommended_registers)) {}
 
   SymRef cur_personality_func() const noexcept { return {}; }
 
@@ -297,9 +307,10 @@ bool TestIRCompilerA64::compile_condselect(IRInstRef inst_idx) noexcept {
 
 bool test::compile_ir_arm64(TestIR *ir,
                             bool no_fixed_assignments,
-                            const std::string &obj_out_path) {
+                            const std::string &obj_out_path,
+                            std::vector<Reg> registers) {
   test::TestIRAdaptor adaptor{ir};
-  TestIRCompilerA64 compiler{&adaptor, no_fixed_assignments};
+  TestIRCompilerA64 compiler{&adaptor, no_fixed_assignments,std::move(registers)};
 
   if (!compiler.compile()) {
     TPDE_LOG_ERR("Failed to compile IR");

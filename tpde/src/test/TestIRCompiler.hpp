@@ -3,13 +3,18 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #pragma once
 
+#include <utility>
+
 #include "TestIR.hpp"
+#include "TestIRCompilerBase.hpp"
 #include "tpde/base.hpp"
 #include "tpde/x64/CompilerX64.hpp"
 
 namespace tpde::test {
-struct TestIRCompilerX64 : x64::CompilerX64<TestIRAdaptor, TestIRCompilerX64> {
-  using Base = x64::CompilerX64<TestIRAdaptor, TestIRCompilerX64>;
+struct TestIRCompilerX64
+    : x64::CompilerX64<TestIRAdaptor, TestIRCompilerX64, TestCompilerBase> {
+  using Base =
+      x64::CompilerX64<TestIRAdaptor, TestIRCompilerX64, TestCompilerBase>;
 
   using IRValueRef = typename Base::IRValueRef;
   using IRFuncRef = typename Base::IRFuncRef;
@@ -19,9 +24,14 @@ struct TestIRCompilerX64 : x64::CompilerX64<TestIRAdaptor, TestIRCompilerX64> {
   using InstRange = typename Base::InstRange;
 
   bool no_fixed_assignments;
+  std::vector<Reg> recommended_registers;
 
-  explicit TestIRCompilerX64(TestIRAdaptor *adaptor, bool no_fixed_assignments)
-      : Base{adaptor}, no_fixed_assignments(no_fixed_assignments) {}
+  explicit TestIRCompilerX64(TestIRAdaptor *adaptor,
+                             bool no_fixed_assignments,
+                             std::vector<Reg> recommended_registers)
+      : Base{adaptor},
+        no_fixed_assignments(no_fixed_assignments),
+        recommended_registers(std::move(recommended_registers)) {}
 
   static bool arg_is_int128(IRValueRef) noexcept { return false; }
   static bool arg_allow_split_reg_stack_passing(IRValueRef) noexcept {

@@ -114,9 +114,8 @@ bool TestIRCompilerX64::compile_add(IRInstRef inst_idx) noexcept {
   auto [rhs_vr, rhs] = this->val_ref_single(rhs_idx);
   auto [res_vr, res] =
       this->result_ref_single(static_cast<IRValueRef>(inst_idx));
-
-  AsmReg lhs_reg = lhs.load_to_reg();
-  AsmReg rhs_reg = rhs.load_to_reg();
+  AsmReg lhs_reg = lhs.load_to_preferred_reg();
+  AsmReg rhs_reg = rhs.load_to_preferred_reg();
   AsmReg res_reg = res.alloc_try_reuse(lhs);
 
   if (res_reg == lhs_reg) {
