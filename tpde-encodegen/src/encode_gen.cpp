@@ -617,10 +617,24 @@ bool generate_inst(std::string &buf,
         std::format_to(std::back_inserter(buf),
                        "        // def {} has not been allocated yet\n",
                        state.target->reg_name_lower(reg_id));
-        std::format_to(std::back_inserter(buf),
-                       "        scratch_{}.alloc(RegBank({}));\n",
-                       state.target->reg_name_lower(reg_id),
-                       state.target->reg_bank(reg_id));
+
+        // If the scratch corresponds to a return register.
+        // Try to allocate the scratch to the result recommended register
+        const auto corresponding_ret_reg = std::find(
+            state.return_regs.begin(), state.return_regs.end(), reg_id);
+        if (corresponding_ret_reg != state.return_regs.end()) {
+          std::format_to(
+              std::back_inserter(buf),
+              "        scratch_{}.alloc_rec(RegBank({}),result_{});\n",
+              state.target->reg_name_lower(reg_id),
+              state.target->reg_bank(reg_id),
+              std::distance(state.return_regs.begin(), corresponding_ret_reg));
+        } else {
+          std::format_to(std::back_inserter(buf),
+                         "        scratch_{}.alloc(RegBank({}));\n",
+                         state.target->reg_name_lower(reg_id),
+                         state.target->reg_bank(reg_id));
+        }
       }
 
       if (def.isImplicit()) {
@@ -1082,6 +1096,7 @@ bool create_encode_function(llvm::MachineFunction *func,
   }
 
   // create ScratchRegs
+  // todo(salto): remove unused scratch registers
   for (const auto reg : state.used_regs) {
     std::format_to(std::back_inserter(write_buf),
                    "    ScratchReg scratch_{}{{derived()}};\n",
