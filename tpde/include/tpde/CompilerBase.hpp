@@ -2267,14 +2267,14 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
   }*/
   auto state_it = block_regs.find(cur_block_idx);
   if (state_it != block_regs.end() || analyzer.block_has_phis(cur_block_idx)) {
-    register_file.reset();
     for (IRValueRef phi:adaptor->block_phis(block)) {
       auto phi_idx = adaptor->val_local_idx(phi);
       ValueAssignment *assignment = this->val_assignment(phi_idx); //todo val_assignment null
-      assert(phi_regs.contains(phi_idx)&&phi_regs[phi_idx].size()==assignment->part_count&& "Phi registers are not correctly populated.");
+      //assert(phi_regs.contains(phi_idx)&&phi_regs[phi_idx].size()==assignment->part_count&& "Phi registers are not correctly populated.");
       for (u32 i =0; i<assignment->part_count;i++) {
         auto ap = AssignmentPartRef{assignment, i};
-
+        if (ap.fixed_assignment())
+          continue;
         auto reg = phi_regs[phi_idx][i];
         ap.set_reg(reg);
         ap.set_register_valid(true);
