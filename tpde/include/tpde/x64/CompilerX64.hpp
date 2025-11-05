@@ -1507,17 +1507,24 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
     const bool needs_split,
     const bool last_inst) noexcept {
   const auto target_idx = this->analyzer.block_idx(target);
-  if (!needs_split || jmp == Jump::jmp) {
-    this->derived()->move_to_phi_nodes(target_idx);
+  IRBlockRef cur_block= this->analyzer.block_ref(this->cur_block_idx);
+  //todo(salto): can be optimized to just check size>1 or do it in analyzer(?)
+  auto num_succs= std::size(this->adaptor->block_succs(cur_block));
+  // Split critical edges
+  //todo(salto): for multiple succ, 1 incoming, the moves should be inserted in the target_block
+  // todo(salto): evaluate performance of unncessary jumps.
+  auto critical = num_succs>1 && this->analyzer.block_has_multiple_incoming(target); //&&
+  if ((!needs_split && !critical) || jmp == Jump::jmp) {
+    this->derived()->move_values_to_match(target_idx);
 
     if (!last_inst || this->analyzer.block_idx(target) != this->next_block()) {
       generate_raw_jump(jmp, this->block_labels[(u32)target_idx]);
     }
   } else {
     auto tmp_label = this->text_writer.label_create();
-    generate_raw_jump(invert_jump(jmp), tmp_label);
+    generate_raw_jump(jmp == Jump::jmp?jmp:invert_jump(jmp), tmp_label);
 
-    this->derived()->move_to_phi_nodes(target_idx);
+    this->derived()->move_values_to_match(target_idx);
 
     generate_raw_jump(Jump::jmp, this->block_labels[(u32)target_idx]);
 

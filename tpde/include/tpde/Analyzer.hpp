@@ -118,7 +118,11 @@ struct Analyzer {
   }
 
   void recommend_register(IRValueRef value, const Reg reg) {
-    recommended_registers[static_cast<u32>(adaptor->val_local_idx(value))] =
+    recommend_register(adaptor->val_local_idx(value), reg);
+  }
+
+  void recommend_register(ValLocalIdx value, const Reg reg) {
+    recommended_registers[static_cast<u32>(value)] =
         reg;
   }
 

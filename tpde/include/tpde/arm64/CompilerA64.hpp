@@ -1677,9 +1677,10 @@ void CompilerA64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
     IRBlockRef target,
     const bool needs_split,
     const bool last_inst) noexcept {
+  // todo(salto): critical edge splitting
   const auto target_idx = this->analyzer.block_idx(target);
   if (!needs_split || jmp.kind == Jump::jmp) {
-    this->derived()->move_to_phi_nodes(target_idx);
+    this->derived()->move_values_to_match(target_idx);
 
     if (!last_inst || this->analyzer.block_idx(target) != this->next_block()) {
       generate_raw_jump(jmp, this->block_labels[(u32)target_idx]);
@@ -1688,7 +1689,7 @@ void CompilerA64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
     auto tmp_label = this->text_writer.label_create();
     generate_raw_jump(invert_jump(jmp), tmp_label);
 
-    this->derived()->move_to_phi_nodes(target_idx);
+    this->derived()->move_values_to_match(target_idx);
 
     generate_raw_jump(Jump::jmp, this->block_labels[(u32)target_idx]);
 

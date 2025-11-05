@@ -95,6 +95,11 @@ public:
 
   bool has_assignment() const noexcept { return state.a.mode < 4; }
 
+  bool last_ref() noexcept {
+    assert(has_assignment());
+    return state.a.assignment->references_left <= 1; //todo(salto) ==1?
+  }
+
   [[nodiscard]] ValueAssignment *assignment() const noexcept {
     assert(has_assignment());
     assert(state.a.assignment != nullptr);
