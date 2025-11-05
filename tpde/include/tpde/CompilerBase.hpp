@@ -6,7 +6,10 @@
 #include <algorithm>
 #include <functional>
 #include <unordered_map>
+#include <unordered_set>
 #include <variant>
+#include <fstream>
+#include <vector>
 
 #include "Analyzer.hpp"
 #include "Compiler.hpp"
@@ -17,6 +20,7 @@
 #include "tpde/RegisterFile.hpp"
 #include "tpde/ValLocalIdx.hpp"
 #include "tpde/ValueAssignment.hpp"
+#include "tpde/VerificationIR.hpp"
 #include "tpde/base.hpp"
 #include "tpde/util/function_ref.hpp"
 #include "tpde/util/misc.hpp"
@@ -26,6 +30,10 @@
 namespace tpde {
 // TODO(ts): formulate concept for full compiler so that there is *some* check
 // whether all the required derived methods are implemented?
+
+// Top-level using statements for VerificationIR types
+template <IRAdaptor Adaptor>
+using VIR = VerificationIR<Adaptor, typename Analyzer<Adaptor>::BlockIndex, typename Adaptor::IRInstRef>;
 
 /// Thread-local storage access mode
 enum class TLSModel {
@@ -206,6 +214,11 @@ struct CompilerBase {
   std::map<BlockIndex, util::SmallVector<ValueState>> block_regs;
   std::map<ValLocalIdx, util::SmallVector<Reg>> phi_regs;
 
+#ifndef NDEBUG
+  VIR<Adaptor> verification_ir;
+  // Note: split_blocks and current_split_block are now in verification_ir
+#endif
+
 private:
   /// Default CCAssigner if the implementation doesn't override cur_cc_assigner.
   typename Config::DefaultCCAssigner default_cc_assigner;
@@ -348,6 +361,68 @@ public:
   /// not affect the next compilation
   void reset();
 
+#ifndef NDEBUG
+private:
+  /// Get current allocation for a value part (debug-only)
+  typename VIR<Adaptor>::Allocation get_allocation(AssignmentPartRef ap) const noexcept {
+    if (ap.register_valid()) {
+      return typename VIR<Adaptor>::Allocation(ap.get_reg());
+    } else if (ap.stack_valid() && !ap.variable_ref()) {
+      return typename VIR<Adaptor>::Allocation(ap.frame_off());
+    }
+    return typename VIR<Adaptor>::Allocation(Reg::make_invalid());
+  }
+
+
+
+
+
+  /// Emit PHI node assignment (debug-only)
+  void vir_emit_phi(IRValueRef phi_value, ValLocalIdx phi_idx, u32 part_idx, Reg reg) noexcept {
+    using VIRType = VIR<Adaptor>;
+    // Get the actual allocation (register or stack)
+    typename VIRType::Allocation phi_alloc(reg);
+    ValueAssignment *assignment = val_assignment(phi_idx);
+    if (assignment) {
+      AssignmentPartRef ap{assignment, part_idx};
+      phi_alloc = get_allocation(ap);
+    }
+    
+    // Capture incoming values and their source blocks
+    util::SmallVector<std::tuple<BlockIndex, ValLocalIdx, typename VIRType::Allocation>, 4> incoming_data;
+    auto phi_ref = adaptor->val_as_phi(phi_value);
+    u32 incoming_count = phi_ref.incoming_count();
+    
+    for (u32 i = 0; i < incoming_count; ++i) {
+      IRBlockRef incoming_block = phi_ref.incoming_block_for_slot(i);
+      IRValueRef incoming_val = phi_ref.incoming_val_for_slot(i);
+      ValLocalIdx incoming_val_idx = adaptor->val_local_idx(incoming_val);
+      
+      if (incoming_val_idx == INVALID_VAL_LOCAL_IDX) continue; // Skip constants/undef
+      
+      // Get allocation of incoming value at the source block
+      BlockIndex incoming_block_idx = static_cast<BlockIndex>(analyzer.block_idx(incoming_block));
+      typename VIRType::Allocation incoming_alloc(Reg::make_invalid());
+      
+      // Try to get allocation from the assignment
+      ValueAssignment *incoming_assignment = val_assignment(incoming_val_idx);
+      if (incoming_assignment) {
+        AssignmentPartRef ap{incoming_assignment, part_idx};
+        incoming_alloc = get_allocation(ap);
+      }
+      
+      incoming_data.push_back(std::make_tuple(incoming_block_idx, incoming_val_idx, incoming_alloc));
+    }
+    
+    verification_ir.vir_emit_phi(phi_idx, part_idx, phi_alloc, incoming_data);
+  }
+
+
+
+
+public:
+#endif
+
   /// Get CCAssigner for current function.
   CCAssigner *cur_cc_assigner() noexcept { return &default_cc_assigner; }
 
@@ -478,11 +553,13 @@ public:
 #ifndef NDEBUG
     assert(generating_branch);
     generating_branch = false;
+    verification_ir.end_branch();
 #endif
   }
 
 #ifndef NDEBUG
   bool may_change_value_state() const noexcept { return !generating_branch; }
+  
 #endif
   // (to,from,size)
   enum class MoveStatus {
@@ -496,6 +573,14 @@ public:
     Reg src;
     u8 size;
     MoveStatus status = MoveStatus::TO_MOVE;
+    ValLocalIdx value_idx = INVALID_VAL_LOCAL_IDX;
+    u32 part_idx = 0;
+
+    RegisterMove() = default;
+    RegisterMove(Reg d, Reg s, u8 sz,
+                 ValLocalIdx val = INVALID_VAL_LOCAL_IDX,
+                 u32 part = 0) noexcept
+        : dst(d), src(s), size(sz), value_idx(val), part_idx(part) {}
   };
 using MoveList = util::SmallVector<RegisterMove, 16>;
   void move_one(u32 i, MoveList &moves, MoveList &result) noexcept {
@@ -510,7 +595,8 @@ using MoveList = util::SmallVector<RegisterMove, 16>;
           }
         case MoveStatus::MOVING: {
           auto tmp = this->select_reg(register_file.reg_bank(moves[j].src),0); // todo(salto): what if no reg is available
-          result.emplace_back(tmp, moves[j].src, moves[j].size);
+          result.emplace_back(tmp, moves[j].src, moves[j].size,
+                              moves[j].value_idx, moves[j].part_idx);
             moves[j].src= tmp;
           break;
         }
@@ -521,7 +607,8 @@ using MoveList = util::SmallVector<RegisterMove, 16>;
         }
       }
     }
-    result.emplace_back(moves[i].dst,moves[i].src,moves[i].size);
+    result.emplace_back(moves[i].dst, moves[i].src, moves[i].size,
+                        moves[i].value_idx, moves[i].part_idx);
     moves[i].status = MoveStatus::DONE;
   }
   MoveList sequentialize(MoveList & moves) noexcept {
@@ -538,7 +625,7 @@ using MoveList = util::SmallVector<RegisterMove, 16>;
     // next block immediately follows the current block and there is no control flow inbetween.
     // We can use the Register state of the current block for the next one.
     // no moves necessary.
-    if (!analyzer.block_has_multiple_incoming(target) && std::size(adaptor->block_succs(cur_block_ref))==1 && analyzer.block_idx(adaptor->block_succs(cur_block_ref)[0])==next_block()){
+    if (!analyzer.block_has_multiple_incoming(target) && std::distance(adaptor->block_succs(cur_block_ref).begin(),adaptor->block_succs(cur_block_ref).end())==1 && analyzer.block_idx(*adaptor->block_succs(cur_block_ref).begin())==next_block()){
       assert(!analyzer.block_has_phis(target)&& "Block with one predecessor shouldn't contain phis");
       return;
     }
@@ -556,7 +643,8 @@ using MoveList = util::SmallVector<RegisterMove, 16>;
             //ValuePartRef vpr = ref.part(i);
             AssignmentPartRef ap{va, i};
             auto cur_reg = ap.get_reg(); //todo safety
-            moves.emplace_back(state.registers[i],cur_reg,ap.part_size());
+            moves.emplace_back(state.registers[i], cur_reg, ap.part_size(),
+                               state.val_local_idx, i);
 
         }
       }
@@ -573,7 +661,7 @@ using MoveList = util::SmallVector<RegisterMove, 16>;
         if (ap.fixed_assignment()) {
           // fixed registers do not need to be spilled
           // todo make sure this is still correct
-          continue;
+          //continue;
         }
 
         if (!ap.modified() || ap.variable_ref()) {
@@ -599,9 +687,58 @@ using MoveList = util::SmallVector<RegisterMove, 16>;
 
     //todo(salto): correct leroy_serialize
     MoveList result=sequentialize(moves);
+#ifndef NDEBUG
+    u32 move_index = 0;
+    auto find_value_for_reg = [&](Reg reg) -> std::pair<ValLocalIdx, u32> {
+      if (!reg.valid()) {
+        return {INVALID_VAL_LOCAL_IDX, 0};
+      }
+      if (register_file.is_used(reg)) {
+        ValLocalIdx idx = register_file.reg_local_idx(reg);
+        if (idx != INVALID_VAL_LOCAL_IDX) {
+          u32 part = register_file.reg_part(reg);
+          return {idx, part};
+        }
+      }
+      // Fallback: search all assignments for the register
+      for (u32 i = 0; i < assignments.value_ptrs.size(); ++i) {
+        ValueAssignment *va = assignments.value_ptrs[i];
+        if (!va) continue;
+        for (u32 part = 0; part < va->part_count; ++part) {
+          AssignmentPartRef ap{va, part};
+          if (ap.get_reg() == reg) {
+            return {static_cast<ValLocalIdx>(i), part};
+          }
+        }
+      }
+      return {INVALID_VAL_LOCAL_IDX, 0};
+    };
+    for (auto move: result) {
+      ValLocalIdx emit_val_idx = move.value_idx;
+      u32 emit_part = move.part_idx;
+      if (emit_val_idx == INVALID_VAL_LOCAL_IDX) {
+        auto [src_val_idx, src_part] = find_value_for_reg(move.src);
+        auto [dst_val_idx, dst_part] = find_value_for_reg(move.dst);
+        if (src_val_idx != INVALID_VAL_LOCAL_IDX) {
+          emit_val_idx = src_val_idx;
+          emit_part = src_part;
+        } else if (dst_val_idx != INVALID_VAL_LOCAL_IDX) {
+          emit_val_idx = dst_val_idx;
+          emit_part = dst_part;
+        } else {
+          emit_val_idx = static_cast<ValLocalIdx>(static_cast<u32>(cur_block_idx) | 0x70000000u | (move_index << 16));
+          emit_part = 0;
+        }
+      }
+      derived()->mov(move.dst,move.src,move.size);
+      verification_ir.emit_reg_move(move.src, move.dst, emit_val_idx, emit_part, move.size);
+      move_index++;
+    }
+#else
     for (auto move: result) {
       derived()->mov(move.dst,move.src,move.size);
     }
+#endif
   }
 
   void move_to_phi_nodes_impl(BlockIndex target, MoveList& moves) noexcept;
@@ -948,6 +1085,9 @@ void CompilerBase<Adaptor, Derived, Config>::reset() {
   func_syms.clear();
   block_labels.clear();
   personality_syms.clear();
+#ifndef NDEBUG
+  verification_ir.reset();
+#endif
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
@@ -1502,6 +1642,9 @@ Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::reload_to_reg(
     AsmReg dst, AssignmentPartRef ap) noexcept {
+#ifndef NDEBUG
+  typename VIR<Adaptor>::Allocation from = get_allocation(ap);
+#endif
   if (!ap.variable_ref()) {
     assert(ap.stack_valid());
     derived()->load_from_stack(dst, ap.frame_off(), ap.part_size());
@@ -1512,6 +1655,40 @@ void CompilerBase<Adaptor, Derived, Config>::reload_to_reg(
   } else {
     TPDE_UNREACHABLE("non-stack-variable needs custom var-ref handling");
   }
+#ifndef NDEBUG
+  typename VIR<Adaptor>::Allocation to(dst);
+  // After reload, the register should be marked in register_file
+  ValLocalIdx val_idx = register_file.reg_local_idx(dst);
+  u32 part_idx = register_file.reg_part(dst);
+  // If not in register_file yet, try to get from ap if it's valid
+  if (val_idx == INVALID_VAL_LOCAL_IDX && ap.register_valid()) {
+    val_idx = register_file.reg_local_idx(ap.get_reg());
+    part_idx = register_file.reg_part(ap.get_reg());
+  }
+  // If still invalid, search assignments (fallback)
+  if (val_idx == INVALID_VAL_LOCAL_IDX) {
+    for (u32 i = 0; i < assignments.value_ptrs.size(); ++i) {
+      if (assignments.value_ptrs[i] == ap.assignment()) {
+        val_idx = ValLocalIdx(i);
+        // Find part index by checking all parts
+        ValueAssignment *va = ap.assignment();
+        for (u32 p = 0; p < va->part_count; ++p) {
+          AssignmentPartRef test_ap{va, p};
+          if (test_ap.get_reg() == ap.get_reg() || 
+              (test_ap.stack_valid() && ap.stack_valid() && 
+               test_ap.frame_off() == ap.frame_off())) {
+            part_idx = p;
+            break;
+          }
+        }
+        break;
+      }
+    }
+    if (val_idx != INVALID_VAL_LOCAL_IDX) {
+      verification_ir.emit_edit(VIR<Adaptor>::EditKind::Reload, from, to, val_idx, part_idx, ap.part_size());
+    }
+  }
+#endif
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
@@ -1534,6 +1711,19 @@ void CompilerBase<Adaptor, Derived, Config>::spill(
     allocate_spill_slot(ap);
     derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
     ap.set_stack_valid();
+#ifndef NDEBUG
+{
+    typename VIR<Adaptor>::Allocation from =
+        get_allocation(ap);
+      ValLocalIdx val_idx = register_file.reg_local_idx(ap.get_reg());
+      if (val_idx != INVALID_VAL_LOCAL_IDX) {
+        typename VIR<Adaptor>::Allocation to(ap.frame_off());
+        u32 part_idx = register_file.reg_part(ap.get_reg());
+        verification_ir.emit_edit(
+            VIR<Adaptor>::EditKind::Spill, from, to, val_idx, part_idx, ap.part_size());
+      }
+    }
+#endif
   }
 }
 
@@ -1558,8 +1748,17 @@ void CompilerBase<Adaptor, Derived, Config>::evict_reg(Reg reg) noexcept {
   AssignmentPartRef evict_part{val_assignment(local_idx), part};
   assert(evict_part.register_valid());
   assert(evict_part.get_reg() == reg);
+#ifndef NDEBUG
+  typename VIR<Adaptor>::Allocation from = get_allocation(evict_part);
+#endif
   derived()->spill(evict_part);
   evict_part.set_register_valid(false);
+#ifndef NDEBUG
+  {
+    typename VIR<Adaptor>::Allocation to = get_allocation(evict_part);
+    verification_ir.emit_edit(VIR<Adaptor>::EditKind::Spill, from, to, local_idx, part, evict_part.part_size());
+  }
+#endif
   register_file.unmark_used(reg);
 }
 
@@ -1978,7 +2177,10 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
   const auto move_to_phi_reg = [this, &scratch, target_ref, &moves](IRValueRef phi,
                                             IRValueRef incoming_val) {
     auto phi_vr = derived()->result_ref(phi);
+    // We access the phi here
+    //phi_vr.disown();
     auto val_vr = derived()->val_ref(incoming_val);
+    ValLocalIdx incoming_val_idx = adaptor->val_local_idx(incoming_val);
     if (phi == incoming_val) {
       return;
     }
@@ -1988,26 +2190,33 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
       AssignmentPartRef phi_ap{phi_vr.assignment(), i};
       ValuePartRef val_vpr = val_vr.part(i);
 
-      if (phi_ap.fixed_assignment()) {
-        if (AsmReg reg = val_vpr.cur_reg_unlocked(); reg.valid()) {
-          derived()->mov(phi_ap.get_reg(), reg, phi_ap.part_size());
-        } else {
-          val_vpr.reload_into_specific_fixed(phi_ap.get_reg());
-        }
-      } else {
+
         AsmReg reg = val_vpr.cur_reg_unlocked();
+
         if (!reg.valid()) {
+          if (phi_ap.fixed_assignment()) {
+            val_vpr.reload_into_specific_fixed(phi_ap.get_reg());
+          }else{
           // todo(salto): move to reg from phi if already assigned
           reg = scratch.alloc_from_bank(val_vpr.bank());
           val_vpr.reload_into_specific_fixed(reg);
         }
+      }
         //todo(salto): moves
         // block -> phi_idx -> [registers]
 
         // was already assigned by a different branch
+
         if (phi_regs[adaptor->val_local_idx(phi)].size()>0) {
-          moves.emplace_back(phi_regs[adaptor->val_local_idx(phi)][i],reg,val_vpr.part_size());
-        }else {
+          moves.emplace_back(phi_regs[adaptor->val_local_idx(phi)][i], reg,
+                              val_vpr.part_size(), incoming_val_idx, i);
+                  }else {
+                    if (phi_ap.fixed_assignment()) {
+                      phi_regs[adaptor->val_local_idx(phi)].push_back(phi_ap.get_reg());
+                      moves.emplace_back(phi_ap.get_reg(), reg, val_vpr.part_size(),
+                                         incoming_val_idx, i);
+                      continue;
+                    }
           // no assigned registers. Avoid moves on this edge if possible.
           if (val_vr.last_ref()){
             phi_regs[adaptor->val_local_idx(phi)].push_back(reg);
@@ -2024,15 +2233,16 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
             // mark used as scratch since it doesn't contain a value at this point, but may not be used
             register_file.mark_used(phi_reg,INVALID_VAL_LOCAL_IDX,0);
             phi_regs[adaptor->val_local_idx(phi)].push_back(phi_reg);
-            moves.emplace_back(phi_reg,reg,val_vpr.part_size());
+            moves.emplace_back(phi_reg, reg, val_vpr.part_size(),
+                               incoming_val_idx, i);
             //assert(false && "allocate new register for phi since val_vr is still used outside of phi node (potentially)");
           }
-        }
+
       }
     }
   };
 
-//todo(salto): rest of move_to_phi_* calls
+  //todo(salto): rest of move_to_phi_* calls
   // sort so we can binary search later
   std::sort(nodes.begin(), nodes.end());
 
@@ -2062,6 +2272,82 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
     move_to_phi_reg(node.phi, node.incoming_val);
   }
   //todo(salto): use a bitset instead of this used stuff
+#ifndef NDEBUG
+  // Capture parallel moves for verification IR
+  util::SmallVector<std::pair<typename VIR<Adaptor>::Operand, typename VIR<Adaptor>::Operand>, 4> parallel_moves;
+  u32 temp_move_counter = 0;
+  auto find_value_for_reg_parallel = [&](Reg reg) -> std::pair<ValLocalIdx, u32> {
+    if (!reg.valid()) {
+      return {INVALID_VAL_LOCAL_IDX, 0};
+    }
+    if (register_file.is_used(reg)) {
+      ValLocalIdx idx = register_file.reg_local_idx(reg);
+      if (idx != INVALID_VAL_LOCAL_IDX) {
+        u32 part = register_file.reg_part(reg);
+        return {idx, part};
+      }
+    }
+    for (u32 i = 0; i < assignments.value_ptrs.size(); ++i) {
+      ValueAssignment *va = assignments.value_ptrs[i];
+      if (!va) continue;
+      for (u32 part = 0; part < va->part_count; ++part) {
+        AssignmentPartRef ap{va, part};
+        if (ap.get_reg() == reg) {
+          return {static_cast<ValLocalIdx>(i), part};
+        }
+      }
+    }
+    return {INVALID_VAL_LOCAL_IDX, 0};
+  };
+  for (auto move : moves) {
+    ValLocalIdx src_val_idx = move.value_idx;
+    u32 src_part = move.part_idx;
+    if (src_val_idx == INVALID_VAL_LOCAL_IDX) {
+      auto [found_src_idx, found_src_part] = find_value_for_reg_parallel(move.src);
+      src_val_idx = found_src_idx;
+      src_part = found_src_part;
+    }
+    auto [dst_val_idx, dst_part] = find_value_for_reg_parallel(move.dst);
+
+    if (src_val_idx != INVALID_VAL_LOCAL_IDX && dst_val_idx != INVALID_VAL_LOCAL_IDX) {
+      typename VIR<Adaptor>::Operand dst_op;
+      dst_op.val_idx = dst_val_idx;
+      dst_op.part_idx = dst_part;
+      dst_op.alloc = typename VIR<Adaptor>::Allocation(move.dst);
+      typename VIR<Adaptor>::Operand src_op;
+      src_op.val_idx = src_val_idx;
+      src_op.part_idx = src_part;
+      src_op.alloc = typename VIR<Adaptor>::Allocation(move.src);
+      parallel_moves.emplace_back(src_op, dst_op);
+    } else if (src_val_idx != INVALID_VAL_LOCAL_IDX) {
+      typename VIR<Adaptor>::Operand dst_op;
+      dst_op.val_idx = dst_val_idx;
+      dst_op.part_idx = dst_part;
+      dst_op.alloc = typename VIR<Adaptor>::Allocation(move.dst);
+      typename VIR<Adaptor>::Operand src_op;
+      src_op.val_idx = src_val_idx;
+      src_op.part_idx = src_part;
+      src_op.alloc = typename VIR<Adaptor>::Allocation(move.src);
+      parallel_moves.emplace_back(src_op, dst_op);
+    } else {
+      // Temporary move - both registers unknown, use temporary virtual register
+      ValLocalIdx temp_val_idx = static_cast<ValLocalIdx>(static_cast<u32>(cur_block_idx) | 0x70000000u | (temp_move_counter << 16));
+      temp_move_counter++;
+      typename VIR<Adaptor>::Operand dst_op;
+      dst_op.val_idx = temp_val_idx;
+      dst_op.part_idx = 0;
+      dst_op.alloc = typename VIR<Adaptor>::Allocation(move.dst);
+      typename VIR<Adaptor>::Operand src_op;
+      src_op.val_idx = temp_val_idx;
+      src_op.part_idx = 0;
+      src_op.alloc = typename VIR<Adaptor>::Allocation(move.src);
+      parallel_moves.emplace_back(src_op, dst_op);
+    }
+  }
+  if (!parallel_moves.empty()) {
+    verification_ir.emit_edge_parallel_move(cur_block_idx, target, std::move(parallel_moves));
+  }
+#endif
   for (auto move:moves) {
     if (register_file.is_used(move.dst)&&register_file.reg_local_idx(move.dst) == INVALID_VAL_LOCAL_IDX) {
       register_file.unmark_used(move.dst);
@@ -2148,6 +2434,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   register_file.reset();
 #ifndef NDEBUG
   generating_branch = false;
+  verification_ir.reset();
+  verification_ir.set_func_name(adaptor->func_link_name(func));
 #endif
 
   // Simple heuristic for initial allocation size
@@ -2174,6 +2462,37 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   // callee-saved registers, vararg save area, etc.
   cc_assigner->reset();
   derived()->gen_func_prolog_and_args(cc_assigner);
+  
+#ifndef NDEBUG
+  // After gen_func_prolog_and_args, explicitly capture all function arguments
+  // to ensure they appear first in the verification IR according to calling convention
+  // Iterate through arguments and capture their register assignments
+  for (const IRValueRef arg : adaptor->cur_args()) {
+    ValLocalIdx arg_idx = adaptor->val_local_idx(arg);
+    if (arg_idx == INVALID_VAL_LOCAL_IDX) continue;
+    
+    ValueAssignment *assignment = val_assignment(arg_idx);
+    if (!assignment) continue;
+    
+    const auto parts = derived()->val_parts(arg);
+    const u32 part_count = parts.count();
+    for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
+      AssignmentPartRef ap{assignment, part_idx};
+      if (ap.register_valid()) {
+        Reg reg = ap.get_reg();
+        BlockIndex entry_block_idx = static_cast<BlockIndex>(analyzer.block_idx(adaptor->cur_entry_block()));
+        typename VIR<Adaptor>::Allocation alloc(reg);
+        verification_ir.emit_arg(entry_block_idx, arg_idx, part_idx, alloc);
+      } else if (ap.stack_valid()) {
+        // Argument on stack - capture with stack allocation
+        i32 stack_off = ap.frame_off();
+        BlockIndex entry_block_idx = static_cast<BlockIndex>(analyzer.block_idx(adaptor->cur_entry_block()));
+        typename VIR<Adaptor>::Allocation alloc(stack_off);
+        verification_ir.emit_arg(entry_block_idx, arg_idx, part_idx, alloc);
+      }
+    }
+  }
+#endif
 
   for (const IRValueRef alloca : adaptor->cur_static_allocas()) {
     auto size = adaptor->val_alloca_size(alloca);
@@ -2219,6 +2538,12 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   derived()->finish_func(func_idx);
   this->text_writer.finish_func();
 
+#ifndef NDEBUG
+  // Write verification IR to file
+  std::string vir_filename = verification_ir.get_func_name() + ".vir";
+  verification_ir.write_to_file(vir_filename);
+#endif
+
   return true;
 }
 
@@ -2227,6 +2552,9 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     const IRBlockRef block, const u32 block_idx) noexcept {
   cur_block_idx =
       static_cast<typename Analyzer<Adaptor>::BlockIndex>(block_idx);
+#ifndef NDEBUG
+  verification_ir.set_current_block(cur_block_idx);
+#endif
 
   label_place(block_labels[block_idx]);
   /*if (analyzer.block_has_multiple_incoming(block)) {
@@ -2268,18 +2596,32 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
   auto state_it = block_regs.find(cur_block_idx);
   if (state_it != block_regs.end() || analyzer.block_has_phis(cur_block_idx)) {
     for (IRValueRef phi:adaptor->block_phis(block)) {
+      //todo(salto): phis on the stack
       auto phi_idx = adaptor->val_local_idx(phi);
       ValueAssignment *assignment = this->val_assignment(phi_idx); //todo val_assignment null
       //assert(phi_regs.contains(phi_idx)&&phi_regs[phi_idx].size()==assignment->part_count&& "Phi registers are not correctly populated.");
       for (u32 i =0; i<assignment->part_count;i++) {
         auto ap = AssignmentPartRef{assignment, i};
-        if (ap.fixed_assignment())
-          continue;
-        auto reg = phi_regs[phi_idx][i];
-        ap.set_reg(reg);
-        ap.set_register_valid(true);
-        if (!register_file.is_used(reg))
-          register_file.mark_used(reg,phi_idx,i);
+        Reg reg = Reg::make_invalid();
+        if (ap.fixed_assignment()) {
+          reg = ap.get_reg();
+        } else if (phi_regs.find(phi_idx) != phi_regs.end() && phi_regs[phi_idx].size() > i) {
+          reg = phi_regs[phi_idx][i];
+          ap.set_reg(reg);
+          ap.set_register_valid(true);
+          if (!register_file.is_used(reg))
+            register_file.mark_used(reg,phi_idx,i);
+        } else if (ap.stack_valid()) {
+          // PHI is on stack - we'll capture it with stack allocation
+          reg = Reg::make_invalid(); // Keep invalid to indicate stack
+        }
+        
+#ifndef NDEBUG
+        // Capture PHI node with virtual register and assembly register/stack location
+        if (reg.valid() || ap.stack_valid()) {
+          vir_emit_phi(phi, phi_idx, i, reg.valid() ? reg : Reg::make_invalid());
+        }
+#endif
       }
     }
     if (state_it != block_regs.end()) {
@@ -2305,6 +2647,38 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
       continue;
     }
 
+#ifndef NDEBUG
+    // Capture instruction uses (operands) before compilation
+    // For branches, these are the condition values
+    util::SmallVector<typename VIR<Adaptor>::Operand, 4> uses;
+    for (IRValueRef operand : adaptor->inst_operands(inst)) {
+      ValLocalIdx op_idx = adaptor->val_local_idx(operand);
+      if (op_idx == INVALID_VAL_LOCAL_IDX) continue; // Skip constants/undef
+      
+      ValueAssignment *op_assignment = val_assignment(op_idx);
+      if (!op_assignment) continue; // Not yet assigned
+      
+      const auto parts = derived()->val_parts(operand);
+      const u32 part_count = parts.count();
+      for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
+        AssignmentPartRef ap{op_assignment, part_idx};
+        typename VIR<Adaptor>::Operand op;
+        op.val_idx = op_idx;
+        op.part_idx = part_idx;
+        op.alloc = get_allocation(ap);
+        uses.push_back(op);
+      }
+    }
+    
+    // Store condition uses BEFORE compile_inst (which calls generate_branch_to_block)
+    // Make a copy since we'll need uses for non-branch instructions too
+    util::SmallVector<typename VIR<Adaptor>::Operand, 4> branch_condition;
+    for (const auto &op : uses) {
+      branch_condition.push_back(op);
+    }
+    verification_ir.set_branch_condition(std::move(branch_condition));
+#endif
+
     auto it_cpy = it;
     ++it_cpy;
     if (!derived()->compile_inst(inst, InstRange{.from = it_cpy, .to = end}))
@@ -2312,7 +2686,57 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
       TPDE_LOG_ERR("Failed to compile instruction {}",
                    this->adaptor->inst_fmt_ref(inst));
       return false;
+        }
+
+#ifndef NDEBUG
+{
+      // Update uses with final allocations after compilation
+      // (allocations may have changed during compilation, e.g., values moved to registers)
+      for (auto &use : uses) {
+        ValueAssignment *use_assignment = val_assignment(use.val_idx);
+        if (use_assignment) {
+          AssignmentPartRef ap{use_assignment, use.part_idx};
+          use.alloc = get_allocation(ap);
+        }
+      }
+      
+      // Capture instruction defs (results) AFTER compile_inst
+      // (compile_inst creates the result assignment via result_ref)
+      util::SmallVector<typename VIR<Adaptor>::Operand, 2> defs;
+      ValLocalIdx inst_id = INVALID_VAL_LOCAL_IDX;
+      for (IRValueRef result : adaptor->inst_results(inst)) {
+        ValLocalIdx res_idx = adaptor->val_local_idx(result);
+        if (res_idx == INVALID_VAL_LOCAL_IDX) continue;
+        
+        // Use the first result's val_idx as the instruction identifier
+        if (inst_id == INVALID_VAL_LOCAL_IDX) {
+          inst_id = res_idx;
+        }
+        
+        ValueAssignment *res_assignment = val_assignment(res_idx);
+        if (!res_assignment) continue; // Should exist after compile_inst
+        
+        const auto parts = derived()->val_parts(result);
+        const u32 part_count = parts.count();
+        for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
+          AssignmentPartRef ap{res_assignment, part_idx};
+          typename VIR<Adaptor>::Operand op;
+          op.val_idx = res_idx;
+          op.part_idx = part_idx;
+          op.alloc = get_allocation(ap);
+          defs.push_back(op);
+        }
+      }
+      
+      // If no result, use a marker based on the block index
+      if (inst_id == INVALID_VAL_LOCAL_IDX) {
+        inst_id = static_cast<ValLocalIdx>(static_cast<u32>(cur_block_idx) | 0x60000000u);
+      }
+      
+      // Emit the instruction operation (non-branch instructions)
+      verification_ir.emit_inst_op(inst_id, std::move(uses), std::move(defs));
     }
+#endif
   }
 
 #ifndef NDEBUG
