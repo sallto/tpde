@@ -1515,23 +1515,23 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
   // todo(salto): evaluate performance of unncessary jumps.
   auto critical = num_succs>1 && this->analyzer.block_has_multiple_incoming(target); //&&
   bool is_split = (needs_split || critical) && jmp != Jump::jmp;
-  
-#ifndef NDEBUG
-  // Convert Jump enum to simplified string for verification IR
-  // Only distinguish between unconditional (jmp) and conditional (jcond)
-  const char* jump_str = (jmp == Jump::jmp) ? "jmp" : "jcond";
-  
-  // Capture branch before generating it
-  this->verification_ir.capture_branch(jump_str, target_idx, is_split);
-  
-  // Clear condition after first branch (conditional branches have two calls)
-  if (jmp != Jump::jmp) {
-    this->verification_ir.clear_branch_condition();
-  }
-#endif
-  
+
+
   if ((!needs_split && !critical) || jmp == Jump::jmp) {
     this->derived()->move_values_to_match(target_idx);
+#ifndef NDEBUG
+    // Convert Jump enum to simplified string for verification IR
+    // Only distinguish between unconditional (jmp) and conditional (jcond)
+    const char *jump_str = (jmp == Jump::jmp) ? "jmp" : "jcond";
+
+    // Capture branch before generating it
+    this->verification_ir.capture_branch(jump_str, target_idx, is_split);
+
+    // Clear condition after first branch (conditional branches have two calls)
+    if (jmp != Jump::jmp) {
+      this->verification_ir.clear_branch_condition();
+    }
+#endif
 
     if (!last_inst || this->analyzer.block_idx(target) != this->next_block()) {
       generate_raw_jump(jmp, this->block_labels[(u32)target_idx]);
@@ -1539,11 +1539,32 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
   } else {
     auto tmp_label = this->text_writer.label_create();
     generate_raw_jump(jmp == Jump::jmp?jmp:invert_jump(jmp), tmp_label);
+    
+    #ifndef NDEBUG
+    // Convert Jump enum to simplified string for verification IR
+    // Only distinguish between unconditional (jmp) and conditional (jcond)
+    const char *jump_str = (jmp == Jump::jmp) ? "jmp" : "jcond";
 
+    // Capture branch BEFORE move_values_to_match so split context is
+    // established
+    this->verification_ir.capture_branch(jump_str, target_idx, is_split);
+
+    // Clear condition after first branch (conditional branches have two calls)
+
+#endif
+
+    // For split blocks, move values to match AFTER establishing split context
     this->derived()->move_values_to_match(target_idx);
 
-    generate_raw_jump(Jump::jmp, this->block_labels[(u32)target_idx]);
+    #ifndef NDEBUG
+    // Capture the jmp to final target in split block context
+    this->verification_ir.capture_branch("jmp", target_idx, false);
+    if (jmp != Jump::jmp) {
+      this->verification_ir.clear_branch_condition();
+    }
+#endif
 
+    generate_raw_jump(Jump::jmp, this->block_labels[(u32)target_idx]);
     this->label_place(tmp_label);
   }
   

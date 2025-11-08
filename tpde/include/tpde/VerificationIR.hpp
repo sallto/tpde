@@ -98,21 +98,65 @@ struct VerificationIR {
     util::SmallVector<std::pair<Operand, Operand>, 4> parallel_moves;
   };
 
+  enum class BlockEntryKind {
+    Inst,
+    Edit
+  };
+
+  struct BlockEntry {
+    BlockEntryKind kind;
+    union {
+      InstOp inst;
+      Edit edit;
+    };
+
+    BlockEntry(InstOp i) : kind(BlockEntryKind::Inst), inst(std::move(i)) {}
+    BlockEntry(Edit e) : kind(BlockEntryKind::Edit), edit(std::move(e)) {}
+
+    BlockEntry(BlockEntry &&other) noexcept : kind(other.kind) {
+      if (kind == BlockEntryKind::Inst) {
+        new (&inst) InstOp(std::move(other.inst));
+      } else {
+        new (&edit) Edit(std::move(other.edit));
+      }
+    }
+
+    BlockEntry &operator=(BlockEntry &&other) noexcept {
+      if (this != &other) {
+        this->~BlockEntry();
+        kind = other.kind;
+        if (kind == BlockEntryKind::Inst) {
+          new (&inst) InstOp(std::move(other.inst));
+        } else {
+          new (&edit) Edit(std::move(other.edit));
+        }
+      }
+      return *this;
+    }
+
+    ~BlockEntry() {
+      if (kind == BlockEntryKind::Inst) {
+        inst.~InstOp();
+      } else {
+        edit.~Edit();
+      }
+    }
+  };
+
   struct BlockInfo {
-    BlockIndex block_idx;
-    util::SmallVector<InstOp, 16> insts;
-    util::SmallVector<Edit, 8> edits;
-    
-    BlockInfo() = default;
-    BlockInfo(BlockInfo &&) noexcept = default;
-    BlockInfo &operator=(BlockInfo &&) noexcept = default;
+      BlockIndex block_idx;
+      util::SmallVector<BlockEntry, 24> entries;
+      
+      BlockInfo() = default;
+      BlockInfo(BlockInfo &&) noexcept = default;
+      BlockInfo &operator=(BlockInfo &&) noexcept = default;
   };
 
   struct EdgeInfo {
     BlockIndex from;
     BlockIndex to;
     util::SmallVector<Edit, 4> parallel_moves;
-    
+
     EdgeInfo() = default;
     EdgeInfo(EdgeInfo &&) noexcept = default;
     EdgeInfo &operator=(EdgeInfo &&) noexcept = default;
@@ -222,11 +266,14 @@ struct VerificationIR {
                     util::SmallVector<Operand, 4> uses,
                     util::SmallVector<Operand, 2> defs) noexcept {
     BlockIndex block_idx = current_block_idx;
+    if (current_split_block != static_cast<BlockIndex>(~0u)) {
+      block_idx = current_split_block;
+    }
     InstOp inst_op{inst_id, std::move(uses), std::move(defs)};
-    
+
     // Find or create block info
-    auto it = std::find_if(blocks.begin(), blocks.end(),
-                          [block_idx](const BlockInfo &bi) {
+    auto it = std::find_if(
+        blocks.begin(), blocks.end(), [block_idx](const BlockInfo &bi) {
                             return bi.block_idx == block_idx;
                           });
     if (it == blocks.end()) {
@@ -235,13 +282,15 @@ struct VerificationIR {
       blocks.push_back(std::move(block_info));
       it = blocks.end() - 1;
     }
-    it->insts.push_back(std::move(inst_op));
+    it->entries.push_back(std::move(inst_op));
   }
   
   /// Emit edit operation (uses get_edit_block())
   void emit_edit(EditKind kind,
                  Allocation from, Allocation to,
-                 ValLocalIdx val_idx, u32 part_idx, u32 size) noexcept {
+                 ValLocalIdx val_idx,
+                 u32 part_idx,
+                 u32 size) noexcept {
     BlockIndex edit_block = get_edit_block();
     Edit edit;
     edit.kind = kind;
@@ -262,12 +311,11 @@ struct VerificationIR {
       blocks.push_back(std::move(block_info));
       it = blocks.end() - 1;
     }
-    it->edits.push_back(std::move(edit));
+    it->entries.push_back(std::move(edit));
   }
   
   /// Emit register-to-register move (uses get_edit_block())
-  void emit_reg_move(Reg src, Reg dst,
-                     ValLocalIdx val_idx, u32 part_idx, u32 size) noexcept {
+  void emit_reg_move(Reg src, Reg dst, ValLocalIdx val_idx, u32 part_idx, u32 size) noexcept {
     BlockIndex edit_block = get_edit_block();
     Edit edit;
     edit.kind = EditKind::RegMove;
@@ -276,7 +324,7 @@ struct VerificationIR {
     edit.val_idx = val_idx;
     edit.part_idx = part_idx;
     edit.size = size;
-    
+
     // Find or create block info
     auto it = std::find_if(blocks.begin(), blocks.end(),
                           [edit_block](const BlockInfo &bi) {
@@ -288,7 +336,7 @@ struct VerificationIR {
       blocks.push_back(std::move(block_info));
       it = blocks.end() - 1;
     }
-    it->edits.push_back(std::move(edit));
+    it->entries.push_back(std::move(edit));
   }
   
   /// Emit function argument assignment
@@ -317,12 +365,13 @@ struct VerificationIR {
       it = blocks.end() - 1;
     }
     // Arguments are added to the entry block - output code will ensure they come first
-    it->insts.push_back(std::move(inst_op));
+    it->entries.push_back(std::move(inst_op));
   }
   
   /// Emit PHI node assignment (uses current_block_idx)
   void emit_phi(ValLocalIdx phi_idx, u32 part_idx,
-                Allocation phi_alloc, util::SmallVector<PhiIncoming, 4> incomings) noexcept {
+                Allocation phi_alloc,
+                util::SmallVector<PhiIncoming, 4> incomings) noexcept {
     BlockIndex block_idx = current_block_idx;
     util::SmallVector<Operand, 0> uses; // PHI uses come from parallel moves
     util::SmallVector<Operand, 1> defs;
@@ -347,7 +396,7 @@ struct VerificationIR {
       blocks.push_back(std::move(block_info));
       it = blocks.end() - 1;
     }
-    it->insts.push_back(std::move(inst_op));
+    it->entries.push_back(std::move(inst_op));
   }
   
   /// Emit PHI node with incoming values (helper method that collects incoming data)
@@ -389,15 +438,18 @@ struct VerificationIR {
       blocks.push_back(std::move(block_info));
       it = blocks.end() - 1;
     }
-    it->insts.push_back(std::move(inst_op));
+    it->entries.push_back(std::move(inst_op));
   }
   
   /// Capture branch instruction (uses current_block_idx)
   void capture_branch(const char* jump_type,
-                      BlockIndex target_block, bool is_split) noexcept {
+                      BlockIndex target_block,
+                      bool is_split) noexcept {
     // Set up split block for edits
-    BlockIndex edit_block = begin_branch(current_block_idx, target_block, is_split);
-    
+    BlockIndex current_block= current_split_block !=  static_cast<BlockIndex>(~0u)?current_split_block:current_block_idx;
+    BlockIndex edit_block =
+        begin_branch(current_block_idx, target_block, is_split);
+
     // Get condition uses if available
     util::SmallVector<Operand, 4> uses;
     if (!current_branch_condition.empty()) {
@@ -409,67 +461,60 @@ struct VerificationIR {
     // - If splitting, the conditional jump goes to the split block
     // - Otherwise, it goes directly to the target
     BlockIndex branch_target = is_split ? edit_block : target_block;
-    
+
+
     // Create branch instruction - always in the source block
     // Use a marker val_idx based on the block index (will never conflict with real values)
-    ValLocalIdx branch_id = static_cast<ValLocalIdx>(static_cast<u32>(current_block_idx) | 0x40000000u);
+    ValLocalIdx branch_id = static_cast<ValLocalIdx>(static_cast<u32>(current_block) | 0x40000000u);
     InstOp inst_op{
       branch_id,
-      std::move(uses),
-      util::SmallVector<Operand, 0>{}  // Branches don't define
+        std::move(uses),
+        util::SmallVector<Operand, 0>{} // Branches don't define
     };
     inst_op.branch_target = branch_target;
     inst_op.jump_type = jump_type ? jump_type : "jmp";
     
     // Find or create block info for the SOURCE block
     auto it = std::find_if(blocks.begin(), blocks.end(),
-                          [this](const BlockInfo &bi) {
-                            return bi.block_idx == current_block_idx;
-                          });
+                          [this, current_block](const BlockInfo &bi) {
+                            return bi.block_idx == current_block;
+                           });
     if (it == blocks.end()) {
       BlockInfo block_info;
-      block_info.block_idx = current_block_idx;
+      block_info.block_idx = current_block;
       blocks.push_back(std::move(block_info));
       it = blocks.end() - 1;
     }
     
     // Check if a branch already exists and replace it
-    auto branch_it = std::find_if(it->insts.begin(), it->insts.end(),
-                                   [branch_target](const InstOp &op) {
-                                     return op.branch_target == branch_target;
-                                   });
-    if (branch_it != it->insts.end()) {
+    auto branch_it = std::find_if(it->entries.begin(), it->entries.end(),
+                                   [branch_target](const BlockEntry &entry) {
+                       return entry.kind == BlockEntryKind::Inst &&
+                              entry.inst.branch_target == branch_target;
+                     });
+    if (branch_it != it->entries.end()) {
       // Replace existing branch with the one from x64 (which has jump type)
-      *branch_it = std::move(inst_op);
+      branch_it->inst = std::move(inst_op);
     } else {
-      it->insts.push_back(std::move(inst_op));
+      it->entries.push_back(std::move(inst_op));
     }
-    
-    // If this is a split and the jump is conditional (not jmp), add a jmp to final target in split block
-    if (is_split && jump_type && std::string(jump_type) != "jmp") {
-      // Find or create split block info
-      auto split_it = std::find_if(blocks.begin(), blocks.end(),
-                                    [edit_block](const BlockInfo &bi) {
-                                      return bi.block_idx == edit_block;
-                                    });
-      if (split_it != blocks.end()) {
-        // Add jmp to final target at the end of split block
-        ValLocalIdx jmp_id = static_cast<ValLocalIdx>(static_cast<u32>(edit_block) | 0x40000000u);
-        InstOp jmp_inst{
-          jmp_id,
-          util::SmallVector<Operand, 0>{},
-          util::SmallVector<Operand, 0>{}
-        };
-        jmp_inst.branch_target = target_block;
-        jmp_inst.jump_type = "jmp";
-        split_it->insts.push_back(std::move(jmp_inst));
-      }
+    if (is_split) {
+      current_split_block = edit_block;
+    } else {
+      current_split_block = static_cast<BlockIndex>(~0u);
     }
+
+    // Note: For split conditional branches, the jmp to final target will be
+    // added by the normal code generation flow after move_values_to_match is
+    // called.
+    // This ensures the correct ordering: spill operations first, then jmp.
   }
-  
+
   /// Emit parallel move on edge
-  void emit_edge_parallel_move(BlockIndex from, BlockIndex to,
-                               util::SmallVector<std::pair<Operand, Operand>, 4> moves) noexcept {
+  void emit_edge_parallel_move(
+      BlockIndex from,
+      BlockIndex to,
+      util::SmallVector<std::pair<Operand, Operand>, 4> moves) noexcept {
     EdgeInfo edge;
     edge.from = from;
     edge.to = to;
@@ -486,9 +531,9 @@ struct VerificationIR {
     if (!out.is_open()) {
       return; // Can't log here, just fail silently
     }
-    
+
     out << "function " << func_name << "\n\n";
-    
+
     // Write blocks
     for (const auto &block : blocks) {
       // Check if this is a split block
@@ -499,45 +544,22 @@ struct VerificationIR {
       } else {
         out << "block b" << static_cast<u32>(block.block_idx) << ":\n";
       }
-      
-      // Write instructions and edits (for split blocks, edits come before branches)
-      // First, collect edits, branches, arguments, and other instructions separately
-      util::SmallVector<const Edit*, 8> edits_list;
-      util::SmallVector<const InstOp*, 16> branches_list;
-      util::SmallVector<const InstOp*, 16> arg_insts;
-      util::SmallVector<const InstOp*, 16> other_insts;
-      
-      for (const auto &inst_op : block.insts) {
-        if (static_cast<u32>(inst_op.branch_target) != ~0u) {
-          branches_list.push_back(&inst_op);
-        } else {
-          // Check if this is an argument
-          if (inst_op.is_argument) {
-            arg_insts.push_back(&inst_op);
-          } else {
-            other_insts.push_back(&inst_op);
+
+      // Track current allocation for each value as we process entries
+      std::map<std::pair<ValLocalIdx, u32>, Allocation> current_allocs;
+
+      // Output entries in the exact order they appear in block.entries
+      for (const auto &entry : block.entries) {
+        if (entry.kind == BlockEntryKind::Edit) {
+          const auto &edit = entry.edit;
+          // Update current allocation for reload operations
+          if (edit.kind == EditKind::Reload) {
+            current_allocs[{edit.val_idx, edit.part_idx}] = edit.to;
           }
-        }
-      }
-      
-      for (const auto &edit : block.edits) {
-        edits_list.push_back(&edit);
-      }
-      
-      // For split blocks, output edits first, then branches, then other instructions
-      // For regular blocks, output instructions first, then edits
-      bool is_split_block = (static_cast<u32>(block.block_idx) & 0x80000000u) != 0;
-      
-      if (is_split_block) {
-        // Split blocks: edits first, then branches
-        for (const auto *edit_ptr : edits_list) {
-          const auto &edit = *edit_ptr;
           out << "  edit ";
           switch (edit.kind) {
-            case EditKind::Move:
-              out << "move ";
-              break;
-            case EditKind::Spill:
+          case EditKind::Move: out << "move "; break;
+          case EditKind::Spill:
               out << "spill ";
               break;
             case EditKind::Reload:
@@ -564,27 +586,23 @@ struct VerificationIR {
           out << " %v" << static_cast<u32>(edit.val_idx);
           if (edit.part_idx > 0) out << ":" << edit.part_idx;
           out << "\n";
-        }
-        
-        // Then branches
-        for (const auto *inst_op_ptr : branches_list) {
-          const auto &inst_op = *inst_op_ptr;
-          if (!inst_op.jump_type.empty()) {
-            out << "  " << inst_op.jump_type << " ";
-            // Check if target is a split block
-            if (static_cast<u32>(inst_op.branch_target) & 0x80000000u) {
-              u32 base_block = static_cast<u32>(inst_op.branch_target) & 0x7FFFFFFFu;
-              out << "split_b" << base_block;
-            } else {
-              out << "b" << static_cast<u32>(inst_op.branch_target);
-            }
-            if (!inst_op.uses.empty()) {
-              out << " uses=";
-              for (size_t i = 0; i < inst_op.uses.size(); ++i) {
-                if (i > 0) out << ",";
-                const auto &op = inst_op.uses[i];
+        } else {
+          const auto &inst_op = entry.inst;
+          // Check if this is an argument
+          if (inst_op.is_argument) {
+            out << "  op";
+            // Arguments only have defs, no uses
+            if (!inst_op.defs.empty()) {
+              out << " defs=";
+              for (size_t i = 0; i < inst_op.defs.size(); ++i) {
+                if (i > 0) {
+                  out << ",";
+                }
+                const auto &op = inst_op.defs[i];
                 out << "%v" << static_cast<u32>(op.val_idx);
-                if (op.part_idx > 0) out << ":" << op.part_idx;
+                if (op.part_idx > 0) {
+                  out << ":" << op.part_idx;
+                }
                 out << "@";
                 if (op.alloc.is_stack) {
                   out << "[sp+" << op.alloc.stack_off << "]";
@@ -594,48 +612,7 @@ struct VerificationIR {
               }
             }
             out << "\n";
-          }
-        }
-      } else {
-        // Regular blocks: arguments first, then other instructions, then edits (before branches), then branches
-        // Output arguments first, sorted by val_idx to match calling convention order
-        std::vector<const InstOp*> sorted_args(arg_insts.begin(), arg_insts.end());
-        std::sort(sorted_args.begin(), sorted_args.end(), 
-                  [](const InstOp *a, const InstOp *b) {
-                    if (a->defs.empty() || b->defs.empty()) return false;
-                    if (a->defs[0].val_idx != b->defs[0].val_idx) {
-                      return a->defs[0].val_idx < b->defs[0].val_idx;
-                    }
-                    return a->defs[0].part_idx < b->defs[0].part_idx;
-                  });
-        
-        for (const auto *inst_op_ptr : sorted_args) {
-          const auto &inst_op = *inst_op_ptr;
-          out << "  op";
-          // Arguments only have defs, no uses
-          if (!inst_op.defs.empty()) {
-            out << " defs=";
-            for (size_t i = 0; i < inst_op.defs.size(); ++i) {
-              if (i > 0) out << ",";
-              const auto &op = inst_op.defs[i];
-              out << "%v" << static_cast<u32>(op.val_idx);
-              if (op.part_idx > 0) out << ":" << op.part_idx;
-              out << "@";
-              if (op.alloc.is_stack) {
-                out << "[sp+" << op.alloc.stack_off << "]";
-              } else {
-                out << "r" << static_cast<u32>(op.alloc.reg.id());
-              }
-            }
-          }
-          out << "\n";
-        }
-        
-        // Then other instructions
-        for (const auto *inst_op_ptr : other_insts) {
-          const auto &inst_op = *inst_op_ptr;
-          // Check if this is a PHI node
-          if (!inst_op.phi_incomings.empty()) {
+          } else if (!inst_op.phi_incomings.empty()) {
             // This is a PHI node - format as phi with incomings
             if (!inst_op.defs.empty()) {
               const auto &def = inst_op.defs[0];
@@ -662,8 +639,55 @@ struct VerificationIR {
               }
               out << "]\n";
             }
+          } else if (static_cast<u32>(inst_op.branch_target) != ~0u) {
+            // This is a branch instruction
+            // Check if this is a split block target
+            if (static_cast<u32>(inst_op.branch_target) & 0x80000000u) {
+              // This is a split block - format as split_bX
+              u32 base_block =
+                  static_cast<u32>(inst_op.branch_target) & 0x7FFFFFFFu;
+              out << "  " << inst_op.jump_type << " split_b" << base_block;
+            } else {
+              out << "  " << inst_op.jump_type << " b"
+                  << static_cast<u32>(inst_op.branch_target);
+            }
+            // Write uses if any (for conditional branches)
+            if (!inst_op.uses.empty()) {
+              out << " uses=";
+              for (size_t i = 0; i < inst_op.uses.size(); ++i) {
+                if (i > 0) {
+                  out << ",";
+                }
+                const auto &op = inst_op.uses[i];
+                out << "%v" << static_cast<u32>(op.val_idx);
+                if (op.part_idx > 0) {
+                  out << ":" << op.part_idx;
+                }
+                out << "@";
+                // Use current allocation if available, otherwise use the
+                // operand's allocation
+                auto key = std::make_pair(op.val_idx, op.part_idx);
+                auto it = current_allocs.find(key);
+                if (it != current_allocs.end()) {
+                  const auto &alloc = it->second;
+                  if (alloc.is_stack) {
+                    out << "[sp+" << alloc.stack_off << "]";
+                  } else {
+                    out << "r" << static_cast<u32>(alloc.reg.id());
+                  }
+                } else {
+                  if (op.alloc.is_stack) {
+                    out << "[sp+" << op.alloc.stack_off << "]";
+                  } else {
+                    out << "r" << static_cast<u32>(op.alloc.reg.id());
+                  }
+                }
+              }
+            }
+            out << "\n";
           } else {
-            // Regular instruction - skip if it has no uses and no defs (empty op)
+            // Regular instruction - skip if it has no uses and no defs (empty
+            // op)
             if (inst_op.uses.empty() && inst_op.defs.empty()) {
               continue; // Skip empty instructions
             }
@@ -677,10 +701,23 @@ struct VerificationIR {
                 out << "%v" << static_cast<u32>(op.val_idx);
                 if (op.part_idx > 0) out << ":" << op.part_idx;
                 out << "@";
-                if (op.alloc.is_stack) {
-                  out << "[sp+" << op.alloc.stack_off << "]";
+                // Use current allocation if available, otherwise use the
+                // operand's allocation
+                auto key = std::make_pair(op.val_idx, op.part_idx);
+                auto it = current_allocs.find(key);
+                if (it != current_allocs.end()) {
+                  const auto &alloc = it->second;
+                  if (alloc.is_stack) {
+                    out << "[sp+" << alloc.stack_off << "]";
+                  } else {
+                    out << "r" << static_cast<u32>(alloc.reg.id());
+                  }
                 } else {
-                  out << "r" << static_cast<u32>(op.alloc.reg.id());
+                  if (op.alloc.is_stack) {
+                    out << "[sp+" << op.alloc.stack_off << "]";
+                  } else {
+                    out << "r" << static_cast<u32>(op.alloc.reg.id());
+                  }
                 }
               }
             }
@@ -703,117 +740,10 @@ struct VerificationIR {
             out << "\n";
           }
         }
-        
-        // Then edits (these happen before branches)
-        for (const auto *edit_ptr : edits_list) {
-          const auto &edit = *edit_ptr;
-          out << "  edit ";
-          switch (edit.kind) {
-            case EditKind::Move:
-              out << "move ";
-              break;
-            case EditKind::Spill:
-              out << "spill ";
-              break;
-            case EditKind::Reload:
-              out << "reload ";
-              break;
-            case EditKind::RegMove:
-              out << "regmove ";
-              break;
-            case EditKind::ParallelMove:
-              out << "parallel ";
-              break;
-          }
-          if (edit.from.is_stack) {
-            out << "[sp+" << edit.from.stack_off << "]";
-          } else {
-            out << "r" << static_cast<u32>(edit.from.reg.id());
-          }
-          out << " -> ";
-          if (edit.to.is_stack) {
-            out << "[sp+" << edit.to.stack_off << "]";
-          } else {
-            out << "r" << static_cast<u32>(edit.to.reg.id());
-          }
-          out << " %v" << static_cast<u32>(edit.val_idx);
-          if (edit.part_idx > 0) out << ":" << edit.part_idx;
-          out << "\n";
-        }
-        
-        // Then branches
-        for (const auto *inst_op_ptr : branches_list) {
-          const auto &inst_op = *inst_op_ptr;
-          if (!inst_op.jump_type.empty()) {
-            // Branch from x64 generate_branch_to_block (has jump type)
-            out << "  " << inst_op.jump_type << " ";
-            // Check if target is a split block
-            if (static_cast<u32>(inst_op.branch_target) & 0x80000000u) {
-              u32 base_block = static_cast<u32>(inst_op.branch_target) & 0x7FFFFFFFu;
-              out << "split_b" << base_block;
-            } else {
-              out << "b" << static_cast<u32>(inst_op.branch_target);
-            }
-            if (!inst_op.uses.empty()) {
-              out << " uses=";
-              for (size_t i = 0; i < inst_op.uses.size(); ++i) {
-                if (i > 0) out << ",";
-                const auto &op = inst_op.uses[i];
-                out << "%v" << static_cast<u32>(op.val_idx);
-                if (op.part_idx > 0) out << ":" << op.part_idx;
-                out << "@";
-                if (op.alloc.is_stack) {
-                  out << "[sp+" << op.alloc.stack_off << "]";
-                } else {
-                  out << "r" << static_cast<u32>(op.alloc.reg.id());
-                }
-              }
-            }
-            out << "\n";
-          } else if (!inst_op.uses.empty()) {
-            // Conditional branch (from compile_block capture) - should not happen for x64
-            out << "  condbr ";
-            // Check if target is a split block
-            if (static_cast<u32>(inst_op.branch_target) & 0x80000000u) {
-              u32 base_block = static_cast<u32>(inst_op.branch_target) & 0x7FFFFFFFu;
-              out << "split_b" << base_block;
-            } else {
-              out << "b" << static_cast<u32>(inst_op.branch_target);
-            }
-            out << " uses=";
-            for (size_t i = 0; i < inst_op.uses.size(); ++i) {
-              if (i > 0) out << ",";
-              const auto &op = inst_op.uses[i];
-              out << "%v" << static_cast<u32>(op.val_idx);
-              if (op.part_idx > 0) out << ":" << op.part_idx;
-              out << "@";
-              if (op.alloc.is_stack) {
-                out << "[sp+" << op.alloc.stack_off << "]";
-              } else {
-                out << "r" << static_cast<u32>(op.alloc.reg.id());
-              }
-            }
-            out << "\n";
-          } else {
-            // Unconditional branch (br) - should be captured via capture_branch, skip if empty
-            // Only output if it's a real branch (not an empty placeholder)
-            if (static_cast<u32>(inst_op.branch_target) != ~0u) {
-              out << "  br ";
-              // Check if target is a split block
-              if (static_cast<u32>(inst_op.branch_target) & 0x80000000u) {
-                u32 base_block = static_cast<u32>(inst_op.branch_target) & 0x7FFFFFFFu;
-                out << "split_b" << base_block;
-              } else {
-                out << "b" << static_cast<u32>(inst_op.branch_target);
-              }
-              out << "\n";
-            }
-          }
-        }
       }
       out << "\n";
     }
-    
+
     // Write edges
     for (const auto &edge : edges) {
       out << "edge b" << static_cast<u32>(edge.from) << " -> b" << static_cast<u32>(edge.to) << ":\n";
