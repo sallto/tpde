@@ -484,6 +484,7 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
     reg_file.mark_fixed(reg);
     state.c.reg = reg;
     state.c.owned = true;
+    compiler->vir_emit_new_use(reg);
 
     if (reload) {
       assert(is_const() && "cannot reload temporary value");

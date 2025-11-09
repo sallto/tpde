@@ -62,6 +62,8 @@ struct VerificationIR {
     ValLocalIdx val_idx;
     u32 part_idx;
     Allocation alloc;
+    bool is_constant = false; // Flag to indicate if this operand is a constant
+    u64 constant_value = 0;   // Store constant value if is_constant is true
   };
 
   struct PhiIncoming {
@@ -208,7 +210,32 @@ struct VerificationIR {
   void clear_branch_condition() noexcept {
     current_branch_condition.clear();
   }
-  
+  u32 next_constant_vreg =0x80000000u;
+  /// Materialize a constant as a new virtual register
+  ValLocalIdx materialize_constant(Reg reg) noexcept {
+    // Create a new virtual register ID for the constant
+    // Use high bits to distinguish from regular values
+
+    auto constant_vreg = static_cast<ValLocalIdx>(++next_constant_vreg);
+
+    // Create a definition operation for this constant
+    util::SmallVector<Operand, 0> uses; // No uses for constants
+    util::SmallVector<Operand, 1> defs;
+
+    Operand def_op;
+    def_op.val_idx = constant_vreg;
+    def_op.part_idx = 0;
+    def_op.alloc = Allocation(reg); // Will be assigned by register allocator
+    def_op.is_constant = true;
+    defs.push_back(def_op);
+
+    // Emit the constant definition operation
+    emit_inst_op(constant_vreg, std::move(uses), std::move(defs));
+
+    return constant_vreg;
+  }
+
+
   /// Get branch condition (for CMP emission)
   const util::SmallVector<Operand, 4>& get_branch_condition() const noexcept {
     return current_branch_condition;
@@ -274,8 +301,8 @@ struct VerificationIR {
     // Find or create block info
     auto it = std::find_if(
         blocks.begin(), blocks.end(), [block_idx](const BlockInfo &bi) {
-                            return bi.block_idx == block_idx;
-                          });
+          return bi.block_idx == block_idx;
+        });
     if (it == blocks.end()) {
       BlockInfo block_info;
       block_info.block_idx = block_idx;
@@ -315,14 +342,12 @@ struct VerificationIR {
   }
   
   /// Emit register-to-register move (uses get_edit_block())
-  void emit_reg_move(Reg src, Reg dst, ValLocalIdx val_idx, u32 part_idx, u32 size) noexcept {
+  void emit_reg_move(Reg src, Reg dst, u32 size) noexcept {
     BlockIndex edit_block = get_edit_block();
     Edit edit;
     edit.kind = EditKind::RegMove;
     edit.from = Allocation(src);
     edit.to = Allocation(dst);
-    edit.val_idx = val_idx;
-    edit.part_idx = part_idx;
     edit.size = size;
 
     // Find or create block info
@@ -406,7 +431,7 @@ struct VerificationIR {
                     const IncomingData &incoming_data) noexcept {
     util::SmallVector<PhiIncoming, 4> incomings;
     for (const auto &[block_idx, val_idx, alloc] : incoming_data) {
-      if (val_idx == static_cast<ValLocalIdx>(~0u)) continue; // Skip constants/undef
+
       PhiIncoming incoming;
       incoming.from_block = block_idx;
       incoming.val_idx = val_idx;
@@ -559,12 +584,8 @@ struct VerificationIR {
           out << "  edit ";
           switch (edit.kind) {
           case EditKind::Move: out << "move "; break;
-          case EditKind::Spill:
-              out << "spill ";
-              break;
-            case EditKind::Reload:
-              out << "reload ";
-              break;
+          case EditKind::Spill: out << "spill "; break;
+          case EditKind::Reload: out << "reload "; break;
             case EditKind::RegMove:
               out << "regmove ";
               break;
@@ -583,8 +604,12 @@ struct VerificationIR {
           } else {
             out << "r" << static_cast<u32>(edit.to.reg.id());
           }
-          out << " %v" << static_cast<u32>(edit.val_idx);
-          if (edit.part_idx > 0) out << ":" << edit.part_idx;
+          if (edit.kind != EditKind::RegMove) {
+            out << " %v" << static_cast<u32>(edit.val_idx);
+            if (edit.part_idx > 0) {
+              out << ":" << edit.part_idx;
+            }
+          }
           out << "\n";
         } else {
           const auto &inst_op = entry.inst;
@@ -698,25 +723,29 @@ struct VerificationIR {
               for (size_t i = 0; i < inst_op.uses.size(); ++i) {
                 if (i > 0) out << ",";
                 const auto &op = inst_op.uses[i];
-                out << "%v" << static_cast<u32>(op.val_idx);
-                if (op.part_idx > 0) out << ":" << op.part_idx;
-                out << "@";
-                // Use current allocation if available, otherwise use the
-                // operand's allocation
-                auto key = std::make_pair(op.val_idx, op.part_idx);
-                auto it = current_allocs.find(key);
-                if (it != current_allocs.end()) {
-                  const auto &alloc = it->second;
-                  if (alloc.is_stack) {
-                    out << "[sp+" << alloc.stack_off << "]";
-                  } else {
-                    out << "r" << static_cast<u32>(alloc.reg.id());
+            {
+                  out << "%v" << static_cast<u32>(op.val_idx);
+                  if (op.part_idx > 0) {
+                    out << ":" << op.part_idx;
                   }
-                } else {
-                  if (op.alloc.is_stack) {
-                    out << "[sp+" << op.alloc.stack_off << "]";
+                  out << "@";
+                  // Use current allocation if available, otherwise use the
+                  // operand's allocation
+                  auto key = std::make_pair(op.val_idx, op.part_idx);
+                  auto it = current_allocs.find(key);
+                  if (it != current_allocs.end()) {
+                    const auto &alloc = it->second;
+                    if (alloc.is_stack) {
+                      out << "[sp+" << alloc.stack_off << "]";
+                    } else {
+                      out << "r" << static_cast<u32>(alloc.reg.id());
+                    }
                   } else {
-                    out << "r" << static_cast<u32>(op.alloc.reg.id());
+                    if (op.alloc.is_stack) {
+                      out << "[sp+" << op.alloc.stack_off << "]";
+                    } else {
+                      out << "r" << static_cast<u32>(op.alloc.reg.id());
+                    }
                   }
                 }
               }
@@ -727,13 +756,17 @@ struct VerificationIR {
               for (size_t i = 0; i < inst_op.defs.size(); ++i) {
                 if (i > 0) out << ",";
                 const auto &op = inst_op.defs[i];
-                out << "%v" << static_cast<u32>(op.val_idx);
-                if (op.part_idx > 0) out << ":" << op.part_idx;
-                out << "@";
-                if (op.alloc.is_stack) {
-                  out << "[sp+" << op.alloc.stack_off << "]";
-                } else {
-                  out << "r" << static_cast<u32>(op.alloc.reg.id());
+              {
+                  out << "%v" << static_cast<u32>(op.val_idx);
+                  if (op.part_idx > 0) {
+                    out << ":" << op.part_idx;
+                  }
+                  out << "@";
+                  if (op.alloc.is_stack) {
+                    out << "[sp+" << op.alloc.stack_off << "]";
+                  } else {
+                    out << "r" << static_cast<u32>(op.alloc.reg.id());
+                  }
                 }
               }
             }

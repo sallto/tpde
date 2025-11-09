@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Symbolic executor for verifying .vir files."""
 
-import re
 import random
+import re
+from collections import deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
-from collections import deque
 
 
 @dataclass
@@ -28,7 +28,6 @@ class RegMove:
     """A register move operation."""
     src_reg: str  # e.g., "r7"
     dst_reg: str  # e.g., "r6"
-    vreg: str  # e.g., "v0"
 
 
 @dataclass
@@ -47,13 +46,34 @@ class PhiNode:
 
 
 @dataclass
+class SpillOp:
+    """A spill operation that stores a register value to stack."""
+    src_reg: str  # e.g., "r7"
+    stack_offset: int  # e.g., -44 for [sp+-44]
+    vreg: str  # e.g., "v0"
+    part: Optional[int] = None  # For multi-part registers
+
+
+@dataclass
+class ReloadOp:
+    """A reload operation that loads a value from stack to register."""
+    stack_offset: int  # e.g., -44 for [sp+-44]
+    dst_reg: str  # e.g., "r6"
+    vreg: str  # e.g., "v0"
+    part: Optional[int] = None  # For multi-part registers
+
+
+@dataclass
 class Block:
     """A basic block."""
     name: str
     operations: List[Operation]
     regmoves: List[RegMove]
+    spill_ops: List[SpillOp]
+    reload_ops: List[ReloadOp]
     phi_nodes: List[PhiNode]
-    instructions: List[Tuple[str, object]]  # List of ('op', Operation) or ('regmove', RegMove) in order
+    instructions: List[Tuple[
+        str, object]]  # List of ('op', Operation), ('regmove', RegMove), ('spill', SpillOp), ('reload', ReloadOp) in order
     jmp_target: Optional[str]  # For jmp
     jcond_target: Optional[str]  # For jcond
     jcond_uses: Optional[Operand]  # For jcond
@@ -76,6 +96,9 @@ class VirVerifier:
         self.edges: List[Edge] = []
         self.vreg_to_number: Dict[str, int] = {}
         self.used_numbers: Set[int] = set()
+        # Stack memory tracking
+        self.stack_memory: Dict[int, int] = {}  # offset -> vreg_number
+        self.stack_memory_parts: Dict[Tuple[int, int], int] = {}  # (offset, part) -> vreg_number
         
     def parse(self):
         """Parse the .vir file."""
@@ -96,8 +119,10 @@ class VirVerifier:
                 
                 operations = []
                 regmoves = []
+                spill_ops = []
+                reload_ops = []
                 phi_nodes = []
-                instructions = []  # Store operations and regmoves in order
+                instructions = []  # Store operations, regmoves, spills, and reloads in order
                 jmp_target = None
                 jcond_target = None
                 jcond_uses = None
@@ -113,6 +138,14 @@ class VirVerifier:
                         regmove = self._parse_regmove(line)
                         regmoves.append(regmove)
                         instructions.append(('regmove', regmove))
+                    elif line.startswith('edit spill '):
+                        spill = self._parse_spill(line)
+                        spill_ops.append(spill)
+                        instructions.append(('spill', spill))
+                    elif line.startswith('edit reload '):
+                        reload = self._parse_reload(line)
+                        reload_ops.append(reload)
+                        instructions.append(('reload', reload))
                     elif line.startswith('phi '):
                         phi = self._parse_phi(line)
                         phi_nodes.append(phi)
@@ -127,6 +160,8 @@ class VirVerifier:
                     name=block_name,
                     operations=operations,
                     regmoves=regmoves,
+                    spill_ops=spill_ops,
+                    reload_ops=reload_ops,
                     phi_nodes=phi_nodes,
                     instructions=instructions,
                     jmp_target=jmp_target,
@@ -189,16 +224,59 @@ class VirVerifier:
                 vreg=f"v{match.group(3)}:{match.group(4)}"
             )
 
-        # Fall back to single-part syntax: edit regmove r7 -> r6 %v0
-        match = re.match(r'edit regmove r(\d+) -> r(\d+) %v(\d+)', line)
+        # Fall back to single-part syntax: edit regmove r7 -> r6
+        match = re.match(r'edit regmove r(\d+) -> r(\d+)', line)
         if match:
             return RegMove(
                 src_reg=f"r{match.group(1)}",
                 dst_reg=f"r{match.group(2)}",
-                vreg=f"v{match.group(3)}"
             )
         raise ValueError(f"Invalid regmove: {line}")
-    
+
+    def _parse_spill(self, line: str) -> SpillOp:
+        """Parse a spill line: edit spill r7 -> [sp+-44] %v0 or edit spill r7 -> [sp+-44] %v1:1"""
+        # Handle multi-part syntax first: edit spill r7 -> [sp+-44] %v1:1
+        match = re.match(r'edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+):(\d+)', line)
+        if match:
+            return SpillOp(
+                src_reg=f"r{match.group(1)}",
+                stack_offset=int(match.group(2)),
+                vreg=f"v{match.group(3)}:{match.group(4)}",
+                part=int(match.group(4))
+            )
+
+        # Handle single-part syntax: edit spill r7 -> [sp+-44] %v0
+        match = re.match(r'edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+)', line)
+        if match:
+            return SpillOp(
+                src_reg=f"r{match.group(1)}",
+                stack_offset=int(match.group(2)),
+                vreg=f"v{match.group(3)}"
+            )
+        raise ValueError(f"Invalid spill: {line}")
+
+    def _parse_reload(self, line: str) -> ReloadOp:
+        """Parse a reload line: edit reload [sp+-44] -> r6 %v0 or edit reload [sp+-44] -> r6 %v1:1"""
+        # Handle multi-part syntax first: edit reload [sp+-44] -> r6 %v1:1
+        match = re.match(r'edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+):(\d+)', line)
+        if match:
+            return ReloadOp(
+                stack_offset=int(match.group(1)),
+                dst_reg=f"r{match.group(2)}",
+                vreg=f"v{match.group(3)}:{match.group(4)}",
+                part=int(match.group(4))
+            )
+
+        # Handle single-part syntax: edit reload [sp+-44] -> r6 %v0
+        match = re.match(r'edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+)', line)
+        if match:
+            return ReloadOp(
+                stack_offset=int(match.group(1)),
+                dst_reg=f"r{match.group(2)}",
+                vreg=f"v{match.group(3)}"
+            )
+        raise ValueError(f"Invalid reload: {line}")
+
     def _parse_phi(self, line: str) -> PhiNode:
         """Parse a phi node: phi %v2@r6 [b0, %v0@r255, b2, %v5@r255] or phi %v4:1@r3 [b0, %v1:1@r255, b1, %v5:1@r255]"""
         # Extract target - handle both single-part and multi-part syntax
@@ -244,8 +322,85 @@ class VirVerifier:
         if match:
             return Edge(from_block=match.group(1), to_block=match.group(2))
         return None
-    
-    
+
+    def _validate_stack_offset(self, offset: int, block_name: str):
+        """Validate that stack offset is within reasonable bounds."""
+        # Define reasonable bounds (e.g., -1MB to +1MB)
+        MIN_OFFSET = -1048576  # -1MB
+        MAX_OFFSET = 1048576  # +1MB
+
+        if offset < MIN_OFFSET or offset > MAX_OFFSET:
+            raise ValueError(
+                f"Stack offset {offset} in {block_name} out of bounds "
+                f"[{MIN_OFFSET}, {MAX_OFFSET}]"
+            )
+
+    def _process_spill(self, spill: SpillOp, reg_state: Dict[str, int], block_name: str):
+        """Process a spill operation."""
+        # Validate stack offset
+        self._validate_stack_offset(spill.stack_offset, block_name)
+
+        # Get value from source register
+        if spill.src_reg not in reg_state:
+            raise ValueError(
+                f"Spill in {block_name}: source register {spill.src_reg} not in state"
+            )
+
+        src_value = reg_state[spill.src_reg]
+        expected_vreg_num = self.vreg_to_number[spill.vreg]
+
+        # Verify the source register contains the expected value
+        if src_value != expected_vreg_num:
+            raise ValueError(
+                f"Spill in {block_name}: register {spill.src_reg} contains "
+                f"vreg number {src_value}, expected {expected_vreg_num} "
+                f"(for {spill.vreg})"
+            )
+
+        # Store in stack memory
+        if spill.part is not None:
+            # Multi-part register
+            self.stack_memory_parts[(spill.stack_offset, spill.part)] = src_value
+        else:
+            # Single-part register
+            self.stack_memory[spill.stack_offset] = src_value
+
+    def _process_reload(self, reload: ReloadOp, reg_state: Dict[str, int], block_name: str):
+        """Process a reload operation."""
+        # Validate stack offset
+        self._validate_stack_offset(reload.stack_offset, block_name)
+
+        expected_vreg_num = self.vreg_to_number[reload.vreg]
+
+        # Get value from stack memory
+        if reload.part is not None:
+            # Multi-part register
+            stack_key = (reload.stack_offset, reload.part)
+            if stack_key not in self.stack_memory_parts:
+                raise ValueError(
+                    f"Reload in {block_name}: stack location [sp+{reload.stack_offset}] "
+                    f"part {reload.part} not spilled"
+                )
+            stack_value = self.stack_memory_parts[stack_key]
+        else:
+            # Single-part register
+            if reload.stack_offset not in self.stack_memory:
+                raise ValueError(
+                    f"Reload in {block_name}: stack location [sp+{reload.stack_offset}] not spilled"
+                )
+            stack_value = self.stack_memory[reload.stack_offset]
+
+        # Verify the stack contains the expected value
+        if stack_value != expected_vreg_num:
+            raise ValueError(
+                f"Reload in {block_name}: stack location [sp+{reload.stack_offset}] "
+                f"contains vreg number {stack_value}, expected {expected_vreg_num} "
+                f"(for {reload.vreg})"
+            )
+
+        # Load into destination register
+        reg_state[reload.dst_reg] = expected_vreg_num
+
     def _assign_vreg_number(self, vreg: str) -> int:
         """Assign a unique number to a virtual register."""
         if vreg in self.vreg_to_number:
@@ -289,8 +444,10 @@ class VirVerifier:
                     vregs.add(use.vreg)
                 for def_ in op.defs:
                     vregs.add(def_.vreg)
-            for regmove in block.regmoves:
-                vregs.add(regmove.vreg)
+            for spill in block.spill_ops:
+                vregs.add(spill.vreg)
+            for reload in block.reload_ops:
+                vregs.add(reload.vreg)
             for phi in block.phi_nodes:
                 vregs.add(phi.target.vreg)
                 for inc in phi.incomings:
@@ -319,7 +476,12 @@ class VirVerifier:
             # Mark edge as visited
             if incoming_edge:
                 visited_edges.add(incoming_edge)
-            
+
+            # Clear stack memory for each new path (stack is local to each execution path)
+            # This ensures we don't incorrectly track stack state across different control flow paths
+            self.stack_memory.clear()
+            self.stack_memory_parts.clear()
+
             # Process phi nodes first (they happen at block entry)
             for phi in block.phi_nodes:
                 if incoming_edge:
@@ -393,17 +555,16 @@ class VirVerifier:
                     vreg_num = reg_state[regmove.src_reg]
 
                     # Write to target register (overwrite) - this establishes that dst now contains the annotated vreg
-                    reg_state[regmove.dst_reg] = self.vreg_to_number[regmove.vreg]
+                    reg_state[regmove.dst_reg] = vreg_num
 
-                    # Verify that the move actually happened (source and dest should have the same value after move)
-                    # But the destination should contain the annotated vreg's number
-                    expected_vreg_num = self.vreg_to_number[regmove.vreg]
-                    if reg_state[regmove.dst_reg] != expected_vreg_num:
-                        raise ValueError(
-                            f"Regmove in {block_name}: {regmove.src_reg} -> {regmove.dst_reg} "
-                            f"destination contains {reg_state[regmove.dst_reg]}, expected {expected_vreg_num} (for {regmove.vreg})"
-                        )
-            
+                elif inst_type == 'spill':
+                    spill = inst
+                    self._process_spill(spill, reg_state, block_name)
+
+                elif inst_type == 'reload':
+                    reload = inst
+                    self._process_reload(reload, reg_state, block_name)
+
             # Process jumps
             new_reg_state = reg_state.copy()
             

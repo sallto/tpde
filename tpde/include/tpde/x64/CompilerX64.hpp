@@ -1002,6 +1002,10 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::mov(
   this->text_writer.ensure_space(16);
   assert(dst.valid());
   assert(src.valid());
+#ifndef NDEBUG
+  this->verification_ir.emit_reg_move(src, dst, size);
+
+#endif
   if (dst.id() <= AsmReg::R15 && src.id() <= AsmReg::R15) {
     if (size > 4) {
       ASMNC(MOV64rr, dst, src);
@@ -1250,6 +1254,9 @@ template <IRAdaptor Adaptor,
           typename Config>
 void CompilerX64<Adaptor, Derived, BaseTy, Config>::materialize_constant(
     const u64 *data, const RegBank bank, const u32 size, AsmReg dst) noexcept {
+  #ifndef NDEBUG
+  derived()->vir_emit_def(dst);
+  #endif
   const auto const_u64 = data[0];
   if (bank == Config::GP_BANK) {
     assert(size <= 8);
@@ -1646,6 +1653,15 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::generate_raw_intext(
     AsmReg dst, AsmReg src, bool sign, u32 from, u32 to) noexcept {
   assert(from < to && to <= 64);
   assert(may_clobber_flags());
+#ifndef NDEBUG
+  this->verification_ir.emit_edit(VIR<Adaptor>::EditKind::Move,
+                                  from,
+                                  to,
+                                  this->INVALID_VAL_LOCAL_IDX,
+                                  0,
+                                  to);
+#endif
+
   if (!sign) {
     switch (from) {
     case 8: ASM(MOVZXr32r8, dst, src); break;
