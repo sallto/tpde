@@ -212,9 +212,6 @@ struct CompilerBase {
   /// and therefore must not change any value-related state.
   bool generating_branch = false;
 #endif
-  struct {
-    BlockIndex block_idx;
-  };
   struct RegisterState {
     std::array<ValLocalIdx,64> registers{}; bool valid=false;
     RegisterState() {
@@ -225,22 +222,29 @@ struct CompilerBase {
   struct ValueState {
     ValLocalIdx val_local_idx;
 
-    std::vector<Reg> registers;
+    util::SmallVector<Reg,4> registers;
     [[nodiscard]] explicit ValueState(ValLocalIdx val_local_idx, u32 parts)
         : val_local_idx(val_local_idx) {
       registers.resize(parts + 1);
     }
     ValueState() : val_local_idx(INVALID_VAL_LOCAL_IDX) {}
-    ~ValueState() = default; // todo(salto): handle vector destruction
+    ~ValueState() = default;
 
-    void push_back(Reg reg, u32 part) { registers[part] = reg; }
+    ValueState(const ValueState &) = delete;
+    ValueState &operator=(const ValueState &) = delete;
+
+    ValueState(ValueState &&) = default;
+    ValueState &operator=(ValueState &&) = default;
+
+    void push_back(Reg reg, u32 part) {
+      registers[part] = reg;
+    }
   };
   std::map<BlockIndex, util::SmallVector<ValueState>> block_regs;
   std::map<ValLocalIdx, util::SmallVector<Reg>> phi_regs;
 
 #ifndef NDEBUG
   VIR<Adaptor> verification_ir;
-  // Note: split_blocks and current_split_block are now in verification_ir
 #endif
 
 private:
@@ -471,7 +475,6 @@ public:
   void init_assignment(IRValueRef value, ValLocalIdx local_idx) noexcept;
 
 private:
-
   /// Frees an assignment, its stack slot and registers
   void free_assignment(ValLocalIdx local_idx, ValueAssignment *) noexcept;
 
@@ -608,20 +611,26 @@ public:
 
 
   void move_one(u32 i, MoveList &moves, MoveList &result) noexcept {
-    if (moves[i].src == moves[i].dst) return;
-    moves[i].status = MoveStatus::MOVING;
+    auto current_move = moves[i];
+    if (current_move.src == current_move.dst) return;
+    current_move.status = MoveStatus::MOVING;
     for (u32 j=0; j<moves.size(); j++) {
-      if (moves[j].src == moves[i].dst) {
-        switch (moves[j].status) {
+      auto next_move = moves[j];
+      if (next_move.src == current_move.dst) {
+        switch (next_move.status) {
           case MoveStatus::TO_MOVE: {
             move_one(j,moves,result);
             break;
           }
         case MoveStatus::MOVING: {
-          auto tmp = this->select_reg(register_file.reg_bank(moves[j].src),0); // todo(salto): what if no reg is available
-          result.emplace_back(tmp, moves[j].src, moves[j].size,
-                              moves[j].value_idx, moves[j].part_idx);
-            moves[j].src= tmp;
+            // Swap or circular dependency, temporary register is necessary.
+          auto tmp = this->select_reg(register_file.reg_bank(next_move.src),0);
+            if (!tmp.valid()) {
+              TPDE_FATAL("Can't get free register for resoling dependencies during branch");
+            }
+          result.emplace_back(tmp, next_move.src, next_move.size,
+                              next_move.value_idx, next_move.part_idx);
+            next_move.src= tmp;
           break;
         }
           case MoveStatus::DONE: {
@@ -631,10 +640,15 @@ public:
         }
       }
     }
-    result.emplace_back(moves[i].dst, moves[i].src, moves[i].size,
-                        moves[i].value_idx, moves[i].part_idx);
-    moves[i].status = MoveStatus::DONE;
+    result.emplace_back(current_move.dst, current_move.src, current_move.size,
+                        current_move.value_idx, current_move.part_idx);
+    current_move.status = MoveStatus::DONE;
   }
+
+  /*
+  Order a list of moves in a way that they behave as if they are executed in parralel.
+  See: Silvain Rideau and Xavier Leroy. 2010. Validating register allocation and spilling.
+  */
   MoveList sequentialize(MoveList & moves) noexcept {
       MoveList result;
     for (u32 i = 0; i < moves.size(); ++i) {
@@ -644,6 +658,7 @@ public:
     }
     return result;
   }
+
   void move_values_to_match(BlockIndex target) noexcept {
     auto cur_block_ref = analyzer.block_ref(cur_block_idx);
     // next block immediately follows the current block and there is no control
@@ -655,8 +670,6 @@ public:
                       adaptor->block_succs(cur_block_ref).end()) == 1 &&
         analyzer.block_idx(*adaptor->block_succs(cur_block_ref).begin()) ==
             next_block()) {
-      // assert(!analyzer.block_has_phis(target)&& "Block with one predecessor
-      // shouldn't contain phis");
       return;
     }
     MoveList moves;
@@ -672,8 +685,7 @@ public:
         // value was already freed todo(salto)
         if (!va)
           continue;
-          for (u32 i = 0; i < va->part_count; ++i) {
-          // ValuePartRef vpr = ref.part(i);
+        for (u32 i = 0; i < va->part_count; ++i) {
             AssignmentPartRef ap{va, i};
             auto cur_reg = ap.get_reg(); // todo safety
             if (!state.registers[i].valid()) {
@@ -701,8 +713,8 @@ public:
         seen.insert(local_idx);
         auto *assignment = val_assignment(local_idx);
 
-        block_regs[target].push_back(
-            ValueState{local_idx, assignment->part_count});
+        block_regs[target].emplace_back(
+            local_idx, assignment->part_count);
         for (u32 i = 0; i < assignment->part_count; i++) {
           AssignmentPartRef ap{val_assignment(local_idx), i};
           if (ap.fixed_assignment()) {
@@ -719,7 +731,7 @@ public:
 
           const auto &liveness = analyzer.liveness_info(local_idx);
           if (liveness.last < target) {
-            // No need to spill value if it dies before the target
+            // No need to save value if it dies before the target
             continue;
           }
           block_regs[target][block_regs[target].size()-1].push_back(Reg{ap.get_reg()},i);
@@ -728,49 +740,14 @@ public:
       }
     }
 
-    //todo fixed vals
-    // 1 pred, 1succ, blockid+1=nextblock => no moves
-
-    // >1 succ, 1 pred => put in beginning of target
-
-    //todo(salto): correct leroy_serialize
     MoveList result=sequentialize(moves);
-#ifndef NDEBUG
-    u32 move_index = 0;
-    auto find_value_for_reg = [&](Reg reg) -> std::pair<ValLocalIdx, u32> {
-      if (!reg.valid()) {
-        return {INVALID_VAL_LOCAL_IDX, 0};
-      }
-      if (register_file.is_used(reg)) {
-        ValLocalIdx idx = register_file.reg_local_idx(reg);
-        if (idx != INVALID_VAL_LOCAL_IDX) {
-          u32 part = register_file.reg_part(reg);
-          return {idx, part};
-        }
-      }
-      // Fallback: search all assignments for the register
-      for (u32 i = 0; i < assignments.value_ptrs.size(); ++i) {
-        ValueAssignment *va = assignments.value_ptrs[i];
-        if (!va) continue;
-        for (u32 part = 0; part < va->part_count; ++part) {
-          AssignmentPartRef ap{va, part};
-          if (ap.get_reg() == reg) {
-            return {static_cast<ValLocalIdx>(i), part};
-          }
-        }
-      }
-      return {INVALID_VAL_LOCAL_IDX, 0};
-    };
+    
     for (auto move: result) {
       derived()->mov(move.dst,move.src,move.size);
+      #ifndef NDEBUG
       verification_ir.emit_reg_move(move.src, move.dst, move.size);
-      move_index++;
+      #endif
     }
-#else
-    for (auto move: result) {
-      derived()->mov(move.dst,move.src,move.size);
-    }
-#endif
   }
 
   void move_to_phi_nodes_impl(BlockIndex target, MoveList& moves) noexcept;
@@ -779,13 +756,13 @@ public:
   u32 count_available_registers(RegBank bank) const noexcept {
     auto free_regs = register_file.allocatable & ~register_file.used &
                      register_file.bank_regs(bank);
-    return util::popcount(free_regs);
+    return std::popcount(free_regs);
   }
 
   /// Count total available registers across all banks
   u32 count_total_available_registers() const noexcept {
     auto free_regs = register_file.allocatable & ~register_file.used;
-    return util::popcount(free_regs);
+    return std::popcount(free_regs);
   }
 
   bool branch_needs_split(IRBlockRef target) noexcept {
@@ -2281,7 +2258,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
   }
   typename RegisterFile::RegBitSet used_phi_regs = 0;
 
-  const auto move_to_phi_reg = [this, target_ref, &moves, &used_phi_regs](
+  const auto move_to_phi_reg = [this, &moves, &used_phi_regs](
                                    IRValueRef phi,
                                    IRValueRef incoming_val,
                                    bool force_stack) {
@@ -2306,7 +2283,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
 
       // Handle forced stack allocation for phi nodes that can't fit in
       // registers
-      if ((phi_ap.stack_valid()&& !phi_regs[adaptor->val_local_idx(phi)].size() > 0) || (force_stack && !phi_ap.fixed_assignment())) {
+      if ((phi_ap.stack_valid() && (!(phi_regs[adaptor->val_local_idx(phi)].size() > 0))) || (force_stack && !phi_ap.fixed_assignment())) {
         // Allocate stack slot for this phi node
 
         allocate_spill_slot(phi_ap);
@@ -2821,7 +2798,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
       if (op_idx == INVALID_VAL_LOCAL_IDX) {
         continue; // Skip constants/undef
       }
-      auto liveness = analyzer.liveness_info(op_idx);
+      // auto liveness = analyzer.liveness_info(op_idx);
 
 
       ValueAssignment *op_assignment = val_assignment(op_idx);
