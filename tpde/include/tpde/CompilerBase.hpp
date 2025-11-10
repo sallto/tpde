@@ -222,7 +222,7 @@ struct CompilerBase {
   struct ValueState {
     ValLocalIdx val_local_idx;
 
-    util::SmallVector<Reg,4> registers;
+    util::SmallVector<Reg, 4> registers;
     [[nodiscard]] explicit ValueState(ValLocalIdx val_local_idx, u32 parts)
         : val_local_idx(val_local_idx) {
       registers.resize(parts + 1);
@@ -236,9 +236,7 @@ struct CompilerBase {
     ValueState(ValueState &&) = default;
     ValueState &operator=(ValueState &&) = default;
 
-    void push_back(Reg reg, u32 part) {
-      registers[part] = reg;
-    }
+    void push_back(Reg reg, u32 part) { registers[part] = reg; }
   };
   std::map<BlockIndex, util::SmallVector<ValueState>> block_regs;
   std::map<ValLocalIdx, util::SmallVector<Reg>> phi_regs;
@@ -609,47 +607,41 @@ public:
 #endif
 
 
-
   void move_one(u32 i, MoveList &moves, MoveList &result) noexcept {
-    auto current_move = moves[i];
-    if (current_move.src == current_move.dst) return;
-    current_move.status = MoveStatus::MOVING;
+    if (moves[i].src == moves[i].dst) return;
+    moves[i].status = MoveStatus::MOVING;
     for (u32 j=0; j<moves.size(); j++) {
-      auto next_move = moves[j];
-      if (next_move.src == current_move.dst) {
-        switch (next_move.status) {
-          case MoveStatus::TO_MOVE: {
-            move_one(j,moves,result);
-            break;
-          }
-        case MoveStatus::MOVING: {
-            // Swap or circular dependency, temporary register is necessary.
-          auto tmp = this->select_reg(register_file.reg_bank(next_move.src),0);
-            if (!tmp.valid()) {
-              TPDE_FATAL("Can't get free register for resoling dependencies during branch");
-            }
-          result.emplace_back(tmp, next_move.src, next_move.size,
-                              next_move.value_idx, next_move.part_idx);
-            next_move.src= tmp;
+      if (moves[j].src == moves[i].dst) {
+        switch (moves[j].status) {
+        case MoveStatus::TO_MOVE: {
+          move_one(j,moves,result);
           break;
         }
-          case MoveStatus::DONE: {
-            // already done
-            break;
-          }
+        case MoveStatus::MOVING: {
+          auto tmp = this->select_reg(register_file.reg_bank(moves[j].src),0); // todo(salto): what if no reg is available
+          result.emplace_back(tmp, moves[j].src, moves[j].size,
+                              moves[j].value_idx, moves[j].part_idx);
+          moves[j].src= tmp;
+          break;
+        }
+        case MoveStatus::DONE: {
+          // already done
+          break;
+        }
         }
       }
     }
-    result.emplace_back(current_move.dst, current_move.src, current_move.size,
-                        current_move.value_idx, current_move.part_idx);
-    current_move.status = MoveStatus::DONE;
+    result.emplace_back(moves[i].dst, moves[i].src, moves[i].size,
+                        moves[i].value_idx, moves[i].part_idx);
+    moves[i].status = MoveStatus::DONE;
   }
 
   /*
-  Order a list of moves in a way that they behave as if they are executed in parralel.
-  See: Silvain Rideau and Xavier Leroy. 2010. Validating register allocation and spilling.
+  Order a list of moves in a way that they behave as if they are executed in
+  parralel. See: Silvain Rideau and Xavier Leroy. 2010. Validating register
+  allocation and spilling.
   */
-  MoveList sequentialize(MoveList & moves) noexcept {
+  MoveList sequentialize(MoveList &moves) noexcept {
       MoveList result;
     for (u32 i = 0; i < moves.size(); ++i) {
       if( moves[i].status == MoveStatus::TO_MOVE ) {
@@ -680,7 +672,7 @@ public:
     auto block_state_it = block_regs.find(target);
     // another branch to target was already generated, we *must* use the same register layout
     if (block_state_it != block_regs.end()) {
-      for (ValueState &state: block_state_it->second) {
+      for (ValueState &state : block_state_it->second) {
         ValueAssignment *va = val_assignment(state.val_local_idx);
         // value was already freed todo(salto)
         if (!va)
@@ -740,9 +732,9 @@ public:
       }
     }
 
-    MoveList result=sequentialize(moves);
-    
-    for (auto move: result) {
+    MoveList result =sequentialize(moves);
+
+    for (auto move : result) {
       derived()->mov(move.dst,move.src,move.size);
       #ifndef NDEBUG
       verification_ir.emit_reg_move(move.src, move.dst, move.size);
@@ -1818,17 +1810,8 @@ void CompilerBase<Adaptor, Derived, Config>::evict_reg(Reg reg) noexcept {
   }
 
   assert(evict_part.get_reg() == reg);
-#ifndef NDEBUG
-  typename VIR<Adaptor>::Allocation from = get_allocation(evict_part);
-#endif
   derived()->spill(evict_part);
   evict_part.set_register_valid(false);
-#ifndef NDEBUG
-  {
-    typename VIR<Adaptor>::Allocation to = get_allocation(evict_part);
-    verification_ir.emit_edit(VIR<Adaptor>::EditKind::Spill, from, to, local_idx, part, evict_part.part_size());
-  }
-#endif
   register_file.unmark_used(reg);
 }
 
