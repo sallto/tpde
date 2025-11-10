@@ -2496,22 +2496,18 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
     if (src_val_idx != INVALID_VAL_LOCAL_IDX && dst_val_idx != INVALID_VAL_LOCAL_IDX) {
       typename VIR<Adaptor>::Operand dst_op;
       dst_op.val_idx = dst_val_idx;
-      dst_op.part_idx = dst_part;
-      dst_op.alloc = typename VIR<Adaptor>::Allocation(move.dst);
+      dst_op.alloc = typename VIR<Adaptor>::Allocation(move.dst, dst_part);
       typename VIR<Adaptor>::Operand src_op;
       src_op.val_idx = src_val_idx;
-      src_op.part_idx = src_part;
-      src_op.alloc = typename VIR<Adaptor>::Allocation(move.src);
+      src_op.alloc = typename VIR<Adaptor>::Allocation(move.src, src_part);
       parallel_moves.emplace_back(src_op, dst_op);
     } else if (src_val_idx != INVALID_VAL_LOCAL_IDX) {
       typename VIR<Adaptor>::Operand dst_op;
       dst_op.val_idx = dst_val_idx;
-      dst_op.part_idx = dst_part;
-      dst_op.alloc = typename VIR<Adaptor>::Allocation(move.dst);
+      dst_op.alloc = typename VIR<Adaptor>::Allocation(move.dst, dst_part);
       typename VIR<Adaptor>::Operand src_op;
       src_op.val_idx = src_val_idx;
-      src_op.part_idx = src_part;
-      src_op.alloc = typename VIR<Adaptor>::Allocation(move.src);
+      src_op.alloc = typename VIR<Adaptor>::Allocation(move.src, src_part);
       parallel_moves.emplace_back(src_op, dst_op);
     } else {
       // Temporary move - both registers unknown, use temporary virtual register
@@ -2519,12 +2515,10 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
       temp_move_counter++;
       typename VIR<Adaptor>::Operand dst_op;
       dst_op.val_idx = temp_val_idx;
-      dst_op.part_idx = 0;
-      dst_op.alloc = typename VIR<Adaptor>::Allocation(move.dst);
+      dst_op.alloc = typename VIR<Adaptor>::Allocation(move.dst, 0);
       typename VIR<Adaptor>::Operand src_op;
       src_op.val_idx = temp_val_idx;
-      src_op.part_idx = 0;
-      src_op.alloc = typename VIR<Adaptor>::Allocation(move.src);
+      src_op.alloc = typename VIR<Adaptor>::Allocation(move.src, 0);
       parallel_moves.emplace_back(src_op, dst_op);
     }
   }
@@ -2838,8 +2832,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
         AssignmentPartRef ap{op_assignment, part_idx};
         typename VIR<Adaptor>::Operand op;
         op.val_idx = op_idx;
-        op.part_idx = part_idx;
         op.alloc = get_allocation(ap);
+        op.alloc.part_idx = part_idx;
         uses.push_back(op);
       }
     }
@@ -2870,18 +2864,17 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
       for (auto &use : uses) {
         ValueAssignment *use_assignment = val_assignment(use.val_idx);
         if (use_assignment) {
-          AssignmentPartRef ap{use_assignment, use.part_idx};
+          AssignmentPartRef ap{use_assignment, use.alloc.part_idx};
           use.alloc = get_allocation(ap);
         } else {
           use.alloc = typename VIR<Adaptor>::Allocation(
-              final_assignments[use.val_idx][use.part_idx]);
+              final_assignments[use.val_idx][use.alloc.part_idx]);
         }
       }
       for (Reg reg:final_assignments[INVALID_VAL_LOCAL_IDX]) {
         typename VIR<Adaptor>::Operand op;
         op.val_idx = INVALID_VAL_LOCAL_IDX;
-        op.part_idx=0;
-        op.alloc =typename VIR<Adaptor>::Allocation(reg);
+        op.alloc =typename VIR<Adaptor>::Allocation(reg, 0);
       }
       // Capture instruction defs (results) AFTER compile_inst
       // (compile_inst creates the result assignment via result_ref)
@@ -2909,8 +2902,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           AssignmentPartRef ap{res_assignment, part_idx};
           typename VIR<Adaptor>::Operand op;
           op.val_idx = res_idx;
-          op.part_idx = part_idx;
           op.alloc = get_allocation(ap);
+          op.alloc.part_idx = part_idx;
           defs.push_back(op);
         }
       }

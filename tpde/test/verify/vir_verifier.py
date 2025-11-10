@@ -28,6 +28,8 @@ class RegMove:
     """A register move operation."""
     src_reg: str  # e.g., "r7"
     dst_reg: str  # e.g., "r6"
+    vreg: Optional[str] = None  # e.g., "v0" or "v1:1", optional
+    size: Optional[int] = None  # e.g., 4 for 4b
 
 
 @dataclass
@@ -51,6 +53,7 @@ class SpillOp:
     src_reg: str  # e.g., "r7"
     stack_offset: int  # e.g., -44 for [sp+-44]
     vreg: str  # e.g., "v0"
+    size: int  # e.g., 4 for 4b
     part: Optional[int] = None  # For multi-part registers
 
 
@@ -60,6 +63,7 @@ class ReloadOp:
     stack_offset: int  # e.g., -44 for [sp+-44]
     dst_reg: str  # e.g., "r6"
     vreg: str  # e.g., "v0"
+    size: int  # e.g., 4 for 4b
     part: Optional[int] = None  # For multi-part registers
 
 
@@ -99,6 +103,7 @@ class VirVerifier:
         # Stack memory tracking
         self.stack_memory: Dict[int, int] = {}  # offset -> vreg_number
         self.stack_memory_parts: Dict[Tuple[int, int], int] = {}  # (offset, part) -> vreg_number
+        self.occupied_offsets: Dict[int, str] = {}  # offset -> vreg (track which vreg occupies each offset)
         
     def parse(self):
         """Parse the .vir file."""
@@ -214,17 +219,33 @@ class VirVerifier:
         return Operation(uses=uses, defs=defs)
     
     def _parse_regmove(self, line: str) -> RegMove:
-        """Parse a regmove line: edit regmove r7 -> r6 %v0 or edit regmove r7 -> r6 %v1:1"""
-        # Try multi-part syntax first: edit regmove r7 -> r6 %v1:1
-        match = re.match(r'edit regmove r(\d+) -> r(\d+) %v(\d+):(\d+)', line)
+        """Parse a regmove line: edit regmove r7 -> r6 %v0 4b or edit regmove r7 -> r6 %v1:1 4b"""
+        # Try syntax with size: edit regmove r7 -> r6 %v0 4b
+        match = re.match(r'edit regmove r(\d+) -> r(\d+) %v(\d+)(?::(\d+))? (\d+)b', line)
         if match:
+            vreg = f"v{match.group(3)}"
+            if match.group(4):
+                vreg += f":{match.group(4)}"
             return RegMove(
                 src_reg=f"r{match.group(1)}",
                 dst_reg=f"r{match.group(2)}",
-                vreg=f"v{match.group(3)}:{match.group(4)}"
+                vreg=vreg,
+                size=int(match.group(5))
             )
 
-        # Fall back to single-part syntax: edit regmove r7 -> r6
+        # Fall back to old syntax without size: edit regmove r7 -> r6 %v0 or edit regmove r7 -> r6 %v1:1
+        match = re.match(r'edit regmove r(\d+) -> r(\d+) %v(\d+)(?::(\d+))?', line)
+        if match:
+            vreg = f"v{match.group(3)}"
+            if match.group(4):
+                vreg += f":{match.group(4)}"
+            return RegMove(
+                src_reg=f"r{match.group(1)}",
+                dst_reg=f"r{match.group(2)}",
+                vreg=vreg
+            )
+
+        # Fall back to single-part syntax without vreg: edit regmove r7 -> r6
         match = re.match(r'edit regmove r(\d+) -> r(\d+)', line)
         if match:
             return RegMove(
@@ -234,46 +255,72 @@ class VirVerifier:
         raise ValueError(f"Invalid regmove: {line}")
 
     def _parse_spill(self, line: str) -> SpillOp:
-        """Parse a spill line: edit spill r7 -> [sp+-44] %v0 or edit spill r7 -> [sp+-44] %v1:1"""
-        # Handle multi-part syntax first: edit spill r7 -> [sp+-44] %v1:1
-        match = re.match(r'edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+):(\d+)', line)
+        """Parse a spill line: edit spill r7 -> [sp+-44] %v0 4b or edit spill r7 -> [sp+-44] %v1:1 4b"""
+        # Handle syntax with size: edit spill r7 -> [sp+-44] %v0 4b
+        match = re.match(r'edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+)(?::(\d+))? (\d+)b', line)
         if match:
+            vreg = f"v{match.group(3)}"
+            part = None
+            if match.group(4):
+                vreg += f":{match.group(4)}"
+                part = int(match.group(4))
             return SpillOp(
                 src_reg=f"r{match.group(1)}",
                 stack_offset=int(match.group(2)),
-                vreg=f"v{match.group(3)}:{match.group(4)}",
-                part=int(match.group(4))
+                vreg=vreg,
+                size=int(match.group(5)),
+                part=part
             )
 
-        # Handle single-part syntax: edit spill r7 -> [sp+-44] %v0
-        match = re.match(r'edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+)', line)
+        # Fall back to old syntax without size: edit spill r7 -> [sp+-44] %v0 or edit spill r7 -> [sp+-44] %v1:1
+        match = re.match(r'edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+)(?::(\d+))?', line)
         if match:
+            vreg = f"v{match.group(3)}"
+            part = None
+            if match.group(4):
+                vreg += f":{match.group(4)}"
+                part = int(match.group(4))
             return SpillOp(
                 src_reg=f"r{match.group(1)}",
                 stack_offset=int(match.group(2)),
-                vreg=f"v{match.group(3)}"
+                vreg=vreg,
+                size=4,  # Default size
+                part=part
             )
         raise ValueError(f"Invalid spill: {line}")
 
     def _parse_reload(self, line: str) -> ReloadOp:
-        """Parse a reload line: edit reload [sp+-44] -> r6 %v0 or edit reload [sp+-44] -> r6 %v1:1"""
-        # Handle multi-part syntax first: edit reload [sp+-44] -> r6 %v1:1
-        match = re.match(r'edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+):(\d+)', line)
+        """Parse a reload line: edit reload [sp+-44] -> r6 %v0 4b or edit reload [sp+-44] -> r6 %v1:1 4b"""
+        # Handle syntax with size: edit reload [sp+-44] -> r6 %v0 4b
+        match = re.match(r'edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+)(?::(\d+))? (\d+)b', line)
         if match:
+            vreg = f"v{match.group(3)}"
+            part = None
+            if match.group(4):
+                vreg += f":{match.group(4)}"
+                part = int(match.group(4))
             return ReloadOp(
                 stack_offset=int(match.group(1)),
                 dst_reg=f"r{match.group(2)}",
-                vreg=f"v{match.group(3)}:{match.group(4)}",
-                part=int(match.group(4))
+                vreg=vreg,
+                size=int(match.group(5)),
+                part=part
             )
 
-        # Handle single-part syntax: edit reload [sp+-44] -> r6 %v0
-        match = re.match(r'edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+)', line)
+        # Fall back to old syntax without size: edit reload [sp+-44] -> r6 %v0 or edit reload [sp+-44] -> r6 %v1:1
+        match = re.match(r'edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+)(?::(\d+))?', line)
         if match:
+            vreg = f"v{match.group(3)}"
+            part = None
+            if match.group(4):
+                vreg += f":{match.group(4)}"
+                part = int(match.group(4))
             return ReloadOp(
                 stack_offset=int(match.group(1)),
                 dst_reg=f"r{match.group(2)}",
-                vreg=f"v{match.group(3)}"
+                vreg=vreg,
+                size=4,  # Default size
+                part=part
             )
         raise ValueError(f"Invalid reload: {line}")
 
@@ -340,6 +387,17 @@ class VirVerifier:
         # Validate stack offset
         self._validate_stack_offset(spill.stack_offset, block_name)
 
+        # Check for overlaps with existing spills (but allow spills of the same vreg)
+        spill_offsets = set(range(spill.stack_offset, spill.stack_offset + spill.size))
+        overlapping = spill_offsets & set(self.occupied_offsets.keys())
+        if overlapping and overlapping != spill_offsets:
+            overlapping_vregs = {self.occupied_offsets[offset] for offset in overlapping}
+            raise ValueError(
+                f"Spill in {block_name}: spill at offset {spill.stack_offset} "
+                f"with size {spill.size} overlaps with existing spills at offsets {overlapping} "
+                f"(occupied by {overlapping_vregs})"
+            )
+
         # Get value from source register
         if spill.src_reg not in reg_state:
             raise ValueError(
@@ -364,6 +422,10 @@ class VirVerifier:
         else:
             # Single-part register
             self.stack_memory[spill.stack_offset] = src_value
+
+        # Mark offsets as occupied
+        for offset in spill_offsets:
+            self.occupied_offsets[offset] = spill.vreg
 
     def _process_reload(self, reload: ReloadOp, reg_state: Dict[str, int], block_name: str):
         """Process a reload operation."""
@@ -481,6 +543,7 @@ class VirVerifier:
             # This ensures we don't incorrectly track stack state across different control flow paths
             self.stack_memory.clear()
             self.stack_memory_parts.clear()
+            self.occupied_offsets.clear()
 
             # Process phi nodes first (they happen at block entry)
             for phi in block.phi_nodes:
