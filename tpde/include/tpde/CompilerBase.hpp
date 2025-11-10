@@ -186,6 +186,27 @@ struct CompilerBase {
   } assignments = {};
 
   RegisterFile register_file;
+  enum class MoveStatus {
+    TO_MOVE,
+    MOVING,
+    DONE
+  };
+  struct RegisterMove {
+
+    Reg dst;
+    Reg src;
+    u8 size;
+    MoveStatus status = MoveStatus::TO_MOVE;
+    ValLocalIdx value_idx = INVALID_VAL_LOCAL_IDX;
+    u32 part_idx = 0;
+
+    RegisterMove() = default;
+    RegisterMove(Reg d, Reg s, u8 sz,
+                 ValLocalIdx val = INVALID_VAL_LOCAL_IDX,
+                 u32 part = 0) noexcept
+        : dst(d), src(s), size(sz), value_idx(val), part_idx(part) {}
+  };
+  using MoveList = util::SmallVector<RegisterMove, 16>;
 #ifndef NDEBUG
   /// Whether we are currently in the middle of generating branch-related code
   /// and therefore must not change any value-related state.
@@ -285,6 +306,7 @@ public:
     CCAssigner &assigner;
 
     RegisterFile::RegBitSet arg_regs{};
+    MoveList moves;
 
   public:
     CallBuilderBase(Derived &compiler, CCAssigner &assigner) noexcept
@@ -582,28 +604,9 @@ public:
   bool may_change_value_state() const noexcept { return true; }
 
 #endif
-  // (to,from,size)
-  enum class MoveStatus {
-    TO_MOVE,
-    MOVING,
-    DONE
-  };
-  struct RegisterMove {
 
-    Reg dst;
-    Reg src;
-    u8 size;
-    MoveStatus status = MoveStatus::TO_MOVE;
-    ValLocalIdx value_idx = INVALID_VAL_LOCAL_IDX;
-    u32 part_idx = 0;
 
-    RegisterMove() = default;
-    RegisterMove(Reg d, Reg s, u8 sz,
-                 ValLocalIdx val = INVALID_VAL_LOCAL_IDX,
-                 u32 part = 0) noexcept
-        : dst(d), src(s), size(sz), value_idx(val), part_idx(part) {}
-  };
-using MoveList = util::SmallVector<RegisterMove, 16>;
+
   void move_one(u32 i, MoveList &moves, MoveList &result) noexcept {
     if (moves[i].src == moves[i].dst) return;
     moves[i].status = MoveStatus::MOVING;
@@ -870,7 +873,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
         AsmReg vp_reg = vp.salvage(&compiler);
 #ifndef NDEBUG
         vp.assignment().set_reg(cca.reg); // ensure the arguments are registered
-                                          // in the correct registers
+                                          // in the correct registers for VerificationIR
 #endif
         if (needs_ext) {
           compiler.generate_raw_intext(cca.reg, vp_reg, ext_sign, ext_bits, 64);
@@ -926,7 +929,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       consec_def = -1;
     }
   }
-
+  MoveList moves;
   for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
     u8 int_ext = 0;
     if (arg.flag == CallArg::Flag::sext || arg.flag == CallArg::Flag::zext) {
@@ -1831,7 +1834,7 @@ void CompilerBase<Adaptor, Derived, Config>::evict_reg(Reg reg) noexcept {
   // Handle case where register is marked as used but assignment doesn't have
   // register_valid set (can happen for temporary phi registers during move
   // resolution)
-  if (!evict_part.register_valid()) {
+  if (!evict_part.register_valid() ) {
     // Just unmark the register without spilling
     register_file.unmark_used(reg);
     return;
