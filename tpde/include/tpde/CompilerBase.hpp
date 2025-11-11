@@ -30,13 +30,12 @@
 namespace tpde {
 
 // Threshold for triggering hybrid register/stack allocation for phi nodes
-// todo(salto): maybe do this smarter
+// todo(salto): maybe do this smarter, but when is this really relevant?
 static constexpr u32 PHI_REGISTER_THRESHOLD = 12;
 
 // TODO(ts): formulate concept for full compiler so that there is *some* check
 // whether all the required derived methods are implemented?
 
-// Top-level using statements for VerificationIR types
 template <IRAdaptor Adaptor>
 using VIR = VerificationIR<Adaptor, typename Analyzer<Adaptor>::BlockIndex, typename Adaptor::IRInstRef>;
 
@@ -192,19 +191,18 @@ struct CompilerBase {
     DONE
   };
   struct RegisterMove {
-
-    Reg dst;
-    Reg src;
-    u8 size;
-    MoveStatus status = MoveStatus::TO_MOVE;
     ValLocalIdx value_idx = INVALID_VAL_LOCAL_IDX;
     u32 part_idx = 0;
+    Reg dst;
+    Reg src;
+    u8 size{};
+    MoveStatus status = MoveStatus::TO_MOVE;
 
     RegisterMove() = default;
     RegisterMove(Reg d, Reg s, u8 sz,
                  ValLocalIdx val = INVALID_VAL_LOCAL_IDX,
                  u32 part = 0) noexcept
-        : dst(d), src(s), size(sz), value_idx(val), part_idx(part) {}
+        : value_idx(val), part_idx(part), dst(d), src(s), size(sz) {}
   };
   using MoveList = util::SmallVector<RegisterMove, 16>;
 #ifndef NDEBUG
@@ -308,7 +306,6 @@ public:
     CCAssigner &assigner;
 
     RegisterFile::RegBitSet arg_regs{};
-    MoveList moves;
 
   public:
     CallBuilderBase(Derived &compiler, CCAssigner &assigner) noexcept
@@ -390,9 +387,12 @@ public:
 
 #ifndef NDEBUG
 private:
-  /// Get current allocation for a value part (debug-only)
-  typename VIR<Adaptor>::Allocation get_allocation(AssignmentPartRef ap) const noexcept {
-    if (ap.register_valid()) {
+  VIR<Adaptor>::Allocation
+      get_allocation(AssignmentPartRef ap,
+                     const bool reload = false) const noexcept {
+    // in reload_to_reg, register_valid can be true but the ap still needs to be
+    // loaded
+    if (ap.register_valid() && !reload) {
       return typename VIR<Adaptor>::Allocation(ap.get_reg());
     } else if (ap.stack_valid() && !ap.variable_ref()) {
       return typename VIR<Adaptor>::Allocation(ap.frame_off());
@@ -401,9 +401,8 @@ private:
   }
 
   std::unordered_map<ValLocalIdx, std::vector<Reg>> final_assignments;
-  void vir_final_assignment(ValLocalIdx local_idx,
-                            Reg reg,
-                            u32 part_idx) noexcept {
+  // Value changed its register during codegen
+  void vir_final_assignment(ValLocalIdx local_idx, Reg reg) noexcept {
     final_assignments[local_idx].push_back(reg);
   }
 
@@ -419,7 +418,7 @@ private:
   /// Emit PHI node assignment (debug-only)
   void vir_emit_phi(IRValueRef phi_value, ValLocalIdx phi_idx, u32 part_idx, Reg reg) noexcept {
     using VIRType = VIR<Adaptor>;
-    // Get the actual allocation (register or stack)
+
     typename VIRType::Allocation phi_alloc(reg);
     ValueAssignment *assignment = val_assignment(phi_idx);
     if (assignment) {
@@ -439,8 +438,10 @@ private:
 
 
       // Get allocation of incoming value at the source block
-      BlockIndex incoming_block_idx = static_cast<BlockIndex>(analyzer.block_idx(incoming_block));
+      auto incoming_block_idx =
+          static_cast<BlockIndex>(analyzer.block_idx(incoming_block));
       typename VIRType::Allocation incoming_alloc(Reg::make_invalid());
+      // consts or variable_refs
       if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
         incoming_data.push_back(std::make_tuple(
             incoming_block_idx, INVALID_VAL_LOCAL_IDX, incoming_alloc));
@@ -459,10 +460,6 @@ private:
 
     verification_ir.vir_emit_phi(phi_idx, part_idx, phi_alloc, incoming_data);
   }
-
-
-
-
 
 public:
 #endif
@@ -584,7 +581,7 @@ public:
       IRBlockRef default_block,
       std::span<const std::pair<u64, IRBlockRef>> cases) noexcept;
 
-  /// Indicate beginning of region where value-state must not change.
+  /// Indicate beginning of region.
   void begin_branch_region() noexcept {
 #ifndef NDEBUG
     assert(!generating_branch);
@@ -592,7 +589,7 @@ public:
 #endif
   }
 
-  /// Indicate end of region where value-state must not change.
+  /// Indicate end of region.
   void end_branch_region() noexcept {
 #ifndef NDEBUG
     assert(generating_branch);
@@ -602,26 +599,34 @@ public:
   }
 
 #ifndef NDEBUG
+  // todo(salto): double check that this is really always ok
   bool may_change_value_state() const noexcept { return true; }
 
 #endif
 
 
   void move_one(u32 i, MoveList &moves, MoveList &result) noexcept {
-    if (moves[i].src == moves[i].dst) return;
+    if (moves[i].src == moves[i].dst) {
+      return;
+    }
     moves[i].status = MoveStatus::MOVING;
-    for (u32 j=0; j<moves.size(); j++) {
+    for (u32 j = 0; j < moves.size(); j++) {
       if (moves[j].src == moves[i].dst) {
         switch (moves[j].status) {
         case MoveStatus::TO_MOVE: {
-          move_one(j,moves,result);
+          move_one(j, moves, result);
           break;
         }
         case MoveStatus::MOVING: {
-          auto tmp = this->select_reg(register_file.reg_bank(moves[j].src),0); // todo(salto): what if no reg is available
-          result.emplace_back(tmp, moves[j].src, moves[j].size,
-                              moves[j].value_idx, moves[j].part_idx);
-          moves[j].src= tmp;
+          auto tmp = this->select_reg(register_file.reg_bank(moves[j].src), 0);
+          // todo(salto): what if no reg is available, shouldn't happen, since
+          // phis leave 2 free registers todo(salto): call derived->mov
+          result.emplace_back(tmp,
+                              moves[j].src,
+                              moves[j].size,
+                              moves[j].value_idx,
+                              moves[j].part_idx);
+          moves[j].src = tmp;
           break;
         }
         case MoveStatus::DONE: {
@@ -638,7 +643,8 @@ public:
 
   /*
   Order a list of moves in a way that they behave as if they are executed in
-  parralel. See: Silvain Rideau and Xavier Leroy. 2010. Validating register
+  parralel. Avoids swap problem and resolves dependency chains between moves.
+  See: Silvain Rideau and Xavier Leroy. 2010. Validating register
   allocation and spilling.
   */
   MoveList sequentialize(MoveList &moves) noexcept {
@@ -674,16 +680,20 @@ public:
     if (block_state_it != block_regs.end()) {
       for (ValueState &state : block_state_it->second) {
         ValueAssignment *va = val_assignment(state.val_local_idx);
-        // value was already freed todo(salto)
+        // value was already freed, won't be used again
         if (!va)
           continue;
         for (u32 i = 0; i < va->part_count; ++i) {
             AssignmentPartRef ap{va, i};
-            auto cur_reg = ap.get_reg(); // todo safety
-            if (!state.registers[i].valid()) {
-              continue;
-            }
-            moves.emplace_back(state.registers[i],
+          auto cur_reg = ap.get_reg();
+          if (!state.registers[i].valid()) {
+            continue;
+          }
+          if (!ap.register_valid()) {
+            // doesn't evict registers, so it is safe to call
+            reload_to_reg(state.registers[i], ap);
+          }
+          moves.emplace_back(state.registers[i],
                                cur_reg,
                                ap.part_size(),
                                state.val_local_idx,
@@ -692,11 +702,13 @@ public:
       }
     } else {
       // todo check for conflicting moves?
+
       std::unordered_set<ValLocalIdx> seen;
       for (auto reg : register_file.used_regs()) {
         auto local_idx = register_file.reg_local_idx(Reg{reg});
         if (local_idx == INVALID_VAL_LOCAL_IDX) {
-          // scratch regs can never be held across blocks
+          // scratch regs and constants can never be held across blocks
+          // (outside of constants in phis, which are handled elsewhere)
           continue;
         }
         if (seen.contains(local_idx)) {
@@ -707,12 +719,13 @@ public:
 
         block_regs[target].emplace_back(
             local_idx, assignment->part_count);
+        // save all parts of a value in sequence since they are stored as a
+        // Vector
         for (u32 i = 0; i < assignment->part_count; i++) {
           AssignmentPartRef ap{val_assignment(local_idx), i};
           if (ap.fixed_assignment()) {
-            // fixed registers do not need to be spilled
-            // todo make sure this is still correct
-            // continue;
+            // fixed registers do not need to be moved
+            continue;
           }
 
           if (!ap.modified() || ap.variable_ref()) {
@@ -732,13 +745,10 @@ public:
       }
     }
 
-    MoveList result =sequentialize(moves);
-
+    MoveList result = sequentialize(moves);
+    // todo(salto): maybe execute the mov in sequentialize directly
     for (auto move : result) {
       derived()->mov(move.dst,move.src,move.size);
-      #ifndef NDEBUG
-      verification_ir.emit_reg_move(move.src, move.dst, move.size);
-      #endif
     }
   }
 
@@ -898,7 +908,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       consec_def = -1;
     }
   }
-  MoveList moves;
+
   for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
     u8 int_ext = 0;
     if (arg.flag == CallArg::Flag::sext || arg.flag == CallArg::Flag::zext) {
@@ -1172,16 +1182,9 @@ void CompilerBase<Adaptor, Derived, Config>::init_assignment(
       // TODO: if the register is used, we can free it most of the time, but not
       // always, e.g. for PHI nodes. Detect this case and free_reg otherwise.
       if (!reg.invalid() && !register_file.is_used(reg)) {
-        TPDE_LOG_TRACE(
-            "Assigning fixed assignment to reg {} for value {} (bank {})",
-            reg.id(),
-            static_cast<u32>(local_idx),
-            ap.bank().id());
-
-        // Verify the register is in the correct bank
-        assert(register_file.reg_bank(reg) == ap.bank() &&
-               "register bank mismatch");
-
+        TPDE_LOG_TRACE("Assigning fixed assignment to reg {} for value {}",
+                       reg.id(),
+                       static_cast<u32>(local_idx));
         ap.set_reg(reg);
         ap.set_register_valid(true);
         ap.set_fixed_assignment(true);
@@ -1225,7 +1228,7 @@ void CompilerBase<Adaptor, Derived, Config>::free_assignment(
     // we need to capture the register here, since it will be freed and is no
     // longer
     // available after compile_inst
-    vir_final_assignment(local_idx,ap.get_reg(),part_idx);
+    vir_final_assignment(local_idx, ap.get_reg());
     #endif
     if (ap.fixed_assignment()) [[unlikely]] {
       const auto reg = ap.get_reg();
@@ -1688,7 +1691,8 @@ template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::reload_to_reg(
     AsmReg dst, AssignmentPartRef ap) noexcept {
 #ifndef NDEBUG
-  typename VIR<Adaptor>::Allocation from = get_allocation(ap);
+  // forcefully get stack allocation
+  typename VIR<Adaptor>::Allocation from = get_allocation(ap,true);
 #endif
   if (!ap.variable_ref()) {
     assert(ap.stack_valid());
@@ -1740,6 +1744,13 @@ void CompilerBase<Adaptor, Derived, Config>::reload_to_reg(
     if (val_idx != INVALID_VAL_LOCAL_IDX) {
       verification_ir.emit_edit(VIR<Adaptor>::EditKind::Reload, from, to, val_idx, part_idx, ap.part_size());
     }
+  } else {
+    verification_ir.emit_edit(VIR<Adaptor>::EditKind::Reload,
+                              from,
+                              to,
+                              val_idx,
+                              part_idx,
+                              ap.part_size());
   }
 #endif
 }
@@ -2205,6 +2216,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
 
   // Determine allocation strategy: hybrid register/stack if too many phi nodes
   const u32 phi_count = static_cast<u32>(nodes.size());
+  // todo(salto): do this for each bank seperately, so we guarantee at least 1 free register
   const u32 available_regs = count_total_available_registers();
 
   // Reserve some registers for scratch operations during phi resolution
@@ -2212,7 +2224,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
   const u32 regs_for_phis = std::max(0u, std::min(available_regs-phi_count-reserved_for_scratch, PHI_REGISTER_THRESHOLD));
 
 
-  bool use_hybrid_allocation = phi_count > PHI_REGISTER_THRESHOLD || phi_count > regs_for_phis;
+  bool use_hybrid_allocation =phi_count > regs_for_phis;
 
   if (use_hybrid_allocation) {
     TPDE_LOG_DBG("Using hybrid phi allocation: {} phi nodes, {} available regs",
@@ -2220,7 +2232,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
                  available_regs);
 
     // Sort by references_left (descending) to prioritize high-use phi nodes
-    // TODO(future): Test different heuristics for phi node prioritization:
+    // TODO(salto): Test different heuristics for phi node prioritization:
     // - Could prioritize by liveness length
     // - Could prioritize by use in current block vs successors
     // - Could use a combination of factors
@@ -2236,8 +2248,6 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
                      static_cast<u32>(nodes[i].phi_local_idx));
     }
 
-    // Re-sort by phi_local_idx for dependency analysis
-    std::sort(nodes.begin(), nodes.end());
   }
   typename RegisterFile::RegBitSet used_phi_regs = 0;
 
@@ -2266,6 +2276,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
 
       // Handle forced stack allocation for phi nodes that can't fit in
       // registers
+      // we need to make sure that phi nodes that already have a register don't get a stack slot here
       if ((phi_ap.stack_valid() && (!(phi_regs[adaptor->val_local_idx(phi)].size() > 0))) || (force_stack && !phi_ap.fixed_assignment())) {
         // Allocate stack slot for this phi node
 
@@ -2282,7 +2293,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
         derived()->spill_reg(reg, phi_ap.frame_off(), phi_ap.part_size());
         phi_ap.set_stack_valid();
 
-#ifndef NDEBUG
+        #ifndef NDEBUG
         // Capture spill edit for phi resolution
         typename VIR<Adaptor>::Allocation spill_from(reg);
         typename VIR<Adaptor>::Allocation spill_to(phi_ap.frame_off());
@@ -2292,18 +2303,14 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
                                   adaptor->val_local_idx(phi),
                                   i,
                                   phi_ap.part_size());
-#endif
-
+        #endif
         TPDE_LOG_TRACE("Phi {} part {} allocated to stack at offset {}",
                        static_cast<u32>(adaptor->val_local_idx(phi)),
                        i,
                        phi_ap.frame_off());
-
-        // Mark that this phi is on stack (no register assignment)
         continue;
       }
 
-      // Existing register allocation logic
       AsmReg reg = val_vpr.cur_reg_unlocked();
 
       if (!reg.valid()) {
@@ -2314,17 +2321,14 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
           // todo(salto): move to reg from phi if already assigned
           if (phi_regs[adaptor->val_local_idx(phi)].size() > i) {
             auto target_phi_reg = phi_regs[adaptor->val_local_idx(phi)][i];
+            // can assign directly to phi_reg
             if (!register_file.is_used(target_phi_reg) ||
                 register_file.reg_local_idx(target_phi_reg) ==
                     adaptor->val_local_idx(phi)) {
               val_vpr.reload_into_specific_fixed(target_phi_reg);
               reg = target_phi_reg;
             } else {
-              // auto
-              // *conficting_assignment=this->val_assignment(register_file.reg_local_idx(target_phi_reg));
-              // AssignmentPartRef conflicting_ap =
-              // AssignmentPartRef{conficting_assignment,register_file.reg_part(target_phi_reg)};
-              // spill(conflicting_ap);
+              // need a intermediate register, sequentialize will resolve move issues later
               reg = scratch.alloc_from_bank(val_vpr.bank(), used_phi_regs);
               val_vpr.reload_into_specific_fixed(reg);
             }
@@ -2336,8 +2340,6 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
           }
         }
       }
-      // todo(salto): moves
-      //  block -> phi_idx -> [registers]
 
       // was already assigned by a different branch
 
@@ -2359,7 +2361,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
           continue;
         }
         // no assigned registers. Avoid moves on this edge if possible.
-        if (false && val_vr.last_ref()) {
+        if (val_vr.last_ref()) {
           used_phi_regs |= (1 << reg.id());
           phi_regs[adaptor->val_local_idx(phi)].push_back(reg);
         } else {
@@ -2378,7 +2380,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
                 "Phi {} part {} spilled to stack due to register exhaustion",
                 static_cast<u32>(adaptor->val_local_idx(phi)),
                 i);
-#ifndef NDEBUG
+            #ifndef NDEBUG
             // Capture spill edit for phi resolution
             typename VIR<Adaptor>::Allocation from(val_vpr.cur_reg_unlocked());
             typename VIR<Adaptor>::Allocation to(phi_ap.frame_off());
@@ -2388,35 +2390,27 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
                                       adaptor->val_local_idx(phi),
                                       i,
                                       phi_ap.part_size());
-#endif
+            #endif
             continue;
           }
 
-          // Mark the register as used for this phi node
-          // Note: We don't set register_valid in the assignment because this is
-          // a temporary register for move resolution. The final register will
-          // be set when the phi is actually used in compile_block.
           used_phi_regs |= (1 << phi_reg.id());
           phi_regs[adaptor->val_local_idx(phi)].push_back(phi_reg);
           moves.emplace_back(
               phi_reg, reg, val_vpr.part_size(), incoming_val_idx, i);
-          // assert(false && "allocate new register for phi since val_vr is
-          // still used outside of phi node (potentially)");
         }
 
     }
   }
   };
 
-  //todo(salto): rest of move_to_phi_* calls
-  // sort so we can binary search later
-
   for (u32 i = 0; i < nodes.size(); ++i) {
     NodeEntry &node = nodes[i];
     move_to_phi_reg(node.phi, node.incoming_val, node.allocate_to_stack);
   }
-  //todo(salto): use a bitset instead of this used stuff
+
 #ifndef NDEBUG
+  //todo(salto): decide if we need the parrarel moves
   // Capture parallel moves for verification IR
   util::SmallVector<std::pair<typename VIR<Adaptor>::Operand, typename VIR<Adaptor>::Operand>, 4> parallel_moves;
   u32 temp_move_counter = 0;
@@ -2680,6 +2674,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   this->text_writer.finish_func();
 
 #ifndef NDEBUG
+  //todo(salto): decide on smarter location for file
   // Write verification IR to file
   std::string vir_filename = verification_ir.get_func_name() + ".vir";
   verification_ir.write_to_file(vir_filename);
@@ -2693,7 +2688,6 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     const IRBlockRef block, const u32 block_idx) noexcept {
   cur_block_idx =
       static_cast<typename Analyzer<Adaptor>::BlockIndex>(block_idx);
-
 
   label_place(block_labels[block_idx]);
   #ifndef NDEBUG
@@ -2766,7 +2760,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     }
 
 #ifndef NDEBUG
-    // Capture instruction uses (operands) before compilation
+    // Capture instruction uses (operands) before compilation, as they may be free later
     // For branches, these are the condition values
     util::SmallVector<typename VIR<Adaptor>::Operand, 4> uses;
 
@@ -2781,12 +2775,10 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
       if (op_idx == INVALID_VAL_LOCAL_IDX) {
         continue; // Skip constants/undef
       }
-      // auto liveness = analyzer.liveness_info(op_idx);
-
 
       ValueAssignment *op_assignment = val_assignment(op_idx);
-      if (!op_assignment){
-        continue;} // Not yet assigned
+      if (!op_assignment)
+        continue; // Not yet assigned
 
 
       const auto parts = derived()->val_parts(operand);
@@ -2808,6 +2800,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
       branch_condition.push_back(op);
     }
     verification_ir.set_branch_condition(std::move(branch_condition));
+    // don't capture moves during codegen. They are not necessary for VIR.
+    verification_ir.active_compilation=true;
 #endif
 
     auto it_cpy = it;
@@ -2821,6 +2815,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
 
 #ifndef NDEBUG
     {
+      verification_ir.active_compilation=false;
       // Update uses with final allocations after compilation
       // (allocations may have changed during compilation, e.g., values moved to
       // registers)
@@ -2834,13 +2829,13 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
               final_assignments[use.val_idx][use.alloc.part_idx]);
         }
       }
+      // constants
       for (Reg reg:final_assignments[INVALID_VAL_LOCAL_IDX]) {
         typename VIR<Adaptor>::Operand op;
         op.val_idx = INVALID_VAL_LOCAL_IDX;
         op.alloc =typename VIR<Adaptor>::Allocation(reg, 0);
       }
-      // Capture instruction defs (results) AFTER compile_inst
-      // (compile_inst creates the result assignment via result_ref)
+
       util::SmallVector<typename VIR<Adaptor>::Operand, 2> defs;
       ValLocalIdx inst_id = INVALID_VAL_LOCAL_IDX;
       for (IRValueRef result : adaptor->inst_results(inst)) {
@@ -2856,7 +2851,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
 
         ValueAssignment *res_assignment = val_assignment(res_idx);
         if (!res_assignment) {
-          continue; // Should exist after compile_inst
+          continue; // Should exist after compile_inst, unless the result was already freed
         }
 
         const auto parts = derived()->val_parts(result);

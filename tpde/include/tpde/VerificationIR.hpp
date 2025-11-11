@@ -350,12 +350,11 @@ struct VerificationIR {
     split_blocks.clear();
     current_block_idx = static_cast<BlockIndex>(~0u);
   }
-  
-  /// Set current block index
+
   void set_current_block(BlockIndex block_idx) noexcept {
     current_block_idx = block_idx;
   }
-  
+
   /// Get current block index for edits (returns split block if in split, otherwise current block)
   BlockIndex get_edit_block() const noexcept {
     if (static_cast<u32>(current_split_block) != ~0u) {
@@ -363,13 +362,11 @@ struct VerificationIR {
     }
     return current_block_idx;
   }
-  
-  /// Set branch condition operands
+
   void set_branch_condition(util::SmallVector<Operand, 4> ops) noexcept {
     current_branch_condition = std::move(ops);
   }
-  
-  /// Clear branch condition
+
   void clear_branch_condition() noexcept {
     current_branch_condition.clear();
   }
@@ -426,12 +423,11 @@ struct VerificationIR {
     }
   }
   
-  /// End branch region
+
   void end_branch() noexcept {
     current_split_block = static_cast<BlockIndex>(~0u);
   }
-  
-  /// Emit instruction operation (uses current_block_idx)
+
   void emit_inst_op(ValLocalIdx inst_id,
                     util::SmallVector<Operand, 4> uses,
                     util::SmallVector<Operand, 2> defs) noexcept {
@@ -535,9 +531,7 @@ struct VerificationIR {
     }
     it->entries.push_back(std::move(inst_op));
   }
-  
-  /// Emit PHI node with incoming values (helper method that collects incoming data)
-  /// Takes incoming data as a vector of tuples: (block_idx, val_idx, allocation)
+
   template<typename IncomingData>
   void vir_emit_phi(ValLocalIdx phi_idx, u32 part_idx, Allocation phi_alloc,
                     const IncomingData &incoming_data) noexcept {
@@ -563,8 +557,7 @@ struct VerificationIR {
     }
     it->entries.push_back(std::move(inst_op));
   }
-  
-  /// Capture branch instruction (uses current_block_idx)
+
   void capture_branch(const char* jump_type,
                       BlockIndex target_block,
                       bool is_split) noexcept {
@@ -627,13 +620,9 @@ struct VerificationIR {
       current_split_block = static_cast<BlockIndex>(~0u);
     }
 
-    // Note: For split conditional branches, the jmp to final target will be
-    // added by the normal code generation flow after move_values_to_match is
-    // called.
-    // This ensures the correct ordering: spill operations first, then jmp.
   }
 
-  /// Emit parallel move on edge
+  /// Emit parallel move on edge (currently unused)
   void emit_edge_parallel_move(
       BlockIndex from,
       BlockIndex to,
@@ -648,22 +637,19 @@ struct VerificationIR {
 
 
 
-  /// Write verification IR to file
   void write_to_file(const std::string &filename) const noexcept {
     std::ofstream out(filename);
     if (!out.is_open()) {
-      return; // Can't log here, just fail silently
+      return;
     }
 
     // Write function header
     out << std::format("function {}\n\n", func_name);
 
-    // Write blocks
     for (const auto &block : blocks) {
       out << block.format();
     }
 
-    // Write edges
     for (const auto &edge : edges) {
       out << edge.format();
     }

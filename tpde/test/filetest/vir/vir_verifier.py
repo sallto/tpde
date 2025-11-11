@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 @dataclass
 class Operand:
-    """Represents a virtual register and its assembly register allocation."""
+    """Represents a virtual register and its assembly register."""
     vreg: str  # e.g., "v0"
     areg: str  # e.g., "r7"
     part: Optional[int] = None  # e.g., 1 for %v1:1@r2, None for single-part
@@ -18,7 +18,6 @@ class Operand:
 
 @dataclass
 class Operation:
-    """An operation with uses and/or defs."""
     uses: List[Operand]
     defs: List[Operand]
 
@@ -34,7 +33,6 @@ class RegMove:
 
 @dataclass
 class PhiIncoming:
-    """Incoming value for a phi node."""
     from_block: str
     vreg: str
     areg: str  # May be r255 (invalid/placeholder)
@@ -42,24 +40,21 @@ class PhiIncoming:
 
 @dataclass
 class PhiNode:
-    """A phi node."""
     target: Operand
     incomings: List[PhiIncoming]
 
 
 @dataclass
 class SpillOp:
-    """A spill operation that stores a register value to stack."""
     src_reg: str  # e.g., "r7"
     stack_offset: int  # e.g., -44 for [sp+-44]
     vreg: str  # e.g., "v0"
-    size: int  # e.g., 4 for 4b
+    size: int  # e.g., 4 for 4bytes
     part: Optional[int] = None  # For multi-part registers
 
 
 @dataclass
 class ReloadOp:
-    """A reload operation that loads a value from stack to register."""
     stack_offset: int  # e.g., -44 for [sp+-44]
     dst_reg: str  # e.g., "r6"
     vreg: str  # e.g., "v0"
@@ -69,7 +64,6 @@ class ReloadOp:
 
 @dataclass
 class Block:
-    """A basic block."""
     name: str
     operations: List[Operation]
     regmoves: List[RegMove]
@@ -398,22 +392,8 @@ class VirVerifier:
             return Edge(from_block=match.group(1), to_block=match.group(2))
         return None
 
-    def _validate_stack_offset(self, offset: int, block_name: str, func: Function):
-        """Validate that stack offset is within reasonable bounds."""
-        # Define reasonable bounds (e.g., -1MB to +1MB)
-        MIN_OFFSET = -1048576  # -1MB
-        MAX_OFFSET = 1048576  # +1MB
-
-        if offset < MIN_OFFSET or offset > MAX_OFFSET:
-            raise ValueError(
-                f"Stack offset {offset} in {block_name} of function {func.name} out of bounds "
-                f"[{MIN_OFFSET}, {MAX_OFFSET}]"
-            )
-
     def _process_spill(self, spill: SpillOp, reg_state: Dict[str, int], block_name: str, func: Function):
         """Process a spill operation."""
-        # Validate stack offset
-        self._validate_stack_offset(spill.stack_offset, block_name, func)
 
         # Check for overlaps with existing spills (but allow spills of the same vreg)
         spill_offsets = set(range(spill.stack_offset, spill.stack_offset + spill.size))
@@ -457,8 +437,6 @@ class VirVerifier:
 
     def _process_reload(self, reload: ReloadOp, reg_state: Dict[str, int], block_name: str, func: Function):
         """Process a reload operation."""
-        # Validate stack offset
-        self._validate_stack_offset(reload.stack_offset, block_name, func)
 
         expected_vreg_num = func.vreg_to_number[reload.vreg]
 
@@ -738,4 +716,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

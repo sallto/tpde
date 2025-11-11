@@ -1280,6 +1280,9 @@ void CompilerA64<Adaptor, Derived, BaseTy, Config>::mov(
   this->text_writer.ensure_space(4);
   assert(dst.valid());
   assert(src.valid());
+#ifndef NDEBUG
+  this->verification_ir.emit_reg_move(src, dst, size);
+#endif
   if (dst.id() <= AsmReg::SP && src.id() <= AsmReg::SP) {
     assert(dst.id() != AsmReg::SP && src.id() != AsmReg::SP);
     if (size > 4) {
