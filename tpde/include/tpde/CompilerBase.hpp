@@ -236,8 +236,8 @@ struct CompilerBase {
 
     void push_back(Reg reg, u32 part) { registers[part] = reg; }
   };
-  std::map<BlockIndex, util::SmallVector<ValueState>> block_regs;
-  std::map<ValLocalIdx, util::SmallVector<Reg>> phi_regs;
+  std::unordered_map<BlockIndex, util::SmallVector<ValueState>> block_regs;
+  std::unordered_map<ValLocalIdx, util::SmallVector<Reg>> phi_regs;
 
 #ifndef NDEBUG
   VIR<Adaptor> verification_ir;
