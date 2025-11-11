@@ -339,7 +339,8 @@ struct VerificationIR {
   
   // Current block index (set by CompilerBase)
   BlockIndex current_block_idx = static_cast<BlockIndex>(~0u);
-  
+  bool active_compilation = false;
+
   void reset() {
     blocks.clear();
     edges.clear();
@@ -480,6 +481,10 @@ struct VerificationIR {
   
   /// Emit register-to-register move (uses get_edit_block())
   void emit_reg_move(Reg src, Reg dst, u32 size) noexcept {
+    // regmove is part of instruction
+    if (active_compilation) {
+      return;
+    }
     BlockIndex edit_block = get_edit_block();
     Edit edit{EditKind::RegMove, src, dst, size};
 

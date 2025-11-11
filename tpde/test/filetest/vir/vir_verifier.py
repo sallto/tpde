@@ -90,97 +90,125 @@ class Edge:
     to_block: str
 
 
+@dataclass
+class Function:
+    """A function in the .vir file."""
+    name: str
+    blocks: Dict[str, Block]
+    edges: List[Edge]
+    vreg_to_number: Dict[str, int]
+    used_numbers: Set[int]
+    stack_memory: Dict[int, int]
+    stack_memory_parts: Dict[Tuple[int, int], int]
+    occupied_offsets: Dict[int, str]
+
+
 class VirVerifier:
     """Symbolic executor for .vir files."""
-    
-    def __init__(self, filename: str):
-        self.filename = filename
-        self.function_name = ""
-        self.blocks: Dict[str, Block] = {}
-        self.edges: List[Edge] = []
-        self.vreg_to_number: Dict[str, int] = {}
-        self.used_numbers: Set[int] = set()
-        # Stack memory tracking
-        self.stack_memory: Dict[int, int] = {}  # offset -> vreg_number
-        self.stack_memory_parts: Dict[Tuple[int, int], int] = {}  # (offset, part) -> vreg_number
-        self.occupied_offsets: Dict[int, str] = {}  # offset -> vreg (track which vreg occupies each offset)
+
+    def __init__(self, input: str):
+        self.input = input
+        self.functions: List[Function] = []
         
     def parse(self):
         """Parse the .vir file."""
-        with open(self.filename, 'r') as f:
-            lines = [line.strip() for line in f if line.strip()]
-        
+        lines = self.input.splitlines()
+        lines = [line.strip() for line in lines if line.strip()]
+
         i = 0
-        # Parse function name
-        if i < len(lines) and lines[i].startswith('function'):
-            self.function_name = lines[i].split('function', 1)[1].strip()
-            i += 1
-        
-        # Parse blocks
         while i < len(lines):
-            if lines[i].startswith('block '):
-                block_name = lines[i].split('block', 1)[1].strip().rstrip(':')
+            if lines[i].startswith('function'):
+                function_name = lines[i].split('function', 1)[1].strip()
                 i += 1
-                
-                operations = []
-                regmoves = []
-                spill_ops = []
-                reload_ops = []
-                phi_nodes = []
-                instructions = []  # Store operations, regmoves, spills, and reloads in order
-                jmp_target = None
-                jcond_target = None
-                jcond_uses = None
-                
-                while i < len(lines) and not lines[i].startswith('block ') and not lines[i].startswith('edge '):
-                    line = lines[i]
-                    
-                    if line.startswith('op '):
-                        op = self._parse_operation(line)
-                        operations.append(op)
-                        instructions.append(('op', op))
-                    elif line.startswith('edit regmove '):
-                        regmove = self._parse_regmove(line)
-                        regmoves.append(regmove)
-                        instructions.append(('regmove', regmove))
-                    elif line.startswith('edit spill '):
-                        spill = self._parse_spill(line)
-                        spill_ops.append(spill)
-                        instructions.append(('spill', spill))
-                    elif line.startswith('edit reload '):
-                        reload = self._parse_reload(line)
-                        reload_ops.append(reload)
-                        instructions.append(('reload', reload))
-                    elif line.startswith('phi '):
-                        phi = self._parse_phi(line)
-                        phi_nodes.append(phi)
-                    elif line.startswith('jmp '):
-                        jmp_target = line.split('jmp', 1)[1].strip()
-                    elif line.startswith('jcond '):
-                        jcond_target, jcond_uses = self._parse_jcond(line)
-                    
-                    i += 1
-                
-                self.blocks[block_name] = Block(
-                    name=block_name,
-                    operations=operations,
-                    regmoves=regmoves,
-                    spill_ops=spill_ops,
-                    reload_ops=reload_ops,
-                    phi_nodes=phi_nodes,
-                    instructions=instructions,
-                    jmp_target=jmp_target,
-                    jcond_target=jcond_target,
-                    jcond_uses=jcond_uses
+
+                blocks = {}
+                edges = []
+                vreg_to_number = {}
+                used_numbers = set()
+                stack_memory = {}
+                stack_memory_parts = {}
+                occupied_offsets = {}
+
+                # Parse blocks for this function
+                while i < len(lines) and not lines[i].startswith('function'):
+                    if lines[i].startswith('block '):
+                        block_name = lines[i].split('block', 1)[1].strip().rstrip(':')
+                        i += 1
+
+                        operations = []
+                        regmoves = []
+                        spill_ops = []
+                        reload_ops = []
+                        phi_nodes = []
+                        instructions = []  # Store operations, regmoves, spills, and reloads in order
+                        jmp_target = None
+                        jcond_target = None
+                        jcond_uses = None
+
+                        while i < len(lines) and not lines[i].startswith('block ') and not lines[i].startswith(
+                                'edge ') and not lines[i].startswith('function'):
+                            line = lines[i]
+
+                            if line.startswith('op '):
+                                op = self._parse_operation(line)
+                                operations.append(op)
+                                instructions.append(('op', op))
+                            elif line.startswith('edit regmove '):
+                                regmove = self._parse_regmove(line)
+                                regmoves.append(regmove)
+                                instructions.append(('regmove', regmove))
+                            elif line.startswith('edit spill '):
+                                spill = self._parse_spill(line)
+                                spill_ops.append(spill)
+                                instructions.append(('spill', spill))
+                            elif line.startswith('edit reload '):
+                                reload = self._parse_reload(line)
+                                reload_ops.append(reload)
+                                instructions.append(('reload', reload))
+                            elif line.startswith('phi '):
+                                phi = self._parse_phi(line)
+                                phi_nodes.append(phi)
+                            elif line.startswith('jmp '):
+                                jmp_target = line.split('jmp', 1)[1].strip()
+                            elif line.startswith('jcond '):
+                                jcond_target, jcond_uses = self._parse_jcond(line)
+
+                            i += 1
+
+                        blocks[block_name] = Block(
+                            name=block_name,
+                            operations=operations,
+                            regmoves=regmoves,
+                            spill_ops=spill_ops,
+                            reload_ops=reload_ops,
+                            phi_nodes=phi_nodes,
+                            instructions=instructions,
+                            jmp_target=jmp_target,
+                            jcond_target=jcond_target,
+                            jcond_uses=jcond_uses
+                        )
+                    elif lines[i].startswith('edge '):
+                        edge = self._parse_edge(lines[i])
+                        if edge:
+                            edges.append(edge)
+                        i += 1
+                        # Skip parallel move line if present
+                        if i < len(lines) and lines[i].startswith('  parallel '):
+                            i += 1
+                    else:
+                        i += 1
+
+                func = Function(
+                    name=function_name,
+                    blocks=blocks,
+                    edges=edges,
+                    vreg_to_number=vreg_to_number,
+                    used_numbers=used_numbers,
+                    stack_memory=stack_memory,
+                    stack_memory_parts=stack_memory_parts,
+                    occupied_offsets=occupied_offsets
                 )
-            elif lines[i].startswith('edge '):
-                edge = self._parse_edge(lines[i])
-                if edge:
-                    self.edges.append(edge)
-                i += 1
-                # Skip parallel move line if present
-                if i < len(lines) and lines[i].startswith('  parallel '):
-                    i += 1
+                self.functions.append(func)
             else:
                 i += 1
     
@@ -370,7 +398,7 @@ class VirVerifier:
             return Edge(from_block=match.group(1), to_block=match.group(2))
         return None
 
-    def _validate_stack_offset(self, offset: int, block_name: str):
+    def _validate_stack_offset(self, offset: int, block_name: str, func: Function):
         """Validate that stack offset is within reasonable bounds."""
         # Define reasonable bounds (e.g., -1MB to +1MB)
         MIN_OFFSET = -1048576  # -1MB
@@ -378,22 +406,22 @@ class VirVerifier:
 
         if offset < MIN_OFFSET or offset > MAX_OFFSET:
             raise ValueError(
-                f"Stack offset {offset} in {block_name} out of bounds "
+                f"Stack offset {offset} in {block_name} of function {func.name} out of bounds "
                 f"[{MIN_OFFSET}, {MAX_OFFSET}]"
             )
 
-    def _process_spill(self, spill: SpillOp, reg_state: Dict[str, int], block_name: str):
+    def _process_spill(self, spill: SpillOp, reg_state: Dict[str, int], block_name: str, func: Function):
         """Process a spill operation."""
         # Validate stack offset
-        self._validate_stack_offset(spill.stack_offset, block_name)
+        self._validate_stack_offset(spill.stack_offset, block_name, func)
 
         # Check for overlaps with existing spills (but allow spills of the same vreg)
         spill_offsets = set(range(spill.stack_offset, spill.stack_offset + spill.size))
-        overlapping = spill_offsets & set(self.occupied_offsets.keys())
+        overlapping = spill_offsets & set(func.occupied_offsets.keys())
         if overlapping and overlapping != spill_offsets:
-            overlapping_vregs = {self.occupied_offsets[offset] for offset in overlapping}
+            overlapping_vregs = {func.occupied_offsets[offset] for offset in overlapping}
             raise ValueError(
-                f"Spill in {block_name}: spill at offset {spill.stack_offset} "
+                f"Spill in {block_name} of function {func.name}: spill at offset {spill.stack_offset} "
                 f"with size {spill.size} overlaps with existing spills at offsets {overlapping} "
                 f"(occupied by {overlapping_vregs})"
             )
@@ -401,16 +429,16 @@ class VirVerifier:
         # Get value from source register
         if spill.src_reg not in reg_state:
             raise ValueError(
-                f"Spill in {block_name}: source register {spill.src_reg} not in state"
+                f"Spill in {block_name} of function {func.name}: source register {spill.src_reg} not in state"
             )
 
         src_value = reg_state[spill.src_reg]
-        expected_vreg_num = self.vreg_to_number[spill.vreg]
+        expected_vreg_num = func.vreg_to_number[spill.vreg]
 
         # Verify the source register contains the expected value
         if src_value != expected_vreg_num:
             raise ValueError(
-                f"Spill in {block_name}: register {spill.src_reg} contains "
+                f"Spill in {block_name} of function {func.name}: register {spill.src_reg} contains "
                 f"vreg number {src_value}, expected {expected_vreg_num} "
                 f"(for {spill.vreg})"
             )
@@ -418,44 +446,44 @@ class VirVerifier:
         # Store in stack memory
         if spill.part is not None:
             # Multi-part register
-            self.stack_memory_parts[(spill.stack_offset, spill.part)] = src_value
+            func.stack_memory_parts[(spill.stack_offset, spill.part)] = src_value
         else:
             # Single-part register
-            self.stack_memory[spill.stack_offset] = src_value
+            func.stack_memory[spill.stack_offset] = src_value
 
         # Mark offsets as occupied
         for offset in spill_offsets:
-            self.occupied_offsets[offset] = spill.vreg
+            func.occupied_offsets[offset] = spill.vreg
 
-    def _process_reload(self, reload: ReloadOp, reg_state: Dict[str, int], block_name: str):
+    def _process_reload(self, reload: ReloadOp, reg_state: Dict[str, int], block_name: str, func: Function):
         """Process a reload operation."""
         # Validate stack offset
-        self._validate_stack_offset(reload.stack_offset, block_name)
+        self._validate_stack_offset(reload.stack_offset, block_name, func)
 
-        expected_vreg_num = self.vreg_to_number[reload.vreg]
+        expected_vreg_num = func.vreg_to_number[reload.vreg]
 
         # Get value from stack memory
         if reload.part is not None:
             # Multi-part register
             stack_key = (reload.stack_offset, reload.part)
-            if stack_key not in self.stack_memory_parts:
+            if stack_key not in func.stack_memory_parts:
                 raise ValueError(
-                    f"Reload in {block_name}: stack location [sp+{reload.stack_offset}] "
+                    f"Reload in {block_name} of function {func.name}: stack location [sp+{reload.stack_offset}] "
                     f"part {reload.part} not spilled"
                 )
-            stack_value = self.stack_memory_parts[stack_key]
+            stack_value = func.stack_memory_parts[stack_key]
         else:
             # Single-part register
-            if reload.stack_offset not in self.stack_memory:
+            if reload.stack_offset not in func.stack_memory:
                 raise ValueError(
-                    f"Reload in {block_name}: stack location [sp+{reload.stack_offset}] not spilled"
+                    f"Reload in {block_name} of function {func.name}: stack location [sp+{reload.stack_offset}] not spilled"
                 )
-            stack_value = self.stack_memory[reload.stack_offset]
+            stack_value = func.stack_memory[reload.stack_offset]
 
         # Verify the stack contains the expected value
         if stack_value != expected_vreg_num:
             raise ValueError(
-                f"Reload in {block_name}: stack location [sp+{reload.stack_offset}] "
+                f"Reload in {block_name} of function {func.name}: stack location [sp+{reload.stack_offset}] "
                 f"contains vreg number {stack_value}, expected {expected_vreg_num} "
                 f"(for {reload.vreg})"
             )
@@ -463,10 +491,10 @@ class VirVerifier:
         # Load into destination register
         reg_state[reload.dst_reg] = expected_vreg_num
 
-    def _assign_vreg_number(self, vreg: str) -> int:
+    def _assign_vreg_number(self, vreg: str, func: Function) -> int:
         """Assign a unique number to a virtual register."""
-        if vreg in self.vreg_to_number:
-            return self.vreg_to_number[vreg]
+        if vreg in func.vreg_to_number:
+            return func.vreg_to_number[vreg]
 
         # Try to use the number from vreg name (v0 -> 0, v1:1 -> 1)
         match = re.match(r'v(\d+)(?::\d+)?', vreg)
@@ -477,30 +505,30 @@ class VirVerifier:
                 # This is a multi-part register, use a unique number
                 while True:
                     num = random.randint(10000, 99999)  # Use higher range for multi-part
-                    if num not in self.used_numbers:
-                        self.vreg_to_number[vreg] = num
-                        self.used_numbers.add(num)
+                    if num not in func.used_numbers:
+                        func.vreg_to_number[vreg] = num
+                        func.used_numbers.add(num)
                         return num
             else:
                 # This is a single-part register, use the base number if available
-                if base_num not in self.used_numbers:
-                    self.vreg_to_number[vreg] = base_num
-                    self.used_numbers.add(base_num)
+                if base_num not in func.used_numbers:
+                    func.vreg_to_number[vreg] = base_num
+                    func.used_numbers.add(base_num)
                     return base_num
 
         # Assign a random unique number
         while True:
             num = random.randint(1000, 9999)  # Use range that won't conflict with v0, v1, etc.
-            if num not in self.used_numbers:
-                self.vreg_to_number[vreg] = num
-                self.used_numbers.add(num)
+            if num not in func.used_numbers:
+                func.vreg_to_number[vreg] = num
+                func.used_numbers.add(num)
                 return num
-    
-    def _collect_all_vregs(self):
-        """Collect all virtual registers from the IR."""
+
+    def _collect_all_vregs(self, func: Function):
+        """Collect all virtual registers from the IR for a function."""
         vregs = set()
-        
-        for block in self.blocks.values():
+
+        for block in func.blocks.values():
             for op in block.operations:
                 for use in op.uses:
                     vregs.add(use.vreg)
@@ -514,36 +542,33 @@ class VirVerifier:
                 vregs.add(phi.target.vreg)
                 for inc in phi.incomings:
                     vregs.add(inc.vreg)
-        
+
         for vreg in vregs:
-            self._assign_vreg_number(vreg)
-    
-    def verify(self):
-        """Verify the .vir file."""
-        self.parse()
-        self._collect_all_vregs()
-        
+            self._assign_vreg_number(vreg, func)
+
+    def _verify_function(self, func: Function):
+        """Verify a single function."""
         # Initialize worklist with entry block
-        worklist = deque([('b0', {}, None)])  # (block_name, register_state, incoming_edge)
+        worklist = deque([('b0', {}, {}, {}, {},
+                           None)])  # (block_name, register_state, stack_memory, stack_memory_parts, occupied_offsets, incoming_edge)
         visited_edges: Set[Tuple[str, str]] = set()
-        
+
         while worklist:
-            block_name, reg_state, incoming_edge = worklist.popleft()
-            
-            if block_name not in self.blocks:
-                raise ValueError(f"Block {block_name} not found")
-            
-            block = self.blocks[block_name]
-            
+            block_name, reg_state, stack_memory, stack_memory_parts, occupied_offsets, incoming_edge = worklist.popleft()
+
+            if block_name not in func.blocks:
+                raise ValueError(f"Block {block_name} in function {func.name} not found")
+
+            block = func.blocks[block_name]
+
             # Mark edge as visited
             if incoming_edge:
                 visited_edges.add(incoming_edge)
 
-            # Clear stack memory for each new path (stack is local to each execution path)
-            # This ensures we don't incorrectly track stack state across different control flow paths
-            self.stack_memory.clear()
-            self.stack_memory_parts.clear()
-            self.occupied_offsets.clear()
+            # Restore stack state for this path
+            func.stack_memory = stack_memory.copy()
+            func.stack_memory_parts = stack_memory_parts.copy()
+            func.occupied_offsets = occupied_offsets.copy()
 
             # Process phi nodes first (they happen at block entry)
             for phi in block.phi_nodes:
@@ -555,65 +580,63 @@ class VirVerifier:
                         if inc.from_block == from_block:
                             incoming = inc
                             break
-                    
+
                     if not incoming:
-                        raise ValueError(
-                            f"Phi node {phi.target.vreg}@{phi.target.areg} in {block_name}: "
-                            f"no incoming value for block {from_block}"
-                        )
-                    
+                        # Skip phi check for predecessors not listed in phi incomings
+                        continue
+
                     # Check that the target register contains the incoming virtual register's number
                     # (The parallel moves should have moved the incoming value to the target register)
-                    incoming_vreg_num = self.vreg_to_number[incoming.vreg]
+                    incoming_vreg_num = func.vreg_to_number[incoming.vreg]
                     if phi.target.areg not in reg_state:
                         raise ValueError(
-                            f"Phi node {phi.target.vreg}@{phi.target.areg} in {block_name}: "
+                            f"Phi node {phi.target.vreg}@{phi.target.areg} in {block_name} of function {func.name}: "
                             f"target register {phi.target.areg} not in state"
                         )
                     actual_value = reg_state[phi.target.areg]
                     # special case for values without vallocalidx, we can only check that there exists a value not that its the correct one
                     if actual_value != incoming_vreg_num and not (incoming_vreg_num >  2147483660 and actual_value >  214748366):
                         raise ValueError(
-                            f"Phi node {phi.target.vreg}@{phi.target.areg} in {block_name} from {from_block}: "
+                            f"Phi node {phi.target.vreg}@{phi.target.areg} in {block_name} of function {func.name} from {from_block}: "
                             f"register {phi.target.areg} contains {actual_value}, "
                             f"expected {incoming_vreg_num} (from {incoming.vreg})"
                         )
-                    
+
                     # After phi resolution, the register should contain the target vreg's number
-                    target_vreg_num = self.vreg_to_number[phi.target.vreg]
+                    target_vreg_num = func.vreg_to_number[phi.target.vreg]
                     reg_state[phi.target.areg] = target_vreg_num
-            
+
             # Process instructions in order (operations and regmoves interleaved)
             for inst_type, inst in block.instructions:
                 if inst_type == 'op':
                     op = inst
                     # Check uses
                     for use in op.uses:
-                        expected_vreg_num = self.vreg_to_number[use.vreg]
+                        expected_vreg_num = func.vreg_to_number[use.vreg]
                         if use.areg not in reg_state:
                             raise ValueError(
-                                f"Operation in {block_name}: register {use.areg} not in state "
+                                f"Operation in {block_name} of function {func.name}: register {use.areg} not in state "
                                 f"(expected {use.vreg} with number {expected_vreg_num})"
                             )
                         actual_vreg_num = reg_state[use.areg]
                         if actual_vreg_num != expected_vreg_num:
                             raise ValueError(
-                                f"Operation in {block_name}: register {use.areg} contains "
+                                f"Operation in {block_name} of function {func.name}: register {use.areg} contains "
                                 f"vreg number {actual_vreg_num}, expected {expected_vreg_num} "
                                 f"(for {use.vreg})"
                             )
-                    
+
                     # Apply defs
                     for def_ in op.defs:
-                        vreg_num = self.vreg_to_number[def_.vreg]
+                        vreg_num = func.vreg_to_number[def_.vreg]
                         reg_state[def_.areg] = vreg_num
-                
+
                 elif inst_type == 'regmove':
                     regmove = inst
                     # Get value from source register
                     if regmove.src_reg not in reg_state:
                         raise ValueError(
-                            f"Regmove in {block_name}: source register {regmove.src_reg} not in state"
+                            f"Regmove in {block_name} of function {func.name}: source register {regmove.src_reg} not in state"
                         )
                     vreg_num = reg_state[regmove.src_reg]
 
@@ -622,38 +645,44 @@ class VirVerifier:
 
                 elif inst_type == 'spill':
                     spill = inst
-                    self._process_spill(spill, reg_state, block_name)
+                    self._process_spill(spill, reg_state, block_name, func)
 
                 elif inst_type == 'reload':
                     reload = inst
-                    self._process_reload(reload, reg_state, block_name)
+                    self._process_reload(reload, reg_state, block_name, func)
 
             # Process jumps
             new_reg_state = reg_state.copy()
-            
+            new_stack_memory = func.stack_memory.copy()
+            new_stack_memory_parts = func.stack_memory_parts.copy()
+            new_occupied_offsets = func.occupied_offsets.copy()
+
             if block.jmp_target:
                 # Unconditional jump
                 edge = (block_name, block.jmp_target)
                 if edge not in visited_edges:
-                    worklist.append((block.jmp_target, new_reg_state, edge))
-            
+                    worklist.append((block.jmp_target, new_reg_state, new_stack_memory, new_stack_memory_parts,
+                                     new_occupied_offsets, edge))
+
             if block.jcond_target:
                 # Conditional jump - enqueue both targets
                 # True branch (jcond target)
                 edge_true = (block_name, block.jcond_target)
                 if edge_true not in visited_edges:
-                    worklist.append((block.jcond_target, new_reg_state.copy(), edge_true))
-                
+                    worklist.append((block.jcond_target, new_reg_state.copy(), new_stack_memory.copy(),
+                                     new_stack_memory_parts.copy(), new_occupied_offsets.copy(), edge_true))
+
                 # False branch (fall through to jmp_target or implicit exit)
                 if block.jmp_target:
                     edge_false = (block_name, block.jmp_target)
                     if edge_false not in visited_edges:
-                        worklist.append((block.jmp_target, new_reg_state.copy(), edge_false))
-        
+                        worklist.append((block.jmp_target, new_reg_state.copy(), new_stack_memory.copy(),
+                                         new_stack_memory_parts.copy(), new_occupied_offsets.copy(), edge_false))
+
         # Verify all edges were visited
-        expected_edges = set((e.from_block, e.to_block) for e in self.edges)
+        expected_edges = set((e.from_block, e.to_block) for e in func.edges)
         # Also add implicit edges from jumps
-        for block in self.blocks.values():
+        for block in func.blocks.values():
             if block.jcond_target:
                 # Conditional jump creates edge to jcond target
                 expected_edges.add((block.name, block.jcond_target))
@@ -663,24 +692,47 @@ class VirVerifier:
             elif block.jmp_target:
                 # Unconditional jump
                 expected_edges.add((block.name, block.jmp_target))
-        
+
         unvisited = expected_edges - visited_edges
         if unvisited:
-            raise ValueError(f"Not all edges were visited: {unvisited}")
+            raise ValueError(f"Not all edges were visited in function {func.name}: {unvisited}")
+
+    def verify(self):
+        """Verify the .vir file."""
+        self.parse()
+
+        all_passed = True
+        for func in self.functions:
+            self._collect_all_vregs(func)
+            try:
+                self._verify_function(func)
+                print(f"Function {func.name} is valid")
+            except Exception as e:
+                print(f"Function {func.name} verification failed: {e}")
+                all_passed = False
+                continue
+
+        return all_passed
 
 
 def main():
     import sys
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <file.vir>")
+    if len(sys.argv) > 2:
+        print(f"Usage: {sys.argv[0]} <file.vir>/<stdin>")
         sys.exit(1)
-    
-    verifier = VirVerifier(sys.argv[1])
+    if len(sys.argv) == 1:
+        input = sys.stdin.read()
+    else:
+        with open(sys.argv[1], 'r') as f:
+            input = f.read()
+    verifier = VirVerifier(input)
     try:
-        verifier.verify()
-        print(f"✓ {sys.argv[1]} is valid")
+        all_passed = verifier.verify()
+        if all_passed:
+            return 0
+        else:
+            return 1
     except Exception as e:
-        print(f"✗ {sys.argv[1]} verification failed: {e}")
         raise
 
 

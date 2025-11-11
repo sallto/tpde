@@ -2,15 +2,15 @@
 #
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-import lit.formats
 import os
 
+import lit.formats
 from lit.llvm import llvm_config
 
 config.name = 'TPDE'
 config.test_format = lit.formats.ShTest(True)
 
-config.suffixes = ['.tir']
+config.suffixes = ['.tir', '.vir']
 
 config.test_source_root = os.path.dirname(__file__)
 config.environment["FILECHECK_OPTS"] = "--enable-var-scope --dump-input-filter=all --allow-unused-prefixes=false"
@@ -20,3 +20,4 @@ llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 llvm_config.with_environment('PATH', config.tpde_obj_root, append_path=True)
 config.substitutions.append(("%tpde_test", "tpde_test"))
 config.substitutions.append(('%objdump', 'llvm-objdump -d -r --no-show-raw-insn --symbolize-operands --no-addresses --x86-asm-syntax=intel -'))
+config.substitutions.append(('%vir_verify', 'python3 %S/vir_verifier.py'))
