@@ -1518,14 +1518,16 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
   //todo(salto): can be optimized to just check size>1 or do it in analyzer(?)
   auto num_succs= std::distance(this->adaptor->block_succs(cur_block).begin(),this->adaptor->block_succs(cur_block).end());
   // Split critical edges
-  //todo(salto): for multiple succ, 1 incoming, the moves could be inserted in the target_block
+  // todo(salto): for multiple succ, 1 incoming, the moves could be inserted in
+  // the target_block
   // todo(salto): evaluate performance of unncessary jumps.
-  bool critical = num_succs>1 && this->analyzer.block_has_multiple_incoming(target);
+  bool critical =
+      num_succs > 1 && this->analyzer.block_has_multiple_incoming(target);
   bool is_split = (needs_split || critical) && jmp != Jump::jmp;
 
   if (!needs_split || jmp == Jump::jmp) {
     this->derived()->move_values_to_match(target_idx);
-    #ifndef NDEBUG
+#ifndef NDEBUG
     const char *jump_str = (jmp == Jump::jmp) ? "jmp" : "jcond";
     this->verification_ir.capture_branch(jump_str, target_idx, is_split);
 
@@ -1533,7 +1535,7 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
     if (jmp != Jump::jmp) {
       this->verification_ir.clear_branch_condition();
     }
-    #endif
+#endif
 
     if (!last_inst || this->analyzer.block_idx(target) != this->next_block()) {
       generate_raw_jump(jmp, this->block_labels[(u32)target_idx]);
@@ -1545,7 +1547,7 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
     #ifndef NDEBUG
     const char *jump_str = (jmp == Jump::jmp) ? "jmp" : "jcond";
     this->verification_ir.capture_branch(jump_str, target_idx, is_split);
-    #endif
+#endif
 
     // For split blocks, move values to match AFTER establishing split context
     this->derived()->move_values_to_match(target_idx);
@@ -1556,7 +1558,7 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
     if (jmp != Jump::jmp) {
       this->verification_ir.clear_branch_condition();
     }
-    #endif
+#endif
 
     generate_raw_jump(Jump::jmp, this->block_labels[(u32)target_idx]);
     this->label_place(tmp_label);

@@ -1464,6 +1464,9 @@ template <IRAdaptor Adaptor,
           typename Config>
 void CompilerA64<Adaptor, Derived, BaseTy, Config>::materialize_constant(
     const u64 *data, const RegBank bank, const u32 size, AsmReg dst) noexcept {
+#ifndef NDEBUG
+  derived()->vir_emit_def(dst);
+#endif
   this->text_writer.ensure_space(5 * 4);
 
   const auto const_u64 = data[0];
@@ -1680,10 +1683,28 @@ void CompilerA64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
     IRBlockRef target,
     const bool needs_split,
     const bool last_inst) noexcept {
-  // todo(salto): critical edge splitting
   const auto target_idx = this->analyzer.block_idx(target);
+  IRBlockRef cur_block = this->analyzer.block_ref(this->cur_block_idx);
+  // Count number of successors for current block
+  auto num_succs = std::distance(this->adaptor->block_succs(cur_block).begin(),
+                                 this->adaptor->block_succs(cur_block).end());
+  // Check for critical edge - multiple successors and target has multiple
+  // incoming edges
+  bool critical =
+      num_succs > 1 && this->analyzer.block_has_multiple_incoming(target);
+  bool is_split = (needs_split || critical) && jmp.kind != Jump::jmp;
+
   if (!needs_split || jmp.kind == Jump::jmp) {
     this->derived()->move_values_to_match(target_idx);
+#ifndef NDEBUG
+    const char *jump_str = (jmp.kind == Jump::jmp) ? "jmp" : "jcond";
+    this->verification_ir.capture_branch(jump_str, target_idx, is_split);
+
+    // Clear condition after first branch (conditional branches have two calls)
+    if (jmp.kind != Jump::jmp) {
+      this->verification_ir.clear_branch_condition();
+    }
+#endif
 
     if (!last_inst || this->analyzer.block_idx(target) != this->next_block()) {
       generate_raw_jump(jmp, this->block_labels[(u32)target_idx]);
@@ -1692,12 +1713,32 @@ void CompilerA64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
     auto tmp_label = this->text_writer.label_create();
     generate_raw_jump(invert_jump(jmp), tmp_label);
 
+#ifndef NDEBUG
+    const char *jump_str = (jmp.kind == Jump::jmp) ? "jmp" : "jcond";
+    this->verification_ir.capture_branch(jump_str, target_idx, is_split);
+#endif
+
+    // For split blocks, move values to match AFTER establishing split context
     this->derived()->move_values_to_match(target_idx);
 
-    generate_raw_jump(Jump::jmp, this->block_labels[(u32)target_idx]);
+#ifndef NDEBUG
+    // Capture the jmp to final target in split block context
+    this->verification_ir.capture_branch("jmp", target_idx, false);
+    if (jmp.kind != Jump::jmp) {
+      this->verification_ir.clear_branch_condition();
+    }
+#endif
 
+    generate_raw_jump(Jump(), this->block_labels[(u32)target_idx]);
     this->label_place(tmp_label);
   }
+
+#ifndef NDEBUG
+  // End branch region if this was the last instruction
+  if (last_inst) {
+    this->verification_ir.end_branch();
+  }
+#endif
 }
 
 template <IRAdaptor Adaptor,
@@ -1981,7 +2022,14 @@ template <IRAdaptor Adaptor,
 void CompilerA64<Adaptor, Derived, BaseTy, Config>::generate_raw_intext(
     AsmReg dst, AsmReg src, bool sign, u32 from, u32 to) noexcept {
   assert(from < to && to <= 64);
-  (void)to;
+#ifndef NDEBUG
+  this->verification_ir.emit_edit(VIR<Adaptor>::EditKind::Move,
+                                  from,
+                                  to,
+                                  this->INVALID_VAL_LOCAL_IDX,
+                                  0,
+                                  to);
+#endif
   if (sign) {
     if (to <= 32) {
       ASM(SBFXw, dst, src, 0, from);

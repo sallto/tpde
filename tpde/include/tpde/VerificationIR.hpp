@@ -355,7 +355,8 @@ struct VerificationIR {
     current_block_idx = block_idx;
   }
 
-  /// Get current block index for edits (returns split block if in split, otherwise current block)
+  /// Get current block index for edits (returns split block if in split,
+  /// otherwise current block)
   BlockIndex get_edit_block() const noexcept {
     if (static_cast<u32>(current_split_block) != ~0u) {
       return current_split_block;
@@ -422,7 +423,7 @@ struct VerificationIR {
       return from_block;
     }
   }
-  
+
 
   void end_branch() noexcept {
     current_split_block = static_cast<BlockIndex>(~0u);
@@ -477,10 +478,6 @@ struct VerificationIR {
   
   /// Emit register-to-register move (uses get_edit_block())
   void emit_reg_move(Reg src, Reg dst, u32 size) noexcept {
-    // regmove is part of instruction
-    if (active_compilation) {
-      return;
-    }
     BlockIndex edit_block = get_edit_block();
     Edit edit{EditKind::RegMove, src, dst, size};
 
@@ -619,7 +616,6 @@ struct VerificationIR {
     } else {
       current_split_block = static_cast<BlockIndex>(~0u);
     }
-
   }
 
   /// Emit parallel move on edge (currently unused)
