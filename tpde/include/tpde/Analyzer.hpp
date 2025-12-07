@@ -990,7 +990,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
 
   const auto dag_dfs = [&](auto &&self, const u32 block_idx) -> void {
     const auto block_ref = block_layout[block_idx];
-
+    processed[block_idx] = true;
     // Recurse on DAG edges.
     for (const IRBlockRef succ : adaptor->block_succs(block_ref)) {
       const auto succ_idx = adaptor->block_info(succ);
@@ -1020,7 +1020,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
 
     live_out[block_idx] = std::move(live);
     recompute_block(block_idx);
-    processed[block_idx] = true;
+
   };
 
   // Entry is at index 0 in block_layout.
