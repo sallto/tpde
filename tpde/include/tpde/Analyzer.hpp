@@ -171,6 +171,7 @@ struct Analyzer {
   void print_block_layout(std::ostream &os) const;
   void print_loops(std::ostream &os) const;
   void print_liveness(std::ostream &os) const;
+  void print_precise_liveness(std::ostream &os) const;
 
 protected:
   // for use during liveness analysis
@@ -263,6 +264,57 @@ void Analyzer<Adaptor>::print_liveness(std::ostream &os) const {
                       adaptor->block_fmt_ref(block_ref(info.first)),
                       adaptor->block_fmt_ref(block_ref(info.last)),
                       info.last_full);
+  }
+}
+
+template <IRAdaptor Adaptor>
+void Analyzer<Adaptor>::print_precise_liveness(std::ostream &os) const {
+  const u32 num_blocks = static_cast<u32>(block_layout.size());
+  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+    os << std::format("  Block {} ({}):\n",
+                      block_idx,
+                      adaptor->block_fmt_ref(block_layout[block_idx]));
+
+    if (block_idx >= precise_liveness.size()) {
+      os << "    <no precise liveness>\n";
+      continue;
+    }
+
+    const auto &pli = precise_liveness[block_idx];
+    if (pli.next_uses.empty()) {
+      os << "    no tracked values\n";
+      continue;
+    }
+
+    util::SmallVector<ValLocalIdx, SMALL_VALUE_NUM> values;
+    for (const auto &entry : pli.next_uses) {
+      values.push_back(entry.first);
+    }
+    std::sort(values.begin(),
+              values.end(),
+              [](const ValLocalIdx lhs, const ValLocalIdx rhs) {
+                return static_cast<u32>(lhs) < static_cast<u32>(rhs);
+              });
+
+    for (const auto val_idx : values) {
+      const auto it = pli.next_uses.find(val_idx);
+      assert(it != pli.next_uses.end());
+      const auto &uses = it->second;
+
+      os << std::format("    val {}: [", static_cast<u32>(val_idx));
+      for (u32 i = 0; i < uses.size(); ++i) {
+        if (i != 0) {
+          os << ", ";
+        }
+        const auto dist = uses[i];
+        if (dist == std::numeric_limits<u32>::max()) {
+          os << "inf";
+        } else {
+          os << dist;
+        }
+      }
+      os << "]\n";
+    }
   }
 }
 

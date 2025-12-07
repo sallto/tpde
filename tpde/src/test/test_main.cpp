@@ -60,6 +60,10 @@ int main(int argc, char *argv[]) {
                             "print_liveness",
                             "Print the liveness information",
                             {"print-liveness"});
+  args::Flag precise_liveness(parser,
+                              "precise_liveness",
+                              "Use precise liveness (per-block next-use distances)",
+                              {"precise-liveness"});
 
   args::Flag no_fixed_assignments(
       parser,
@@ -216,7 +220,11 @@ int main(int argc, char *argv[]) {
 
       if (print_liveness) {
         std::cout << "Liveness for " << adaptor.func_link_name(func) << "\n";
-        analyzer.print_liveness(std::cout);
+        if (precise_liveness) {
+          analyzer.print_precise_liveness(std::cout);
+        } else {
+          analyzer.print_liveness(std::cout);
+        }
         std::cout << "End Liveness\n";
       }
     }
