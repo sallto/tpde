@@ -976,6 +976,13 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
     // Add phi definitions.
     for (const IRValueRef phi : adaptor->block_phis(block)) {
       add_val(live, phi);
+
+      // Phis are defined on the incoming edge, so their next-use distance from
+      // the start of the block is 0.
+      if (!adaptor->val_ignore_in_liveness_analysis(phi)) {
+        const auto val_idx = adaptor->val_local_idx(phi);
+        pli.next_uses[val_idx].push_back(0);
+      }
     }
 
     live_in[block_idx] = std::move(live);
@@ -1068,12 +1075,64 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
       }
     }
 
+    // Likewise ensure all live-in values are tracked; some may have no local
+    // uses but are needed immediately in successors.
+    const auto &live_in_bits = live_in[block_idx];
+    for (u32 word_idx = 0; word_idx < live_in_bits.data.size(); ++word_idx) {
+      auto bits = live_in_bits.data[word_idx];
+      while (bits != 0) {
+        const auto bit = static_cast<u32>(__builtin_ctzll(bits));
+        const auto val_idx = static_cast<ValLocalIdx>(word_idx * 64 + bit);
+        (void)pli.next_uses[val_idx];
+        bits &= bits - 1;
+      }
+    }
+
     // Pull in successor knowledge so we track all values that are live to any
     // successor (even if they are not live-out here yet).
     for (const IRBlockRef succ : adaptor->block_succs(block_layout[block_idx])) {
       const auto succ_idx = adaptor->block_info(succ);
       const auto &succ_next = precise_liveness[succ_idx].next_uses;
+      const auto &succ_live_in_bits = live_in[succ_idx];
+
+      // Collect defs in the successor so we avoid seeding values that are
+      // produced there (and therefore not yet available).
+      auto succ_defs_bits = make_set();
+      const auto succ_block = block_layout[succ_idx];
+      for (const IRValueRef phi : adaptor->block_phis(succ_block)) {
+        add_val(succ_defs_bits, phi);
+      }
+      for (const IRInstRef succ_inst : adaptor->block_insts(succ_block)) {
+        for (const IRValueRef res : adaptor->inst_results(succ_inst)) {
+          add_val(succ_defs_bits, res);
+        }
+      }
+
+      // Seed from successor live-in set to ensure values needed immediately in
+      // successors are tracked here.
+      for (u32 word_idx = 0; word_idx < succ_live_in_bits.data.size();
+           ++word_idx) {
+        auto bits = succ_live_in_bits.data[word_idx];
+        while (bits != 0) {
+          const auto bit = static_cast<u32>(__builtin_ctzll(bits));
+          const auto val_idx =
+              static_cast<ValLocalIdx>(word_idx * 64 + bit);
+          (void)pli.next_uses[val_idx];
+          bits &= bits - 1;
+        }
+      }
+
+      // Also pick up successor next-use knowledge, but only for values that are
+      // not defined in the successor (to avoid pulling in defs created there).
       for (const auto &succ_entry : succ_next) {
+        const auto val_idx = static_cast<u32>(succ_entry.first);
+        const bool succ_defines_val =
+            val_idx < succ_defs_bits.bit_size &&
+            (succ_defs_bits.data.size() > (val_idx >> 6)) &&
+            succ_defs_bits.is_set(val_idx);
+        if (succ_defines_val) {
+          continue;
+        }
         (void)pli.next_uses[succ_entry.first];
       }
     }
@@ -1083,6 +1142,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
     for (auto &entry : pli.next_uses) {
       sort_and_dedupe(entry.second);
     }
+
 
     for (auto &entry : pli.next_uses) {
       const auto val_idx = static_cast<u32>(entry.first);
