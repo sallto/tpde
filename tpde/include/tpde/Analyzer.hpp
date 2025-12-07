@@ -1050,6 +1050,82 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
     recompute_block(block_idx);
   }
 
+  // Propagate loop-header liveness through the loop tree so that values that
+  // enter a loop are treated as live throughout its body. We reuse the
+  // next-use distances by seeding contained blocks with a live-out distance
+  // equal to the block length.
+  util::SmallVector<util::SmallVector<u32, SMALL_BLOCK_NUM>, 16> loop_children;
+  util::SmallVector<util::SmallVector<u32, SMALL_BLOCK_NUM>, 16>
+      loop_direct_blocks;
+  loop_children.resize(loops.size());
+  loop_direct_blocks.resize(loops.size());
+
+  // Build loop tree.
+  for (u32 loop_idx = 1; loop_idx < loops.size(); ++loop_idx) {
+    loop_children[loops[loop_idx].parent].push_back(loop_idx);
+  }
+  // Collect blocks that belong directly to each loop.
+  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+    const auto loop_idx = block_loop_map[block_idx];
+    if (loop_idx < loop_direct_blocks.size()) {
+      loop_direct_blocks[loop_idx].push_back(block_idx);
+    }
+  }
+
+  const auto apply_live_loop_to_block = [&](const u32 block_idx,
+                                            const BitSet &live_loop) {
+    auto &block_live_in = live_in[block_idx];
+    auto &block_live_out = live_out[block_idx];
+    bit_or(block_live_in, live_loop);
+    bit_or(block_live_out, live_loop);
+
+    auto &pli = precise_liveness[block_idx];
+    const u32 inst_count = block_inst_counts[block_idx];
+
+    for (u32 word_idx = 0; word_idx < live_loop.data.size(); ++word_idx) {
+      auto bits = live_loop.data[word_idx];
+      while (bits != 0) {
+        const auto bit = static_cast<u32>(__builtin_ctzll(bits));
+        const auto val_idx =
+            static_cast<ValLocalIdx>(word_idx * 64 + bit);
+        pli.next_uses[val_idx].push_back(inst_count);
+        bits &= bits - 1;
+      }
+    }
+  };
+
+  const auto loop_tree_dfs = [&](auto &&self, const u32 loop_idx) -> void {
+    const auto header_idx = static_cast<u32>(loops[loop_idx].begin);
+    if (header_idx >= num_blocks) {
+      return;
+    }
+
+    auto live_loop = copy_set(live_in[header_idx]);
+    reset_set(live_loop, get_phi_defs(header_idx));
+
+    // Visit direct block children (excluding the header itself).
+    for (const u32 block_idx : loop_direct_blocks[loop_idx]) {
+      if (block_idx == header_idx) {
+        continue;
+      }
+      apply_live_loop_to_block(block_idx, live_loop);
+    }
+
+    // Recurse into nested loops after seeding their headers.
+    for (const u32 child_loop_idx : loop_children[loop_idx]) {
+      const auto child_header_idx =
+          static_cast<u32>(loops[child_loop_idx].begin);
+      if (child_header_idx < num_blocks) {
+        apply_live_loop_to_block(child_header_idx, live_loop);
+      }
+      self(self, child_loop_idx);
+    }
+  };
+
+  if (!loops.empty()) {
+    loop_tree_dfs(loop_tree_dfs, 0);
+  }
+
   const auto sort_and_dedupe = [](auto &vec) {
     std::sort(vec.begin(), vec.end());
     vec.erase(std::unique(vec.begin(), vec.end()), vec.end());
