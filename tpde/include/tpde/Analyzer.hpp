@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <format>
+#include <llvm/ADT/SetVector.h>
 #include <ostream>
+#include <unordered_map>
 
 #include "IRAdaptor.hpp"
 #include "RegisterFile.hpp"
@@ -85,6 +87,13 @@ struct Analyzer {
   u16 liveness_epoch = 0;
   u32 liveness_max_value;
 
+  struct PreciseLivenessInfo {
+    // val_local_idx -> list of next-use distances from the start of each block.
+    std::unordered_map<ValLocalIdx, util::SmallVector<u32, 8> > next_uses;
+  };
+
+  // pro block liveness info
+  util::SmallVector<PreciseLivenessInfo, 32> precise_liveness;
   util::SmallVector<Reg, SMALL_VALUE_NUM> recommended_registers = {};
   // todo(salto): this will change into colors instead of registers later on.
 
@@ -184,12 +193,15 @@ protected:
       util::SmallBitSet<256> &loop_heads) const noexcept;
 
   void compute_liveness() noexcept;
+
+  void compute_precise_liveness() noexcept;
 };
 
 template <IRAdaptor Adaptor>
 void Analyzer<Adaptor>::switch_func([[maybe_unused]] IRFuncRef func) {
   build_block_layout();
   compute_liveness();
+  compute_precise_liveness();
 }
 
 template <IRAdaptor Adaptor>
@@ -736,6 +748,284 @@ void Analyzer<Adaptor>::identify_loops(
       loop_heads.mark_set(i);
     }
   }
+}
+
+
+template <IRAdaptor Adaptor>
+void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
+  TPDE_LOG_TRACE("Starting Precise Liveness Analysis");
+  // todo(salto): epochs
+  if constexpr (Adaptor::TPDE_PROVIDES_HIGHEST_VAL_IDX) {
+    liveness_max_value = adaptor->cur_highest_val_idx();
+    if (liveness_max_value >= liveness.size()) {
+      liveness.resize(liveness_max_value + 1);
+    }
+  } else {
+    liveness_max_value = 0;
+  }
+
+  const auto num_blocks = static_cast<u32>(block_layout.size());
+  precise_liveness.resize(num_blocks);
+
+  using BitSet = util::SmallBitSet<256>;
+
+  const auto make_set = [this]() {
+    BitSet set;
+    set.resize(liveness_max_value + 1);
+    set.zero();
+    return set;
+  };
+
+  const auto copy_set = [](const BitSet &src) {
+    BitSet dst;
+    dst.resize(src.bit_size);
+    const auto words = (src.bit_size + 63) / 64;
+    dst.data.resize(words);
+    for (u32 i = 0; i < src.data.size(); ++i) {
+      dst.data[i] = src.data[i];
+    }
+    for (u32 i = src.data.size(); i < words; ++i) {
+      dst.data[i] = 0;
+    }
+    dst.bit_size = src.bit_size;
+    return dst;
+  };
+
+  util::SmallVector<BitSet, SMALL_BLOCK_NUM> live_in, live_out, phi_defs_cache;
+  util::SmallVector<bool, SMALL_BLOCK_NUM> processed, phi_defs_ready;
+  live_in.resize(num_blocks);
+  live_out.resize(num_blocks);
+  phi_defs_cache.resize(num_blocks);
+  processed.resize(num_blocks);
+  phi_defs_ready.resize(num_blocks);
+  for (u32 i = 0; i < num_blocks; ++i) {
+    live_in[i] = make_set();
+    live_out[i] = make_set();
+    phi_defs_cache[i] = make_set();
+    processed[i] = false;
+    phi_defs_ready[i] = false;
+    precise_liveness[i].next_uses.clear();
+  }
+
+  const auto is_loop_edge = [this](u32 block_idx,
+                                   const IRBlockRef succ) noexcept -> bool {
+    const auto loop_idx = block_loop_map[block_idx];
+    const auto header_idx = static_cast<u32>(loops[loop_idx].begin);
+    if (header_idx >= block_layout.size()) {
+      return false;
+    }
+    return block_layout[header_idx] == succ;
+  };
+
+  const auto ensure_size = [](BitSet &set, const u32 sz) {
+    if (set.bit_size < sz) {
+      const auto old_words = set.data.size();
+      set.resize(sz);
+      for (u32 i = old_words; i < set.data.size(); ++i) {
+        set.data[i] = 0;
+      }
+    } else if (set.data.empty()) {
+      const auto words = (set.bit_size + 63) / 64;
+      set.data.resize(words, 0);
+    }
+  };
+
+  const auto bit_or = [&ensure_size](BitSet &dst, const BitSet &src) {
+    ensure_size(dst, src.bit_size);
+    const auto count = src.data.size();
+    if (dst.data.size() < count) {
+      dst.data.resize(count);
+    }
+    for (u32 i = 0; i < count; ++i) {
+      dst.data[i] |= src.data[i];
+    }
+    dst.bit_size = std::max(dst.bit_size, src.bit_size);
+  };
+
+  const auto add_val = [this, &ensure_size](BitSet &set,
+                                            const IRValueRef val) noexcept {
+    if (adaptor->val_ignore_in_liveness_analysis(val)) {
+      return;
+    }
+    const auto val_idx = static_cast<u32>(adaptor->val_local_idx(val));
+    ensure_size(set, val_idx + 1);
+    set.mark_set(val_idx);
+  };
+
+  const auto reset_set = [](BitSet &target, const BitSet &defs) {
+    for (u32 i = 0; i < defs.data.size(); ++i) {
+      auto bits = defs.data[i];
+      while (bits != 0) {
+        const auto b = static_cast<u32>(__builtin_ctzll(bits));
+        target.mark_unset(i * 64 + b);
+        bits &= bits - 1;
+      }
+    }
+  };
+
+  const auto get_phi_defs = [&](const u32 block_idx) -> BitSet & {
+    auto &defs = phi_defs_cache[block_idx];
+    if (!phi_defs_ready[block_idx]) {
+      const auto block = block_layout[block_idx];
+      for (const IRValueRef phi : adaptor->block_phis(block)) {
+        add_val(defs, phi);
+      }
+      phi_defs_ready[block_idx] = true;
+    }
+    return defs;
+  };
+
+  const auto get_phi_uses = [&](const u32 block_idx) {
+    auto uses = make_set();
+    const auto block = block_layout[block_idx];
+    const auto block_ref = block;
+
+    for (const IRBlockRef succ : adaptor->block_succs(block_ref)) {
+      for (const IRValueRef phi : adaptor->block_phis(succ)) {
+        const auto phi_ref = adaptor->val_as_phi(phi);
+        const auto incoming = phi_ref.incoming_val_for_block(block_ref);
+        if (incoming != Adaptor::INVALID_VALUE_REF) {
+          add_val(uses, incoming);
+        }
+      }
+    }
+    return uses;
+  };
+
+  const auto record_use = [this, &ensure_size](PreciseLivenessInfo &pli,
+                                               BitSet &live,
+                                               const IRValueRef val,
+                                               const u32 pos) {
+    if (adaptor->val_ignore_in_liveness_analysis(val)) {
+      return;
+    }
+    const auto val_idx = adaptor->val_local_idx(val);
+    ensure_size(live, static_cast<u32>(val_idx) + 1);
+    live.mark_set(static_cast<u32>(val_idx));
+    auto &vec = pli.next_uses[val_idx];
+    vec.push_back(pos);
+  };
+
+  const auto recompute_block = [&](const u32 block_idx) {
+    auto live = copy_set(live_out[block_idx]);
+    auto &pli = precise_liveness[block_idx];
+    pli.next_uses.clear();
+
+    const auto block = block_layout[block_idx];
+    util::SmallVector<IRInstRef, SMALL_BLOCK_NUM> insts;
+    for (const IRInstRef inst : adaptor->block_insts(block)) {
+      insts.push_back(inst);
+    }
+    const u32 inst_count = static_cast<u32>(insts.size());
+
+    // Account for phi uses in successors at the end of the block.
+    for (const IRBlockRef succ : adaptor->block_succs(block)) {
+      for (const IRValueRef phi : adaptor->block_phis(succ)) {
+        const auto phi_ref = adaptor->val_as_phi(phi);
+        const auto count = phi_ref.incoming_count();
+        for (u32 i = 0; i < count; ++i) {
+          if (phi_ref.incoming_block_for_slot(i) != block) {
+            continue;
+          }
+          const auto incoming_val = phi_ref.incoming_val_for_slot(i);
+          if (incoming_val == Adaptor::INVALID_VALUE_REF) {
+            continue;
+          }
+          record_use(pli, live, incoming_val, inst_count);
+        }
+      }
+    }
+
+    // Walk instructions backward.
+    for (u32 offset = inst_count; offset > 0; --offset) {
+      const auto inst = insts[offset - 1];
+
+      // Remove defs.
+      for (const IRValueRef res : adaptor->inst_results(inst)) {
+        if (adaptor->val_ignore_in_liveness_analysis(res)) {
+          continue;
+        }
+        const auto val_idx = static_cast<u32>(adaptor->val_local_idx(res));
+        ensure_size(live, val_idx + 1);
+        live.mark_unset(val_idx);
+      }
+
+      // Add uses.
+      for (const IRValueRef operand : adaptor->inst_operands(inst)) {
+        record_use(pli, live, operand, offset - 1);
+      }
+    }
+
+    // Add phi definitions.
+    for (const IRValueRef phi : adaptor->block_phis(block)) {
+      add_val(live, phi);
+    }
+
+    live_in[block_idx] = std::move(live);
+  };
+
+  const auto dag_dfs = [&](auto &&self, const u32 block_idx) -> void {
+    const auto block_ref = block_layout[block_idx];
+
+    // Recurse on DAG edges.
+    for (const IRBlockRef succ : adaptor->block_succs(block_ref)) {
+      const auto succ_idx = adaptor->block_info(succ);
+      if (is_loop_edge(block_idx, succ)) {
+        continue;
+      }
+      if (!processed[succ_idx]) {
+        self(self, succ_idx);
+      }
+    }
+
+    auto live = get_phi_uses(block_idx);
+
+    // Merge successors.
+    for (const IRBlockRef succ : adaptor->block_succs(block_ref)) {
+      const auto succ_idx = adaptor->block_info(succ);
+      if (is_loop_edge(block_idx, succ)) {
+        continue;
+      }
+
+      ensure_size(live, live_in[succ_idx].bit_size);
+      bit_or(live, live_in[succ_idx]);
+      auto &succ_defs = get_phi_defs(succ_idx);
+      ensure_size(live, succ_defs.bit_size);
+      reset_set(live, succ_defs);
+    }
+
+    live_out[block_idx] = std::move(live);
+    recompute_block(block_idx);
+    processed[block_idx] = true;
+  };
+
+  // Entry is at index 0 in block_layout.
+  if (num_blocks != 0) {
+    dag_dfs(dag_dfs, 0);
+  }
+
+  // Incorporate loop-edge contributions.
+  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+    const auto block_ref = block_layout[block_idx];
+    auto &live = live_out[block_idx];
+    for (const IRBlockRef succ : adaptor->block_succs(block_ref)) {
+      if (!is_loop_edge(block_idx, succ)) {
+        continue;
+      }
+      const auto succ_idx = adaptor->block_info(succ);
+      ensure_size(live, live_in[succ_idx].bit_size);
+      bit_or(live, live_in[succ_idx]);
+      auto &succ_defs = get_phi_defs(succ_idx);
+      ensure_size(live, succ_defs.bit_size);
+      reset_set(live, succ_defs);
+    }
+  }
+
+  // Recompute LiveIn using updated LiveOut (and refresh next-use info).
+  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+    recompute_block(block_idx);
+  }
+  TPDE_LOG_TRACE("Precise Liveness Analysis completed");
 }
 
 template <IRAdaptor Adaptor>
