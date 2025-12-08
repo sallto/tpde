@@ -5,11 +5,12 @@
 
 #include <algorithm>
 #include <format>
-#include <llvm/ADT/SetVector.h>
 #include <limits>
+#include <llvm/ADT/SetVector.h>
 #include <ostream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "IRAdaptor.hpp"
 #include "RegisterFile.hpp"
@@ -91,7 +92,7 @@ struct Analyzer {
 
   struct PreciseLivenessInfo {
     // val_local_idx -> list of next-use distances from the start of each block.
-    std::unordered_map<ValLocalIdx, util::SmallVector<u32, 8> > next_uses;
+    std::unordered_map<ValLocalIdx, util::SmallVector<u32, 8>> next_uses;
   };
 
   // pro block liveness info
@@ -133,8 +134,7 @@ struct Analyzer {
   }
 
   void recommend_register(ValLocalIdx value, const Reg reg) {
-    recommended_registers[static_cast<u32>(value)] =
-        reg;
+    recommended_registers[static_cast<u32>(value)] = reg;
   }
 
   [[nodiscard]] Reg
@@ -270,6 +270,8 @@ void Analyzer<Adaptor>::print_liveness(std::ostream &os) const {
 template <IRAdaptor Adaptor>
 void Analyzer<Adaptor>::print_precise_liveness(std::ostream &os) const {
   const u32 num_blocks = static_cast<u32>(block_layout.size());
+  util::SmallVector<u32, 64> block_lengths;
+  block_lengths.resize(num_blocks);
   for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
     os << std::format("  Block {} ({}):\n",
                       block_idx,
@@ -808,526 +810,238 @@ void Analyzer<Adaptor>::identify_loops(
 template <IRAdaptor Adaptor>
 void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
   TPDE_LOG_TRACE("Starting Precise Liveness Analysis");
-  // todo(salto): epochs
-  if constexpr (Adaptor::TPDE_PROVIDES_HIGHEST_VAL_IDX) {
-    liveness_max_value = adaptor->cur_highest_val_idx();
-    if (liveness_max_value >= liveness.size()) {
-      liveness.resize(liveness_max_value + 1);
-    }
-  } else {
-    liveness_max_value = 0;
-  }
+  const u32 num_blocks = static_cast<u32>(block_layout.size());
+  constexpr u32 DEF_BIT = 1u << 31;
+  constexpr u32 INF = std::numeric_limits<u32>::max();
 
-  const auto num_blocks = static_cast<u32>(block_layout.size());
+  // Clear/resize storage
   precise_liveness.resize(num_blocks);
-
-  using BitSet = util::SmallBitSet<256>;
-
-  const auto make_set = [this]() {
-    BitSet set;
-    set.resize(liveness_max_value + 1);
-    set.zero();
-    return set;
-  };
-
-  const auto copy_set = [](const BitSet &src) {
-    BitSet dst;
-    dst.resize(src.bit_size);
-    const auto words = (src.bit_size + 63) / 64;
-    dst.data.resize(words);
-    for (u32 i = 0; i < src.data.size(); ++i) {
-      dst.data[i] = src.data[i];
-    }
-    for (u32 i = src.data.size(); i < words; ++i) {
-      dst.data[i] = 0;
-    }
-    dst.bit_size = src.bit_size;
-    return dst;
-  };
-
-  util::SmallVector<BitSet, SMALL_BLOCK_NUM> live_in, live_out, phi_defs_cache;
-  util::SmallVector<bool, SMALL_BLOCK_NUM> processed, phi_defs_ready;
-  util::SmallVector<u32, SMALL_BLOCK_NUM> block_inst_counts;
-  live_in.resize(num_blocks);
-  live_out.resize(num_blocks);
-  phi_defs_cache.resize(num_blocks);
-  processed.resize(num_blocks);
-  phi_defs_ready.resize(num_blocks);
-  block_inst_counts.resize(num_blocks);
-  for (u32 i = 0; i < num_blocks; ++i) {
-    live_in[i] = make_set();
-    live_out[i] = make_set();
-    phi_defs_cache[i] = make_set();
-    processed[i] = false;
-    phi_defs_ready[i] = false;
-    precise_liveness[i].next_uses.clear();
+  for (auto &pli : precise_liveness) {
+    pli.next_uses.clear();
   }
 
-  const auto is_loop_edge = [this](u32 block_idx,
-                                   const IRBlockRef succ) noexcept -> bool {
-    const auto loop_idx = block_loop_map[block_idx];
-    const auto header_idx = static_cast<u32>(loops[loop_idx].begin);
-    if (header_idx >= block_layout.size()) {
-      return false;
-    }
-    return block_layout[header_idx] == succ;
-  };
+  // Precompute block metadata: lengths, instruction order, and PHI defs.
+  util::SmallVector<u32, SMALL_BLOCK_NUM> block_lengths;
+  block_lengths.resize(num_blocks);
+  util::SmallVector<util::SmallVector<IRInstRef, 16>, SMALL_BLOCK_NUM>
+      block_insts;
+  block_insts.resize(num_blocks);
+  util::SmallVector<util::SmallVector<ValLocalIdx, 8>, SMALL_BLOCK_NUM>
+      block_phi_defs;
+  block_phi_defs.resize(num_blocks);
 
-  const auto ensure_size = [](BitSet &set, const u32 sz) {
-    if (set.bit_size < sz) {
-      const auto old_words = set.data.size();
-      set.resize(sz);
-      for (u32 i = old_words; i < set.data.size(); ++i) {
-        set.data[i] = 0;
-      }
-    } else if (set.data.empty()) {
-      const auto words = (set.bit_size + 63) / 64;
-      set.data.resize(words, 0);
-    }
-  };
-
-  const auto bit_or = [&ensure_size](BitSet &dst, const BitSet &src) {
-    ensure_size(dst, src.bit_size);
-    const auto count = src.data.size();
-    if (dst.data.size() < count) {
-      dst.data.resize(count);
-    }
-    for (u32 i = 0; i < count; ++i) {
-      dst.data[i] |= src.data[i];
-    }
-    dst.bit_size = std::max(dst.bit_size, src.bit_size);
-  };
-
-  const auto add_val = [this, &ensure_size](BitSet &set,
-                                            const IRValueRef val) noexcept {
-    if (adaptor->val_ignore_in_liveness_analysis(val)) {
-      return;
-    }
-    const auto val_idx = static_cast<u32>(adaptor->val_local_idx(val));
-    ensure_size(set, val_idx + 1);
-    set.mark_set(val_idx);
-  };
-
-  const auto reset_set = [](BitSet &target, const BitSet &defs) {
-    for (u32 i = 0; i < defs.data.size(); ++i) {
-      auto bits = defs.data[i];
-      while (bits != 0) {
-        const auto b = static_cast<u32>(__builtin_ctzll(bits));
-        target.mark_unset(i * 64 + b);
-        bits &= bits - 1;
-      }
-    }
-  };
-
-  const auto get_phi_defs = [&](const u32 block_idx) -> BitSet & {
-    auto &defs = phi_defs_cache[block_idx];
-    if (!phi_defs_ready[block_idx]) {
-      const auto block = block_layout[block_idx];
-      for (const IRValueRef phi : adaptor->block_phis(block)) {
-        add_val(defs, phi);
-      }
-      phi_defs_ready[block_idx] = true;
-    }
-    return defs;
-  };
-
-  const auto get_phi_uses = [&](const u32 block_idx) {
-    auto uses = make_set();
-    const auto block = block_layout[block_idx];
-    const auto block_ref = block;
-
-    for (const IRBlockRef succ : adaptor->block_succs(block_ref)) {
-      for (const IRValueRef phi : adaptor->block_phis(succ)) {
-        const auto phi_ref = adaptor->val_as_phi(phi);
-        const auto incoming = phi_ref.incoming_val_for_block(block_ref);
-        if (incoming != Adaptor::INVALID_VALUE_REF) {
-          add_val(uses, incoming);
-        }
-      }
-    }
-    return uses;
-  };
-
-  const auto record_use = [this, &ensure_size](PreciseLivenessInfo &pli,
-                                               BitSet &live,
-                                               const IRValueRef val,
-                                               const u32 pos) {
-    if (adaptor->val_ignore_in_liveness_analysis(val)) {
-      return;
-    }
-    const auto val_idx = adaptor->val_local_idx(val);
-    ensure_size(live, static_cast<u32>(val_idx) + 1);
-    live.mark_set(static_cast<u32>(val_idx));
-    auto &vec = pli.next_uses[val_idx];
-    vec.push_back(pos);
-  };
-
-  const auto recompute_block = [&](const u32 block_idx) {
-    auto live = copy_set(live_out[block_idx]);
-    auto &pli = precise_liveness[block_idx];
-    pli.next_uses.clear();
-
-    const auto block = block_layout[block_idx];
-    util::SmallVector<IRInstRef, SMALL_BLOCK_NUM> insts;
+  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+    const IRBlockRef block = block_layout[block_idx];
+    auto &insts = block_insts[block_idx];
     for (const IRInstRef inst : adaptor->block_insts(block)) {
       insts.push_back(inst);
     }
-    const u32 inst_count = static_cast<u32>(insts.size());
-    block_inst_counts[block_idx] = inst_count;
+    block_lengths[block_idx] = static_cast<u32>(insts.size());
 
-    // Refresh the boundary liveness with up-to-date successor information in
-    // case live_out was not carrying all live values yet (e.g. through
-    // loop-edge updates).
-    for (const IRBlockRef succ : adaptor->block_succs(block)) {
-      const auto succ_idx = adaptor->block_info(succ);
-      ensure_size(live, live_in[succ_idx].bit_size);
-      bit_or(live, live_in[succ_idx]);
-      auto &succ_defs = get_phi_defs(succ_idx);
-      ensure_size(live, succ_defs.bit_size);
-      reset_set(live, succ_defs);
+    auto &phi_def_vec = block_phi_defs[block_idx];
+    for (const IRValueRef phi : adaptor->block_phis(block)) {
+      if (adaptor->val_ignore_in_liveness_analysis(phi)) {
+        continue;
+      }
+      phi_def_vec.push_back(adaptor->val_local_idx(phi));
     }
+  }
 
-    // Account for phi uses in successors at the end of the block.
-    for (const IRBlockRef succ : adaptor->block_succs(block)) {
-      for (const IRValueRef phi : adaptor->block_phis(succ)) {
+  // Build DFS order that skips loop/back edges (successors already on stack).
+  util::SmallVector<u8, SMALL_BLOCK_NUM> dfs_state;
+  dfs_state.resize(num_blocks);
+  util::SmallVector<u32, SMALL_BLOCK_NUM> postorder;
+  postorder.reserve(num_blocks);
+  util::SmallVector<util::SmallVector<u32, 4>, SMALL_BLOCK_NUM> non_loop_succs;
+  non_loop_succs.resize(num_blocks);
+
+  const auto dfs = [&](auto &&self, const u32 block_idx) -> void {
+    dfs_state[block_idx] = 1; // on stack
+    const IRBlockRef block = block_layout[block_idx];
+    for (const IRBlockRef succ_ref : adaptor->block_succs(block)) {
+      const u32 succ_idx = adaptor->block_info(succ_ref);
+      if (dfs_state[succ_idx] == 1) {
+        // loop/back edge, ignore for this analysis
+        continue;
+      }
+      non_loop_succs[block_idx].push_back(succ_idx);
+      if (dfs_state[succ_idx] == 0) {
+        self(self, succ_idx);
+      }
+    }
+    dfs_state[block_idx] = 2;
+    postorder.push_back(block_idx);
+  };
+
+  dfs(dfs, 0);
+
+  // Process blocks so successors are handled before predecessors.
+  for (u32 order_idx = 0; order_idx < postorder.size(); ++order_idx) {
+    const u32 block_idx = postorder[order_idx];
+    const IRBlockRef block = block_layout[block_idx];
+    const u32 block_len = block_lengths[block_idx];
+
+    auto &pli = precise_liveness[block_idx];
+    pli.next_uses.clear();
+
+    // Helper: append only if different from previous entry.
+    const auto append_unique = [](util::SmallVector<u32, 8> &vec,
+                                  const u32 value) {
+      if (vec.empty() || vec.back() != value) {
+        vec.push_back(value);
+      }
+    };
+
+    // Live map holds absolute next-use positions from block start.
+    std::unordered_map<ValLocalIdx, u32> live;
+    live.reserve(block_len + 4);
+    const auto set_live_min = [&live](const ValLocalIdx v, const u32 dist) {
+      auto it = live.find(v);
+      if (it == live.end()) {
+        live.emplace(v, dist);
+      } else if (dist < it->second) {
+        it->second = dist;
+      }
+    };
+
+    const auto is_phi_def =
+        [&block_phi_defs](const util::SmallVector<ValLocalIdx, 8> &defs,
+                          const ValLocalIdx v) {
+          for (const auto def : defs) {
+            if (def == v) {
+              return true;
+            }
+          }
+          return false;
+        };
+
+    // Seed live-out from successors (ignoring loop edges).
+    std::unordered_map<ValLocalIdx, u32> live_out;
+    live_out.reserve(8);
+    for (const u32 succ_idx : non_loop_succs[block_idx]) {
+      const IRBlockRef succ_ref = block_layout[succ_idx];
+
+      // PHI incoming uses in successor at its entry (distance block_len).
+      for (const IRValueRef phi : adaptor->block_phis(succ_ref)) {
         const auto phi_ref = adaptor->val_as_phi(phi);
-        const auto count = phi_ref.incoming_count();
-        for (u32 i = 0; i < count; ++i) {
+        const u32 slot_count = phi_ref.incoming_count();
+        for (u32 i = 0; i < slot_count; ++i) {
           if (phi_ref.incoming_block_for_slot(i) != block) {
             continue;
           }
-          const auto incoming_val = phi_ref.incoming_val_for_slot(i);
-          if (incoming_val == Adaptor::INVALID_VALUE_REF) {
+          const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(i);
+          if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
             continue;
           }
-          record_use(pli, live, incoming_val, inst_count);
+          const auto incoming_idx = adaptor->val_local_idx(incoming_val);
+          const auto dist = block_len;
+          auto it = live_out.find(incoming_idx);
+          if (it == live_out.end()) {
+            live_out.emplace(incoming_idx, dist);
+          } else if (dist < it->second) {
+            it->second = dist;
+          }
+        }
+      }
+
+      // LiveIn(succ) \ PhiDefs(succ)
+      if (succ_idx < precise_liveness.size()) {
+        const auto &succ_info = precise_liveness[succ_idx];
+        const auto &succ_phi_defs = block_phi_defs[succ_idx];
+        for (const auto &entry : succ_info.next_uses) {
+          const ValLocalIdx val_idx = entry.first;
+          if (is_phi_def(succ_phi_defs, val_idx)) {
+            continue;
+          }
+          const auto &succ_vec = entry.second;
+          if (succ_vec.empty()) {
+            continue;
+          }
+          const u32 succ_first = succ_vec[0];
+          if (succ_first == INF) {
+            continue;
+          }
+          if ((succ_first & DEF_BIT) != 0) {
+            // Definition in successor does not require the incoming value.
+            continue;
+          }
+          const u32 dist = block_len + succ_first;
+          auto it = live_out.find(val_idx);
+          if (it == live_out.end()) {
+            live_out.emplace(val_idx, dist);
+          } else if (dist < it->second) {
+            it->second = dist;
+          }
         }
       }
     }
 
-    // Walk instructions backward.
-    for (u32 offset = inst_count; offset > 0; --offset) {
-      const auto inst = insts[offset - 1];
+    // Initialize live set from live_out.
+    live = live_out;
 
-      // Remove defs.
+    // Snapshot helper for current position.
+    const auto snapshot = [&](const u32 pos) {
+      (void)pos;
+      for (const auto &entry : live) {
+        auto &vec = pli.next_uses[entry.first];
+        append_unique(vec, entry.second);
+      }
+    };
+
+    // Walk instructions backwards.
+    const auto &insts = block_insts[block_idx];
+    for (i32 inst_i = static_cast<i32>(insts.size()) - 1; inst_i >= 0;
+         --inst_i) {
+      const IRInstRef inst = insts[static_cast<u32>(inst_i)];
+
+      // Add operand uses.
+      for (const IRValueRef operand : adaptor->inst_operands(inst)) {
+        if (adaptor->val_ignore_in_liveness_analysis(operand)) {
+          continue;
+        }
+        set_live_min(adaptor->val_local_idx(operand), static_cast<u32>(inst_i));
+      }
+
+      // Register definitions with DEF_BIT.
       for (const IRValueRef res : adaptor->inst_results(inst)) {
         if (adaptor->val_ignore_in_liveness_analysis(res)) {
           continue;
         }
-        const auto val_idx = static_cast<u32>(adaptor->val_local_idx(res));
-        ensure_size(live, val_idx + 1);
-        live.mark_unset(val_idx);
+        live[adaptor->val_local_idx(res)] = DEF_BIT | static_cast<u32>(inst_i);
       }
 
-      // Add uses.
-      for (const IRValueRef operand : adaptor->inst_operands(inst)) {
-        record_use(pli, live, operand, offset - 1);
-      }
+      snapshot(static_cast<u32>(inst_i));
     }
 
-    // Add phi definitions.
-    for (const IRValueRef phi : adaptor->block_phis(block)) {
-      add_val(live, phi);
-
-      // Phis are defined on the incoming edge, so their next-use distance from
-      // the start of the block is 0.
-      if (!adaptor->val_ignore_in_liveness_analysis(phi)) {
-        const auto val_idx = adaptor->val_local_idx(phi);
-        pli.next_uses[val_idx].push_back(0);
-      }
+    // Handle PHI definitions at position 0.
+    for (const ValLocalIdx phi_def : block_phi_defs[block_idx]) {
+      auto &vec = pli.next_uses[phi_def];
+      append_unique(vec, DEF_BIT | 0u);
     }
 
-    live_in[block_idx] = std::move(live);
-  };
-
-  const auto dag_dfs = [&](auto &&self, const u32 block_idx) -> void {
-    const auto block_ref = block_layout[block_idx];
-    processed[block_idx] = true;
-    // Recurse on DAG edges.
-    for (const IRBlockRef succ : adaptor->block_succs(block_ref)) {
-      const auto succ_idx = adaptor->block_info(succ);
-      if (is_loop_edge(block_idx, succ)) {
-        continue;
-      }
-      if (!processed[succ_idx]) {
-        self(self, succ_idx);
-      }
+    // Push final entry (live-out distance or INF if dead).
+    // Collect keys from both current vectors and live_out.
+    std::unordered_set<ValLocalIdx> keys;
+    keys.reserve(pli.next_uses.size() + live_out.size());
+    for (const auto &e : pli.next_uses) {
+      keys.insert(e.first);
+    }
+    for (const auto &e : live_out) {
+      keys.insert(e.first);
     }
 
-    auto live = get_phi_uses(block_idx);
-
-    // Merge successors.
-    for (const IRBlockRef succ : adaptor->block_succs(block_ref)) {
-      const auto succ_idx = adaptor->block_info(succ);
-      if (is_loop_edge(block_idx, succ)) {
-        continue;
+    for (const auto &k : keys) {
+      auto &vec = pli.next_uses[k];
+      if (!vec.empty()) {
+        std::reverse(vec.begin(), vec.end());
       }
-
-      ensure_size(live, live_in[succ_idx].bit_size);
-      bit_or(live, live_in[succ_idx]);
-      auto &succ_defs = get_phi_defs(succ_idx);
-      ensure_size(live, succ_defs.bit_size);
-      reset_set(live, succ_defs);
-    }
-
-    live_out[block_idx] = std::move(live);
-    recompute_block(block_idx);
-
-  };
-
-  // Entry is at index 0 in block_layout.
-  if (num_blocks != 0) {
-    dag_dfs(dag_dfs, 0);
-  }
-
-  // Incorporate loop-edge contributions.
-  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
-    const auto block_ref = block_layout[block_idx];
-    auto &live = live_out[block_idx];
-    for (const IRBlockRef succ : adaptor->block_succs(block_ref)) {
-      if (!is_loop_edge(block_idx, succ)) {
-        continue;
-      }
-      const auto succ_idx = adaptor->block_info(succ);
-      ensure_size(live, live_in[succ_idx].bit_size);
-      bit_or(live, live_in[succ_idx]);
-      auto &succ_defs = get_phi_defs(succ_idx);
-      ensure_size(live, succ_defs.bit_size);
-      reset_set(live, succ_defs);
+      const auto it = live_out.find(k);
+      const u32 tail = (it == live_out.end()) ? INF : it->second;
+      append_unique(vec, tail);
     }
   }
 
-  // Recompute LiveIn using updated LiveOut (and refresh next-use info).
-  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
-    recompute_block(block_idx);
-  }
-
-  // Propagate loop-header liveness through the loop tree so that values that
-  // enter a loop are treated as live throughout its body. We reuse the
-  // next-use distances by seeding contained blocks with a live-out distance
-  // equal to the block length.
-  util::SmallVector<util::SmallVector<u32, SMALL_BLOCK_NUM>, 16> loop_children;
-  util::SmallVector<util::SmallVector<u32, SMALL_BLOCK_NUM>, 16>
-      loop_direct_blocks;
-  loop_children.resize(loops.size());
-  loop_direct_blocks.resize(loops.size());
-
-  // Build loop tree.
-  for (u32 loop_idx = 1; loop_idx < loops.size(); ++loop_idx) {
-    loop_children[loops[loop_idx].parent].push_back(loop_idx);
-  }
-  // Collect blocks that belong directly to each loop.
-  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
-    const auto loop_idx = block_loop_map[block_idx];
-    if (loop_idx < loop_direct_blocks.size()) {
-      loop_direct_blocks[loop_idx].push_back(block_idx);
-    }
-  }
-
-  const auto apply_live_loop_to_block = [&](const u32 block_idx,
-                                            const BitSet &live_loop) {
-    auto &block_live_in = live_in[block_idx];
-    auto &block_live_out = live_out[block_idx];
-    bit_or(block_live_in, live_loop);
-    bit_or(block_live_out, live_loop);
-
-    auto &pli = precise_liveness[block_idx];
-    const u32 inst_count = block_inst_counts[block_idx];
-
-    for (u32 word_idx = 0; word_idx < live_loop.data.size(); ++word_idx) {
-      auto bits = live_loop.data[word_idx];
-      while (bits != 0) {
-        const auto bit = static_cast<u32>(__builtin_ctzll(bits));
-        const auto val_idx =
-            static_cast<ValLocalIdx>(word_idx * 64 + bit);
-        pli.next_uses[val_idx].push_back(inst_count);
-        bits &= bits - 1;
-      }
-    }
-  };
-
-  const auto loop_tree_dfs = [&](auto &&self, const u32 loop_idx) -> void {
-    const auto header_idx = static_cast<u32>(loops[loop_idx].begin);
-    if (header_idx >= num_blocks) {
-      return;
-    }
-
-    auto live_loop = copy_set(live_in[header_idx]);
-    reset_set(live_loop, get_phi_defs(header_idx));
-
-    // Visit direct block children (excluding the header itself).
-    for (const u32 block_idx : loop_direct_blocks[loop_idx]) {
-      if (block_idx == header_idx) {
-        continue;
-      }
-      apply_live_loop_to_block(block_idx, live_loop);
-    }
-
-    // Recurse into nested loops after seeding their headers.
-    for (const u32 child_loop_idx : loop_children[loop_idx]) {
-      const auto child_header_idx =
-          static_cast<u32>(loops[child_loop_idx].begin);
-      if (child_header_idx < num_blocks) {
-        apply_live_loop_to_block(child_header_idx, live_loop);
-      }
-      self(self, child_loop_idx);
-    }
-  };
-
-  if (!loops.empty()) {
-    loop_tree_dfs(loop_tree_dfs, 0);
-  }
-
-  const auto sort_and_dedupe = [](auto &vec) {
-    std::sort(vec.begin(), vec.end());
-    vec.erase(std::unique(vec.begin(), vec.end()), vec.end());
-  };
-
-  // Finalize next-use distances: ensure they are distances from the block
-  // start, append the correct tail (either live-out distance or u32::max),
-  // and keep them sorted/deduplicated.
-  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
-    auto &pli = precise_liveness[block_idx];
-    const u32 inst_count = block_inst_counts[block_idx];
-    const auto &live_out_bits = live_out[block_idx];
-
-    // Make sure all live-out values have an entry so we can append the proper
-    // tail even when the value is only live-out through this block.
-    for (u32 word_idx = 0; word_idx < live_out_bits.data.size(); ++word_idx) {
-      auto bits = live_out_bits.data[word_idx];
-      while (bits != 0) {
-        const auto bit = static_cast<u32>(__builtin_ctzll(bits));
-        const auto val_idx = static_cast<ValLocalIdx>(word_idx * 64 + bit);
-        (void)pli.next_uses[val_idx];
-        bits &= bits - 1;
-      }
-    }
-
-    // Likewise ensure all live-in values are tracked; some may have no local
-    // uses but are needed immediately in successors.
-    const auto &live_in_bits = live_in[block_idx];
-    for (u32 word_idx = 0; word_idx < live_in_bits.data.size(); ++word_idx) {
-      auto bits = live_in_bits.data[word_idx];
-      while (bits != 0) {
-        const auto bit = static_cast<u32>(__builtin_ctzll(bits));
-        const auto val_idx = static_cast<ValLocalIdx>(word_idx * 64 + bit);
-        (void)pli.next_uses[val_idx];
-        bits &= bits - 1;
-      }
-    }
-
-    // Pull in successor knowledge so we track all values that are live to any
-    // successor (even if they are not live-out here yet).
-    for (const IRBlockRef succ : adaptor->block_succs(block_layout[block_idx])) {
-      const auto succ_idx = adaptor->block_info(succ);
-      const auto &succ_next = precise_liveness[succ_idx].next_uses;
-      const auto &succ_live_in_bits = live_in[succ_idx];
-
-      // Collect defs in the successor so we avoid seeding values that are
-      // produced there (and therefore not yet available).
-      auto succ_defs_bits = make_set();
-      const auto succ_block = block_layout[succ_idx];
-      for (const IRValueRef phi : adaptor->block_phis(succ_block)) {
-        add_val(succ_defs_bits, phi);
-      }
-      for (const IRInstRef succ_inst : adaptor->block_insts(succ_block)) {
-        for (const IRValueRef res : adaptor->inst_results(succ_inst)) {
-          add_val(succ_defs_bits, res);
-        }
-      }
-
-      // Seed from successor live-in set to ensure values needed immediately in
-      // successors are tracked here.
-      for (u32 word_idx = 0; word_idx < succ_live_in_bits.data.size();
-           ++word_idx) {
-        auto bits = succ_live_in_bits.data[word_idx];
-        while (bits != 0) {
-          const auto bit = static_cast<u32>(__builtin_ctzll(bits));
-          const auto val_idx =
-              static_cast<ValLocalIdx>(word_idx * 64 + bit);
-          (void)pli.next_uses[val_idx];
-          bits &= bits - 1;
-        }
-      }
-
-      // Also pick up successor next-use knowledge, but only for values that are
-      // not defined in the successor (to avoid pulling in defs created there).
-      for (const auto &succ_entry : succ_next) {
-        const auto val_idx = static_cast<u32>(succ_entry.first);
-        const bool succ_defines_val =
-            val_idx < succ_defs_bits.bit_size &&
-            (succ_defs_bits.data.size() > (val_idx >> 6)) &&
-            succ_defs_bits.is_set(val_idx);
-        if (succ_defines_val) {
-          continue;
-        }
-        (void)pli.next_uses[succ_entry.first];
-      }
-    }
-
-    // Sort/deduplicate existing vectors before tail processing so we can rely
-    // on front/back.
-    for (auto &entry : pli.next_uses) {
-      sort_and_dedupe(entry.second);
-    }
-
-
-    for (auto &entry : pli.next_uses) {
-      const auto val_idx = static_cast<u32>(entry.first);
-      auto &vec = entry.second;
-
-      const auto block_ref = block_layout[block_idx];
-      u32 min_succ_first = std::numeric_limits<u32>::max();
-      bool live_in_successor = false;
-      for (const IRBlockRef succ : adaptor->block_succs(block_ref)) {
-        const auto succ_idx = adaptor->block_info(succ);
-        const auto &succ_live_in_bits = live_in[succ_idx];
-        const bool succ_has_live_in =
-            val_idx < succ_live_in_bits.bit_size &&
-            (succ_live_in_bits.data.size() > (val_idx >> 6)) &&
-            succ_live_in_bits.is_set(val_idx);
-
-        const auto &succ_next = precise_liveness[succ_idx].next_uses;
-        const auto succ_it =
-            succ_next.find(static_cast<ValLocalIdx>(val_idx));
-        const bool succ_has_entry = succ_it != succ_next.end();
-
-        if (!succ_has_live_in && !succ_has_entry) {
-          continue;
-        }
-
-        live_in_successor = true;
-
-        if (succ_has_entry && !succ_it->second.empty()) {
-          min_succ_first = std::min(min_succ_first, succ_it->second.front());
-        } else if (succ_has_live_in) {
-          // Live-in without recorded uses; treat next use as the successor
-          // block start so we do not fall back to u32::max.
-          min_succ_first = 0;
-        }
-      }
-
-      u32 tail = std::numeric_limits<u32>::max();
-      if (live_in_successor && min_succ_first != std::numeric_limits<u32>::max()) {
-        tail = inst_count + min_succ_first;
-      }
-
-      if (vec.empty()) {
-        vec.push_back(tail);
-      } else if (vec.back() != tail) {
-        if (vec.back() > tail) {
-          vec.back() = tail;
-        } else {
-          vec.push_back(tail);
-        }
-      }
-    }
-  }
-
-  // Debug output: emit next-use distances for each block. Distances are
-  // measured from the start of the block; the final entry is either
-  // block.len + min(next use in successors) for live-out values or u32::max
-  // when the value is dead after its last in-block use.
+  // Debug output: emit next-use distances for each block.
   for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
     const auto block_ref = block_layout[block_idx];
     const auto &pli = precise_liveness[block_idx];
@@ -1349,9 +1063,14 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
         line += std::format("val {}: [", val_idx);
         for (u32 i = 0; i < uses.size(); ++i) {
           if (i != 0) {
-            line += ",";
+            line += ", ";
           }
-          line += std::format("{}", uses[i]);
+          const auto dist = uses[i];
+          if (dist == std::numeric_limits<u32>::max()) {
+            line += "inf";
+          } else {
+            line += std::format("{}", dist);
+          }
         }
         line += "]";
       }
