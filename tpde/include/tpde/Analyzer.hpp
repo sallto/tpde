@@ -816,6 +816,8 @@ template <IRAdaptor Adaptor>
 void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
   TPDE_LOG_TRACE("Starting Precise Liveness Analysis");
   const u32 num_blocks = static_cast<u32>(block_layout.size());
+  // if the next use is "across" a loop, assign a penaltiy to encorouge spilling this var before the loop.
+  static constexpr u32 LOOP_EXIT_PENALTY = 1'000'000'000u;
 
 
   // Clear/resize storage
@@ -910,6 +912,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
 
   for (u32 order_idx = 0; order_idx < postorder.size(); ++order_idx) {
     const u32 block_idx = postorder[order_idx];
+    const u32 cur_loop_idx = block_loop_map[block_idx];
     const IRBlockRef block = block_layout[block_idx];
     const u32 block_len = block_lengths[block_idx];
     const u32 phi_count = static_cast<u32>(block_phi_defs[block_idx].size());
@@ -941,8 +944,27 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
     // Seed live-out from successors (ignoring loop edges).
     std::unordered_map<ValLocalIdx, u32> live_out;
     live_out.reserve(8);
+    const auto is_loop_exit_edge = [&](const u32 succ_idx) -> bool {
+      const u32 succ_loop_idx = block_loop_map[succ_idx];
+      if (succ_loop_idx == cur_loop_idx) {
+        return false;
+      }
+      // Exiting the current loop means the successor is an ancestor in the loop
+      // tree (moving outward).
+      auto loop_it = cur_loop_idx;
+      while (loop_it != 0u) {
+        loop_it = loops[loop_it].parent;
+        if (loop_it == succ_loop_idx) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     for (const u32 succ_idx : non_loop_succs[block_idx]) {
       const IRBlockRef succ_ref = block_layout[succ_idx];
+      const u32 exit_penalty =
+          is_loop_exit_edge(succ_idx) ? LOOP_EXIT_PENALTY : 0u;
 
       // PHI incoming uses in successor at its entry (distance block_len).
       for (const IRValueRef phi : adaptor->block_phis(succ_ref)) {
@@ -957,7 +979,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
             continue;
           }
           const auto incoming_idx = adaptor->val_local_idx(incoming_val);
-          const auto dist = block_span;
+          const auto dist = block_span + exit_penalty;
           auto it = live_out.find(incoming_idx);
           if (it == live_out.end()) {
             live_out.emplace(incoming_idx, dist);
@@ -988,7 +1010,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
             // Definition in successor does not require the incoming value.
             continue;
           }
-          const u32 dist = block_span + succ_first;
+          const u32 dist = block_span + exit_penalty + succ_first;
           auto it = live_out.find(val_idx);
           if (it == live_out.end()) {
             live_out.emplace(val_idx, dist);
@@ -1041,7 +1063,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
     // Handle PHI definitions at position 0.
     for (const ValLocalIdx phi_def : block_phi_defs[block_idx]) {
       auto &vec = pli.next_uses[phi_def];
-      append_unique(vec, DEF_BIT | 0u);
+      //append_unique(vec, DEF_BIT | 0u);
     }
 
     // Push final entry (live-out distance or INF if dead).
@@ -1168,6 +1190,9 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
           }
         }
       }
+
+      // Ensure loop-carried values are live through the header as well.
+      ensure_live_in_out(header_block_idx, live_loop);
 
       for (const auto child_block : loop_blocks[loop_idx]) {
         if (child_block == header_block_idx) {
