@@ -90,6 +90,9 @@ struct Analyzer {
   u16 liveness_epoch = 0;
   u32 liveness_max_value;
 
+  static constexpr u32 DEF_BIT = 1u << 31;
+  static constexpr u32 INF = std::numeric_limits<u32>::max();
+
   struct PreciseLivenessInfo {
     // val_local_idx -> list of next-use distances from the start of each block.
     std::unordered_map<ValLocalIdx, util::SmallVector<u32, 8>> next_uses;
@@ -311,6 +314,8 @@ void Analyzer<Adaptor>::print_precise_liveness(std::ostream &os) const {
         const auto dist = uses[i];
         if (dist == std::numeric_limits<u32>::max()) {
           os << "inf";
+        } else if ((dist & DEF_BIT) != 0) {
+          os << std::format("def@{}", dist & ~DEF_BIT);
         } else {
           os << dist;
         }
@@ -811,8 +816,7 @@ template <IRAdaptor Adaptor>
 void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
   TPDE_LOG_TRACE("Starting Precise Liveness Analysis");
   const u32 num_blocks = static_cast<u32>(block_layout.size());
-  constexpr u32 DEF_BIT = 1u << 31;
-  constexpr u32 INF = std::numeric_limits<u32>::max();
+
 
   // Clear/resize storage
   precise_liveness.resize(num_blocks);
@@ -876,10 +880,40 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
   dfs(dfs, 0);
 
   // Process blocks so successors are handled before predecessors.
+  const auto is_phi_def = [](const util::SmallVector<ValLocalIdx, 8> &defs,
+                             const ValLocalIdx v) {
+    for (const auto def : defs) {
+      if (def == v) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const auto is_live_in = [&](const u32 block_idx,
+                              const ValLocalIdx val_idx) noexcept {
+    const auto &pli = precise_liveness[block_idx];
+    const auto it = pli.next_uses.find(val_idx);
+    if (it == pli.next_uses.end()) {
+      return false;
+    }
+    const auto &vec = it->second;
+    if (vec.empty()) {
+      return false;
+    }
+    const auto first = vec.front();
+    if (first == INF) {
+      return false;
+    }
+    return (first & DEF_BIT) == 0;
+  };
+
   for (u32 order_idx = 0; order_idx < postorder.size(); ++order_idx) {
     const u32 block_idx = postorder[order_idx];
     const IRBlockRef block = block_layout[block_idx];
     const u32 block_len = block_lengths[block_idx];
+    const u32 phi_count = static_cast<u32>(block_phi_defs[block_idx].size());
+    const u32 block_span = block_len + phi_count;
 
     auto &pli = precise_liveness[block_idx];
     pli.next_uses.clear();
@@ -894,7 +928,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
 
     // Live map holds absolute next-use positions from block start.
     std::unordered_map<ValLocalIdx, u32> live;
-    live.reserve(block_len + 4);
+    live.reserve(block_span + 4);
     const auto set_live_min = [&live](const ValLocalIdx v, const u32 dist) {
       auto it = live.find(v);
       if (it == live.end()) {
@@ -903,17 +937,6 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
         it->second = dist;
       }
     };
-
-    const auto is_phi_def =
-        [&block_phi_defs](const util::SmallVector<ValLocalIdx, 8> &defs,
-                          const ValLocalIdx v) {
-          for (const auto def : defs) {
-            if (def == v) {
-              return true;
-            }
-          }
-          return false;
-        };
 
     // Seed live-out from successors (ignoring loop edges).
     std::unordered_map<ValLocalIdx, u32> live_out;
@@ -934,7 +957,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
             continue;
           }
           const auto incoming_idx = adaptor->val_local_idx(incoming_val);
-          const auto dist = block_len;
+          const auto dist = block_span;
           auto it = live_out.find(incoming_idx);
           if (it == live_out.end()) {
             live_out.emplace(incoming_idx, dist);
@@ -965,7 +988,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
             // Definition in successor does not require the incoming value.
             continue;
           }
-          const u32 dist = block_len + succ_first;
+          const u32 dist = block_span + succ_first;
           auto it = live_out.find(val_idx);
           if (it == live_out.end()) {
             live_out.emplace(val_idx, dist);
@@ -999,7 +1022,8 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
         if (adaptor->val_ignore_in_liveness_analysis(operand)) {
           continue;
         }
-        set_live_min(adaptor->val_local_idx(operand), static_cast<u32>(inst_i));
+        set_live_min(adaptor->val_local_idx(operand),
+                     static_cast<u32>(inst_i) + phi_count);
       }
 
       // Register definitions with DEF_BIT.
@@ -1007,10 +1031,11 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
         if (adaptor->val_ignore_in_liveness_analysis(res)) {
           continue;
         }
-        live[adaptor->val_local_idx(res)] = DEF_BIT | static_cast<u32>(inst_i);
+        live[adaptor->val_local_idx(res)] =
+            DEF_BIT | (static_cast<u32>(inst_i) + phi_count);
       }
 
-      snapshot(static_cast<u32>(inst_i));
+      snapshot(static_cast<u32>(inst_i) + phi_count);
     }
 
     // Handle PHI definitions at position 0.
@@ -1038,6 +1063,128 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
       const auto it = live_out.find(k);
       const u32 tail = (it == live_out.end()) ? INF : it->second;
       append_unique(vec, tail);
+    }
+  }
+
+  // Propagate loop-carried liveness without fixed-point iteration.
+  {
+    util::SmallVector<util::SmallVector<u32, 8>, 16> loop_children;
+    loop_children.resize(loops.size());
+    for (u32 loop_idx = 1; loop_idx < loops.size(); ++loop_idx) {
+      const auto parent = loops[loop_idx].parent;
+      if (parent < loop_children.size()) {
+        loop_children[parent].push_back(loop_idx);
+      }
+    }
+
+    util::SmallVector<util::SmallVector<u32, SMALL_BLOCK_NUM>, 16> loop_blocks;
+    loop_blocks.resize(loops.size());
+    for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+      const u32 loop_idx = block_loop_map[block_idx];
+      loop_blocks[loop_idx].push_back(block_idx);
+    }
+
+    const auto ensure_live_in_out =
+        [&](const u32 block_idx,
+            const util::SmallVector<ValLocalIdx, 16> &live_vals) {
+          if (live_vals.empty()) {
+            return;
+          }
+
+          auto &pli = precise_liveness[block_idx];
+          auto &map = pli.next_uses;
+          const u32 block_len = block_lengths[block_idx];
+          const u32 block_span =
+              block_len + static_cast<u32>(block_phi_defs[block_idx].size());
+
+          for (const auto val_idx : live_vals) {
+            auto &vec = map[val_idx];
+            if (vec.empty()) {
+              vec.push_back(0);
+              vec.push_back(block_span);
+              continue;
+            }
+
+            const auto first = vec.front();
+            if (first == INF) {
+              vec.front() = 0;
+            } else if ((first & DEF_BIT) != 0) {
+              // already defined in block; keep position as-is
+            } else if (first > 0) {
+              const auto orig_size = static_cast<u32>(vec.size());
+              vec.resize(orig_size + 1);
+              for (u32 i = orig_size; i > 0; --i) {
+                vec[i] = vec[i - 1];
+              }
+              vec[0] = 0;
+            }
+
+            auto &tail = vec.back();
+            if (tail == INF) {
+              tail = block_span;
+            } else if ((tail & DEF_BIT) != 0) {
+              vec.push_back(block_span);
+            } else if (tail > block_span) {
+              tail = block_span;
+            }
+          }
+        };
+
+    const auto loop_tree_dfs = [&](const auto &self,
+                                   const u32 loop_idx) -> void {
+      const auto header_block_idx = static_cast<u32>(loops[loop_idx].begin);
+      const auto &header_phi_defs = block_phi_defs[header_block_idx];
+
+      util::SmallVector<ValLocalIdx, 16> live_loop;
+      {
+        const auto &header_pl = precise_liveness[header_block_idx];
+        for (const auto &entry : header_pl.next_uses) {
+          const auto val_idx = entry.first;
+          if (!is_live_in(header_block_idx, val_idx)) {
+            continue;
+          }
+          if (is_phi_def(header_phi_defs, val_idx)) {
+            continue;
+          }
+          live_loop.push_back(val_idx);
+        }
+        const IRBlockRef header_block = block_layout[header_block_idx];
+        for (const IRValueRef phi : adaptor->block_phis(header_block)) {
+          const auto phi_ref = adaptor->val_as_phi(phi);
+          const u32 slot_count = phi_ref.incoming_count();
+          for (u32 i = 0; i < slot_count; ++i) {
+            const IRBlockRef incoming_block =
+                phi_ref.incoming_block_for_slot(i);
+            const u32 incoming_idx = adaptor->block_info(incoming_block);
+            if (block_loop_map[incoming_idx] != loop_idx) {
+              continue;
+            }
+            const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(i);
+            if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+              continue;
+            }
+            const auto val_idx = adaptor->val_local_idx(incoming_val);
+            live_loop.push_back(val_idx);
+          }
+        }
+      }
+
+      for (const auto child_block : loop_blocks[loop_idx]) {
+        if (child_block == header_block_idx) {
+          continue;
+        }
+        ensure_live_in_out(child_block, live_loop);
+      }
+
+      for (const auto child_loop : loop_children[loop_idx]) {
+        const auto child_header = static_cast<u32>(loops[child_loop].begin);
+        ensure_live_in_out(child_header, live_loop);
+        self(self, child_loop);
+      }
+    };
+
+    for (const auto root_loop : loop_children[0]) {
+      loop_tree_dfs(loop_tree_dfs, root_loop);
     }
   }
 
@@ -1069,7 +1216,11 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
           if (dist == std::numeric_limits<u32>::max()) {
             line += "inf";
           } else {
-            line += std::format("{}", dist);
+            if ((dist & DEF_BIT) != 0) {
+              line += std::format("def@{}", dist & ~DEF_BIT);
+            } else {
+              line += std::format("{}", dist);
+            }
           }
         }
         line += "]";
