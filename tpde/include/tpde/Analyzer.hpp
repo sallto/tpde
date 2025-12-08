@@ -952,8 +952,8 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
     auto &pli = precise_liveness[block_idx];
     pli.next_uses.clear();
 
-    const auto push_next_use =
-        [](util::SmallVector<u32, 8> &vec, const u32 value) {
+    const auto push_next_use = [](util::SmallVector<u32, 8> &vec,
+                                  const u32 value) {
       vec.push_back(value);
     };
 
@@ -1021,33 +1021,33 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
           is_loop_exit_edge(succ_idx) ? LOOP_EXIT_PENALTY : 0u;
 
       // LiveIn(succ) \ PhiDefs(succ)
-      if (succ_idx < precise_liveness.size()) {
-        const auto &succ_info = precise_liveness[succ_idx];
-        const auto &succ_phi_defs = block_phi_defs_for(succ_idx);
-        for (const auto &entry : succ_info.next_uses) {
-          const ValLocalIdx val_idx = entry.first;
-          if (is_phi_def(succ_phi_defs, val_idx)) {
-            continue;
-          }
-          const auto &succ_vec = entry.second;
-          if (succ_vec.empty()) {
-            continue;
-          }
-          const u32 succ_first = succ_vec[0];
-          if (succ_first == INF) {
-            continue;
-          }
-          if ((succ_first & DEF_BIT) != 0) {
-            // Definition in successor does not require the incoming value.
-            continue;
-          }
-          const u32 dist = block_span_with_phis + exit_penalty + succ_first;
-          auto it = live_out.find(val_idx);
-          if (it == live_out.end()) {
-            live_out.emplace(val_idx, dist);
-          } else if (dist < it->second) {
-            it->second = dist;
-          }
+      assert(succ_idx < precise_liveness.size());
+
+      const auto &succ_info = precise_liveness[succ_idx];
+      const auto &succ_phi_defs = block_phi_defs_for(succ_idx);
+      for (const auto &entry : succ_info.next_uses) {
+        const ValLocalIdx val_idx = entry.first;
+        if (is_phi_def(succ_phi_defs, val_idx)) {
+          continue;
+        }
+        const auto &succ_vec = entry.second;
+        if (succ_vec.empty()) {
+          continue;
+        }
+        const u32 succ_first = succ_vec[0];
+        if (succ_first == INF) {
+          continue;
+        }
+        if ((succ_first & DEF_BIT) != 0) {
+          // Definition in successor does not require the incoming value.
+          continue;
+        }
+        const u32 dist = block_span_with_phis + exit_penalty + succ_first;
+        // choose the smallest possible distance from all successors
+        if (auto it = live_out.find(val_idx); it == live_out.end()) {
+          live_out.emplace(val_idx, dist);
+        } else if (dist < it->second) {
+          it->second = dist;
         }
       }
     }
@@ -1090,7 +1090,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
     // Handle PHI definitions at position 0.
     for (const ValLocalIdx phi_def : block_phi_defs_for(block_idx)) {
       (void)pli.next_uses[phi_def];
-      push_next_use(pli.next_uses[phi_def], DEF_BIT | 0u);
+      push_next_use(pli.next_uses[phi_def], DEF_BIT);
     }
 
     // Push final entry (live-out distance or INF if dead).
