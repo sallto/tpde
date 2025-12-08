@@ -8,7 +8,6 @@
 #include <limits>
 #include <llvm/ADT/SetVector.h>
 #include <ostream>
-#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -983,12 +982,11 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
       return false;
     };
 
-    for (const u32 succ_idx : non_loop_succs[block_idx]) {
-      const IRBlockRef succ_ref = block_layout[succ_idx];
+    const auto add_phi_incoming = [&](const u32 succ_idx,
+                                      const IRBlockRef succ_ref) {
       const u32 exit_penalty =
           is_loop_exit_edge(succ_idx) ? LOOP_EXIT_PENALTY : 0u;
 
-      // PHI incoming uses in successor at its entry (distance block_len).
       for (const IRValueRef phi : adaptor->block_phis(succ_ref)) {
         const auto phi_ref = adaptor->val_as_phi(phi);
         const u32 slot_count = phi_ref.incoming_count();
@@ -1010,6 +1008,17 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
           }
         }
       }
+    };
+
+    // Account for PHI uses on all successor edges, including loop/back edges.
+    for (const IRBlockRef succ_ref : adaptor->block_succs(block)) {
+      const u32 succ_idx = adaptor->block_info(succ_ref);
+      add_phi_incoming(succ_idx, succ_ref);
+    }
+
+    for (const u32 succ_idx : non_loop_succs[block_idx]) {
+      const u32 exit_penalty =
+          is_loop_exit_edge(succ_idx) ? LOOP_EXIT_PENALTY : 0u;
 
       // LiveIn(succ) \ PhiDefs(succ)
       if (succ_idx < precise_liveness.size()) {
@@ -1146,13 +1155,6 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
             if (first == INF) {
               vec.front() = 0;
             } else if ((first & DEF_BIT) != 0) {
-            } else if (first > 0) {
-              const auto orig_size = static_cast<u32>(vec.size());
-              vec.resize(orig_size + 1);
-              for (u32 i = orig_size; i > 0; --i) {
-                vec[i] = vec[i - 1];
-              }
-              vec[0] = 0;
             }
 
             auto &tail = vec.back();
@@ -1160,7 +1162,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
               tail = block_span;
             } else if ((tail & DEF_BIT) != 0) {
               vec.push_back(block_span);
-            } else if (tail > block_span) {
+            } else if (tail < block_span) {
               tail = block_span;
             }
           }
