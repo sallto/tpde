@@ -980,12 +980,16 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
           }
           const auto incoming_idx = adaptor->val_local_idx(incoming_val);
           const auto dist = block_span_with_phis + exit_penalty;
-          auto it = live_out.find(incoming_idx);
-          if (it == live_out.end()) {
-            live_out.emplace(incoming_idx, dist);
-          } else if (dist < it->second) {
-            it->second = dist;
+
+          if (!pli.next_uses.contains(incoming_idx)) {
+            pli.next_uses[incoming_idx].push_back(dist);
+            continue;
           }
+
+
+          // choose the smallest possible distance from all successors
+          pli.next_uses[incoming_idx].back() =
+              std::min(pli.next_uses[incoming_idx].back(), dist);
         }
       }
     };
@@ -1051,10 +1055,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
           continue;
         }
 
-        const u32 succ_first = succ_vec[0];
-        if (is_phi_def(succ_idx, succ_first)) {
-          continue;
-        }
+        u32 succ_first = succ_vec[0];
         if (succ_first == INF) {
           continue;
         }
@@ -1110,15 +1111,14 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
           for (const auto val_idx : live_vals) {
             auto &vec = map[val_idx];
             if (vec.empty()) {
-              vec.push_back(0);
+              //vec.push_back(0);
               vec.push_back(block_span);
               continue;
             }
 
-            const auto first = vec.front();
+            auto &first = vec.front();
             if (first == INF) {
-              vec.front() = 0;
-            } else if ((first & DEF_BIT) != 0) {
+              first = 0;
             }
 
             auto &tail = vec.back();

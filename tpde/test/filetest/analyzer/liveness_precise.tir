@@ -1,0 +1,307 @@
+; SPDX-FileCopyrightText: 2025 Contributors to TPDE <https://tpde.org>
+;
+; SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+; RUN: %tpde_test --run-until=analyzer --precise-liveness --print-liveness %s | FileCheck %s --dump-input always
+
+; CHECK: Liveness for simple
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [0, inf]
+; CHECK-NEXT: End Liveness
+define @simple(%a, %b) {
+entry:
+  ret %a
+}
+
+; CHECK: Liveness for more
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [0, inf]
+; CHECK-NEXT: End Liveness
+define @more(%a, %b, %c) {
+entry:
+  ret %a
+}
+
+; CHECK: Liveness for def
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [0, inf]
+; CHECK-NEXT:     val 1: [def@0, 1, inf]
+; CHECK-NEXT: End Liveness
+define @def(%a) {
+entry:
+    %b = add %a, %a
+    ret %b
+}
+
+; CHECK: Liveness for multiuse
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [0, 1, inf]
+; CHECK-NEXT:     val 1: [0, inf]
+; CHECK-NEXT:     val 3: [def@0, 2, inf]
+; CHECK-NEXT:     val 4: [def@1, inf]
+; CHECK-NEXT: End Liveness
+define @multiuse(%a, %b, %c) {
+entry:
+  %d = add %a, %b
+  %e = add %a, %a
+  ret %d
+}
+
+; CHECK: Liveness for gap
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [0, 1, 2, 3, inf]
+; CHECK-NEXT:     val 1: [def@0, 4, inf]
+; CHECK-NEXT:     val 2: [def@1, inf]
+; CHECK-NEXT:     val 3: [def@2, inf]
+; CHECK-NEXT:     val 4: [def@3, inf]
+; CHECK-NEXT: End Liveness
+define @gap(%a) {
+entry:
+    %b = add %a, %a
+    %c = add %a, %a
+    %d = add %a, %a
+    %e = add %a, %a
+    ret %b
+}
+
+; CHECK: Liveness for gap_block
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [0, 2]
+; CHECK-NEXT:     val 1: [def@0, 2]
+; CHECK-NEXT:   Block 1 (b1):
+; CHECK-NEXT:     val 0: [0, inf]
+; CHECK-NEXT:     val 1: [0, inf]
+; CHECK-NEXT:     val 3: [def@0, 1, inf]
+; CHECK-NEXT: End Liveness
+define @gap_block(%a) {
+entry:
+    %b = add %a, %a
+    br ^b1
+b1:
+    %c = add %a, %b
+    ret %c
+}
+
+; CHECK: Liveness for merge_block
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [0, 1]
+; CHECK-NEXT:   Block 1 (long):
+; CHECK-NEXT:     val 0: [0, 1, 2, 3, 5]
+; CHECK-NEXT:     val 2: [def@0, inf]
+; CHECK-NEXT:     val 3: [def@1, inf]
+; CHECK-NEXT:     val 4: [def@2, inf]
+; CHECK-NEXT:     val 5: [def@3, inf]
+; CHECK-NEXT:   Block 2 (end):
+; CHECK-NEXT:     val 0: [0, inf]
+; CHECK-NEXT: End Liveness
+define @merge_block(%a) {
+entry:
+    condbr %a, ^long, ^end
+long:
+    %b = add %a, %a
+    %c = add %a, %a
+    %d = add %a, %a
+    %e = add %a, %a
+    br ^end
+end:
+    ret %a
+}
+
+; CHECK: Liveness for merge_block_indirect
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [0, 1]
+; CHECK-NEXT:   Block 1 (long):
+; CHECK-NEXT:     val 0: [0, 1, 2, 3, 4, 5, 6, 7, 9]
+; CHECK-NEXT:     val 2: [def@0, inf]
+; CHECK-NEXT:     val 3: [def@1, inf]
+; CHECK-NEXT:     val 4: [def@2, inf]
+; CHECK-NEXT:     val 5: [def@3, inf]
+; CHECK-NEXT:     val 6: [def@4, inf]
+; CHECK-NEXT:     val 7: [def@5, inf]
+; CHECK-NEXT:     val 8: [def@6, inf]
+; CHECK-NEXT:     val 9: [def@7, inf]
+; CHECK-NEXT:   Block 2 (short):
+; CHECK-NEXT:     val 0: [1]
+; CHECK-NEXT:   Block 3 (end):
+; CHECK-NEXT:     val 0: [0, inf]
+; CHECK-NEXT: End Liveness
+define @merge_block_indirect(%a) {
+entry:
+    condbr %a, ^long, ^short
+long:
+    %b = add %a, %a
+    %c = add %a, %a
+    %d = add %a, %a
+    %e = add %a, %a
+    %f = add %a, %a
+    %g = add %a, %a
+    %h = add %a, %a
+    %i = add %a, %a
+    br ^end
+short:
+    br ^end
+end:
+    ret %a
+}
+
+
+; CHECK: Liveness for merge_block_indirect_alternative_var
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [0, 2]
+; CHECK-NEXT:     val 1: [1]
+; CHECK-NEXT:   Block 1 (long):
+; CHECK-NEXT:     val 0: [8]
+; CHECK-NEXT:     val 1: [0, 1, 2, 3, 4, 5, 6, inf]
+; CHECK-NEXT:     val 3: [def@0, inf]
+; CHECK-NEXT:     val 4: [def@1, inf]
+; CHECK-NEXT:     val 5: [def@2, inf]
+; CHECK-NEXT:     val 6: [def@3, inf]
+; CHECK-NEXT:     val 7: [def@4, inf]
+; CHECK-NEXT:     val 8: [def@5, inf]
+; CHECK-NEXT:     val 9: [def@6, inf]
+; CHECK-NEXT:   Block 2 (short):
+; CHECK-NEXT:     val 0: [1]
+; CHECK-NEXT:   Block 3 (end):
+; CHECK-NEXT:     val 0: [0, inf]
+; CHECK-NEXT: End Liveness
+define @merge_block_indirect_alternative_var(%a,%b) {
+entry:
+    condbr %a, ^long, ^short
+long:
+    %c = add %b, %b
+    %d = add %b, %b
+    %e = add %b, %b
+    %f = add %b, %b
+    %g = add %b, %b
+    %h = add %b, %b
+    %i = add %b, %b
+    br ^end
+short:
+    br ^end
+end:
+    ret %a
+}
+
+; CHECK: Liveness for live_though_chain
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [3]
+; CHECK-NEXT:   Block 1 (b1):
+; CHECK-NEXT:     val 0: [2]
+; CHECK-NEXT:   Block 2 (b2):
+; CHECK-NEXT:     val 0: [1]
+; CHECK-NEXT:   Block 3 (b3):
+; CHECK-NEXT:     val 0: [0, inf]
+; CHECK-NEXT: End Liveness
+define @live_though_chain(%a) {
+entry:
+    br ^b1
+b1:
+    br ^b2
+b2:
+    br ^b3
+b3:
+    ret %a
+}
+
+; CHECK: Liveness for loop
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [1]
+; CHECK-NEXT:   Block 1 (header):
+; CHECK-NEXT:     val 2: [def@0, 1, 3]
+; CHECK-NEXT:   Block 2 (body):
+; CHECK-NEXT:     val 2: [1]
+; CHECK-NEXT:   Block 3 (exit):
+; CHECK-NEXT:     val 2: [0, inf]
+; CHECK-NEXT: End Liveness
+define @loop(%a){
+entry:
+    br ^header
+header:
+     %b = phi [^entry, %a], [^body, %b]
+    condbr %b, ^body, ^exit
+body:
+    br ^header
+exit:
+    ret %b
+}
+
+; CHECK: Liveness for loop_simple
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [1]
+; CHECK-NEXT:   Block 1 (header):
+; CHECK-NEXT:     val 2: [def@0, 1, 2]
+; CHECK-NEXT:     val 4: [0, 2]
+; CHECK-NEXT:   Block 2 (body):
+; CHECK-NEXT:     val 2: [0, inf]
+; CHECK-NEXT:     val 4: [def@0, 2]
+; CHECK-NEXT:   Block 3 (exit):
+; CHECK-NEXT:     val 2: [0, inf]
+; CHECK-NEXT: End Liveness
+define @loop_simple(%a){
+entry:
+    br ^header
+header:
+     %b = phi [^entry, %a], [^body, %c]
+    condbr %b, ^body, ^exit
+body:
+    %c = add %b, %b
+    br ^header
+exit:
+    ret %b
+}
+
+; CHECK: Liveness for loop_phi_carry
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 0: [1]
+; CHECK-NEXT:   Block 1 (loop):
+; CHECK-NEXT:     val 2: [def@0, 1, inf]
+; CHECK-NEXT:     val 3: [def@1, 3]
+; CHECK-NEXT:   Block 2 (ret):
+; CHECK-NEXT:     no tracked values
+; CHECK-NEXT: End Liveness
+loop_phi_carry(%a) {
+entry:
+  jump ^loop
+loop:
+  %b = phi [^entry, %a], [^loop, %d]
+  %d = %b
+  jump ^loop, ^ret
+ret:
+  terminate
+}
+
+; CHECK: Liveness for loop_through
+; CHECK-NEXT:   Block 0 (entry):
+; CHECK-NEXT:     val 1: [def@0, 1000000003]
+; CHECK-NEXT:   Block 1 (loop):
+; CHECK-NEXT:     val 1: [1000000001]
+; CHECK-NEXT:   Block 2 (ret):
+; CHECK-NEXT:     val 1: [0, inf]
+; CHECK-NEXT: End Liveness
+loop_through(%a) {
+entry:
+  %const =
+  jump ^loop
+loop:
+  jump ^loop, ^ret
+ret:
+  ret %const
+}
+
+
+nest_extend() {
+entry:
+  %a =
+  %aa =
+  jump ^loop1
+loop1:
+  jump ^loop_inner1, ^ret
+loop_inner1:
+  %b = %a
+  jump ^loop_inner1, ^loop_inner2
+loop_inner2:
+  jump ^loop_inner2, ^loop1
+ret:
+  %r = %aa
+  terminate
+}
