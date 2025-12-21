@@ -818,7 +818,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
   const u32 num_blocks = static_cast<u32>(block_layout.size());
   // if the next use is "across" a loop, assign a penaltiy to encorouge spilling
   // this var before the loop.
-  static constexpr u32 LOOP_EXIT_PENALTY = 1'000'000'000u;
+  static constexpr u32 LOOP_EXIT_PENALTY = 10'000'000u;
 
 
   // Clear/resize storage
@@ -949,8 +949,12 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
       if (succ_loop_idx == cur_loop_idx) {
         return false;
       }
-      // Exiting the current loop means the successor is an ancestor in the loop
-      // tree (moving outward).
+
+      // different loop on the same level
+      if (loops[succ_loop_idx].level == loops[cur_loop_idx].level) {
+        return true;
+      }
+
       auto loop_it = cur_loop_idx;
       while (loop_it != 0u) {
         loop_it = loops[loop_it].parent;
