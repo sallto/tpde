@@ -44,15 +44,6 @@ struct TestIRCompilerX64
 
   SymRef cur_personality_func() const noexcept { return {}; }
 
-  struct ValueParts {
-    static u32 count() noexcept { return 1; }
-    static u32 size_bytes(u32) noexcept { return 8; }
-    static tpde::RegBank reg_bank(u32) noexcept {
-      return x64::PlatformConfig::GP_BANK;
-    }
-  };
-
-  ValueParts val_parts(IRValueRef) { return ValueParts{}; }
 
   AsmReg select_fixed_assignment_reg(AssignmentPartRef ap,
                                      const IRValueRef value) noexcept {

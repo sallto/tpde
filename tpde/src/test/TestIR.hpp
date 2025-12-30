@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "tpde/RegisterFile.hpp"
 #include "tpde/ValLocalIdx.hpp"
 #include "tpde/base.hpp"
 
@@ -292,6 +293,16 @@ struct TestIRAdaptor {
     assert(static_cast<u32>(val) >= ir->functions[cur_func].arg_begin_idx);
     return ValLocalIdx(u32(val) - ir->functions[cur_func].arg_begin_idx);
   }
+
+  struct ValueParts {
+    static u32 count() noexcept { return 1; }
+    static u32 size_bytes(u32) noexcept { return 8; }
+    static tpde::RegBank reg_bank(u32) noexcept {
+      return tpde::RegBank{0};
+    }
+  };
+
+  ValueParts val_parts(IRValueRef) { return ValueParts{}; }
 
   bool val_is_phi(IRValueRef val) const noexcept {
     return ir->values[u32(val)].type == TestIR::Value::Type::phi;

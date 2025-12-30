@@ -19,22 +19,9 @@ namespace tpde {
 
 class AssignmentPartRef;
 class CCAssigner;
-struct RegBank;
 
 template <bool B>
 concept IsTrue = (B == true);
-
-template <typename T>
-concept ValueParts = requires(T a) {
-  /// Provides the number of parts for a value
-  { a.count() } -> std::convertible_to<u32>;
-
-  /// Provides the size in bytes of a value part (must be a power of two)
-  { a.size_bytes(ARG(u32)) } -> std::convertible_to<u32>;
-
-  /// Provides the bank for a value part
-  { a.reg_bank(ARG(u32)) } -> std::convertible_to<RegBank>;
-};
 
 template <typename T>
 concept ValRefSpecialStruct = requires(T a) {
@@ -97,7 +84,6 @@ concept Compiler = CompilerConfig<Config> && requires(T a) {
     a.try_force_fixed_assignment(ARG(typename T::IRValueRef))
   } -> std::convertible_to<bool>;
 
-  { a.val_parts(ARG(typename T::IRValueRef)) } -> ValueParts;
 
   /// A compiler can provide a data structure that is a non-assignment ValueRef.
   /// This struct is used in a union, so it must be a standard-layout struct and

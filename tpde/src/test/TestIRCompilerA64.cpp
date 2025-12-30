@@ -50,15 +50,6 @@ struct TestIRCompilerA64
     return this->ir()->functions[this->adaptor->cur_func].has_call;
   }
 
-  struct ValueParts {
-    static u32 count() noexcept { return 1; }
-    static u32 size_bytes(u32) noexcept { return 8; }
-    static RegBank reg_bank(u32) noexcept {
-      return a64::PlatformConfig::GP_BANK;
-    }
-  };
-
-  ValueParts val_parts(IRValueRef) { return ValueParts{}; }
 
   AsmReg select_fixed_assignment_reg(AssignmentPartRef ap,
                                      const IRValueRef value) noexcept {

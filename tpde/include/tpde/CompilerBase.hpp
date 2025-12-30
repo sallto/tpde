@@ -320,7 +320,7 @@ public:
     void add_arg(ValuePart &&vp, CCAssignment cca) noexcept;
     void add_arg(const CallArg &arg, u32 part_count) noexcept;
     void add_arg(const CallArg &arg) noexcept {
-      add_arg(std::move(arg), compiler.val_parts(arg.value).count());
+      add_arg(std::move(arg), compiler.adaptor->val_parts(arg.value).count());
     }
 
     // evict registers, do call, reset stack frame
@@ -1025,7 +1025,7 @@ void CompilerBase<Adaptor, Derived, Config>::RetBuilder::add(
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::RetBuilder::add(
     IRValueRef val) noexcept {
-  u32 part_count = compiler.val_parts(val).count();
+  u32 part_count = compiler.adaptor->val_parts(val).count();
   ValueRef vr = compiler.val_ref(val);
   for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
     add(vr.part(part_idx), CCAssignment{});
@@ -1125,7 +1125,7 @@ void CompilerBase<Adaptor, Derived, Config>::init_assignment(
   TPDE_LOG_TRACE("Initializing assignment for value {}",
                  static_cast<u32>(local_idx));
 
-  const auto parts = derived()->val_parts(value);
+  const auto parts = adaptor->val_parts(value);
   const u32 part_count = parts.count();
   assert(part_count > 0);
   auto *assignment = assignments.allocator.allocate(part_count);
@@ -1521,7 +1521,7 @@ typename CompilerBase<Adaptor, Derived, Config>::ValueRef
     assert(assignment->references_left == 1); // implied by is_owned()
 
     // Validate that part configuration is identical.
-    const auto parts = derived()->val_parts(dst);
+    const auto parts = adaptor->val_parts(dst);
     assert(parts.count() == part_count);
     for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
       AssignmentPartRef ap{assignment, part_idx};
@@ -2609,7 +2609,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
     ValueAssignment *assignment = val_assignment(arg_idx);
     if (!assignment) continue;
 
-    const auto parts = derived()->val_parts(arg);
+    const auto parts = adaptor->val_parts(arg);
     const u32 part_count = parts.count();
     for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
       AssignmentPartRef ap{assignment, part_idx};
@@ -2781,7 +2781,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
         continue; // Not yet assigned
 
 
-      const auto parts = derived()->val_parts(operand);
+      const auto parts = adaptor->val_parts(operand);
       const u32 part_count = parts.count();
       for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
         AssignmentPartRef ap{op_assignment, part_idx};
@@ -2854,7 +2854,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           continue; // Should exist after compile_inst, unless the result was already freed
         }
 
-        const auto parts = derived()->val_parts(result);
+        const auto parts = adaptor->val_parts(result);
         const u32 part_count = parts.count();
         for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
           AssignmentPartRef ap{res_assignment, part_idx};

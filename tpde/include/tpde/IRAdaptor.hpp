@@ -76,6 +76,20 @@ concept PHIRef = requires(T r) {
   } -> std::convertible_to<IRValue>;
 };
 
+struct RegBank;
+
+template <typename T>
+concept ValueParts = requires(T a) {
+  /// Provides the number of parts for a value
+  { a.count() } -> std::convertible_to<u32>;
+
+  /// Provides the size in bytes of a value part (must be a power of two)
+  { a.size_bytes(ARG(u32)) } -> std::convertible_to<u32>;
+
+  /// Provides the bank for a value part
+  { a.reg_bank(ARG(u32)) } -> std::convertible_to<RegBank>;
+};
+
 /// The IRAdaptor specifies the interface with which the IR-independent parts of
 /// the compiler interact with the source IR
 ///
@@ -275,6 +289,8 @@ concept IRAdaptor = requires(T a) {
   {
     a.val_local_idx(ARG(typename T::IRValueRef))
   } -> std::convertible_to<ValLocalIdx>;
+
+  { a.val_parts(ARG(typename T::IRValueRef)) } -> ValueParts;
 
   // TODO(ts): add separate function to get local idx which is only used in
   // the analyzer if the adaptor wants to lazily assign indices?
