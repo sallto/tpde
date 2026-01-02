@@ -288,8 +288,7 @@ ret:
   ret %const
 }
 
-
-nest_extend() {
+nested() {
 entry:
   %a =
   %aa =
@@ -298,9 +297,53 @@ loop1:
   jump ^loop_inner1, ^ret
 loop_inner1:
   %b = %a
-  jump ^loop_inner1, ^loop_inner2
-loop_inner2:
+  jump ^loop2
+loop2:
   jump ^loop_inner2, ^loop1
+loop_inner2:
+  jump ^loop2
+ret:
+  %r = %aa
+  terminate
+}
+
+
+two_loops() {
+entry:
+  %a =
+  %aa =
+  jump ^loop1
+loop1:
+  jump ^loop_inner1, ^loop2
+loop_inner1:
+  %b = %a
+  jump ^loop1
+loop2:
+  jump ^loop_inner2, ^ret
+loop_inner2:
+  jump ^loop2
+ret:
+  %r = %aa
+  terminate
+}
+
+
+two_loops_spaced_apart() {
+entry:
+  %a =
+  %aa =
+  jump ^loop1
+loop1:
+  jump ^loop_inner1, ^spacer
+loop_inner1:
+  %b = %a
+  jump ^loop1
+spacer:
+  jump ^loop2
+loop2:
+  jump ^loop_inner2, ^ret
+loop_inner2:
+  jump ^loop2
 ret:
   %r = %aa
   terminate

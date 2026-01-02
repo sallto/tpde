@@ -65,6 +65,11 @@ int main(int argc, char *argv[]) {
                               "Use precise liveness (per-block next-use distances)",
                               {"precise-liveness"});
 
+  args::Flag print_spills(parser,
+                          "print_spills",
+                          "Print spilled values per block",
+                          {"print-spills"});
+
   args::Flag no_fixed_assignments(
       parser,
       "no_fixed_assignments",
@@ -226,6 +231,12 @@ int main(int argc, char *argv[]) {
           analyzer.print_liveness(std::cout);
         }
         std::cout << "End Liveness\n";
+      }
+
+      if (print_spills) {
+        std::cout << "Spills for " << adaptor.func_link_name(func) << "\n";
+        analyzer.print_spills(std::cout);
+        std::cout << "End Spills\n";
       }
     }
 
