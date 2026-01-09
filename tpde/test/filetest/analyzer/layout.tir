@@ -8,7 +8,7 @@
 ; CHECK-NEXT: 0: entry
 ; CHECK-NEXT: End Block Layout
 ; CHECK: Loops for single
-; CHECK-NEXT: 0: level 0, parent 0, 0->1
+; CHECK-NEXT: 0: level 0, parent 0, 0->1, irreducible: false
 ; CHECK-NEXT: End Loops
 single() {
 entry:
@@ -26,8 +26,8 @@ entry:
 ; CHECK-NEXT: 3: cont
 ; CHECK-NEXT: End Block Layout
 ; CHECK: Loops for loop1
-; CHECK-NEXT: 0: level 0, parent 0, 0->4
-; CHECK-NEXT: 1: level 1, parent 0, 1->3
+; CHECK-NEXT: 0: level 0, parent 0, 0->4, irreducible: false
+; CHECK-NEXT: 1: level 1, parent 0, 1->3, irreducible: false
 ; CHECK-NEXT: End Loops
 loop1() {
 entry:
@@ -47,8 +47,8 @@ cont:
 ; CHECK-NEXT: 3: cont
 ; CHECK-NEXT: End Block Layout
 ; CHECK: Loops for loop2
-; CHECK-NEXT: 0: level 0, parent 0, 0->4
-; CHECK-NEXT: 1: level 1, parent 0, 1->3
+; CHECK-NEXT: 0: level 0, parent 0, 0->4, irreducible: false
+; CHECK-NEXT: 1: level 1, parent 0, 1->3, irreducible: false
 ; CHECK-NEXT: End Loops
 loop2() {
 entry:
@@ -68,8 +68,8 @@ loop_body:
 ; CHECK-NEXT: 3: cont
 ; CHECK-NEXT: End Block Layout
 ; CHECK: Loops for loop3
-; CHECK-NEXT: 0: level 0, parent 0, 0->4
-; CHECK-NEXT: 1: level 1, parent 0, 1->3
+; CHECK-NEXT: 0: level 0, parent 0, 0->4, irreducible: false
+; CHECK-NEXT: 1: level 1, parent 0, 1->3, irreducible: false
 ; CHECK-NEXT: End Loops
 loop3() {
 entry:
@@ -91,9 +91,9 @@ loop_body:
 ; CHECK-NEXT: 5: loop2_body
 ; CHECK-NEXT: 6: ret
 ; CHECK: Loops for mixed_loop
-; CHECK-NEXT: 0: level 0, parent 0, 0->7
-; CHECK-NEXT: 1: level 1, parent 0, 1->3
-; CHECK-NEXT: 2: level 1, parent 0, 4->6
+; CHECK-NEXT: 0: level 0, parent 0, 0->7, irreducible: false
+; CHECK-NEXT: 1: level 1, parent 0, 1->3, irreducible: false
+; CHECK-NEXT: 2: level 1, parent 0, 4->6, irreducible: false
 ; CHECK-NEXT: End Loops
 mixed_loop() {
 entry:
@@ -122,9 +122,9 @@ ret:
 ; CHECK-NEXT: 5: loop2_body
 ; CHECK-NEXT: 6: ret
 ; CHECK: Loops for mixed_loop2
-; CHECK-NEXT: 0: level 0, parent 0, 0->7
-; CHECK-NEXT: 1: level 1, parent 0, 1->3
-; CHECK-NEXT: 2: level 1, parent 0, 4->6
+; CHECK-NEXT: 0: level 0, parent 0, 0->7, irreducible: false
+; CHECK-NEXT: 1: level 1, parent 0, 1->3, irreducible: false
+; CHECK-NEXT: 2: level 1, parent 0, 4->6, irreducible: false
 ; CHECK-NEXT: End Loops
 mixed_loop2() {
 entry:
@@ -152,9 +152,9 @@ ret:
 ; CHECK-NEXT: 5: loop2_body
 ; CHECK-NEXT: 6: ret
 ; CHECK: Loops for mixed_loop3
-; CHECK-NEXT: 0: level 0, parent 0, 0->7
-; CHECK-NEXT: 1: level 1, parent 0, 1->3
-; CHECK-NEXT: 2: level 1, parent 0, 4->6
+; CHECK-NEXT: 0: level 0, parent 0, 0->7, irreducible: false
+; CHECK-NEXT: 1: level 1, parent 0, 1->3, irreducible: false
+; CHECK-NEXT: 2: level 1, parent 0, 4->6, irreducible: false
 ; CHECK-NEXT: End Loops
 mixed_loop3() {
 entry:
@@ -185,10 +185,10 @@ ret:
 ; CHECK-NEXT: 8: ret
 ; CHECK-NEXT: End Block Layout
 ; CHECK: Loops for nested_loop1
-; CHECK-NEXT: 0: level 0, parent 0, 0->9
-; CHECK-NEXT: 1: level 1, parent 0, 1->5
-; CHECK-NEXT: 2: level 2, parent 1, 2->4
-; CHECK-NEXT: 3: level 1, parent 0, 6->8
+; CHECK-NEXT: 0: level 0, parent 0, 0->9, irreducible: false
+; CHECK-NEXT: 1: level 1, parent 0, 1->5, irreducible: false
+; CHECK-NEXT: 2: level 2, parent 1, 2->4, irreducible: false
+; CHECK-NEXT: 3: level 1, parent 0, 6->8, irreducible: false
 ; CHECK-NEXT: End Loops
 nested_loop1() {
 entry:
@@ -225,11 +225,11 @@ ret:
 ; CHECK-NEXT: 10: ret
 ; CHECK-NEXT: End Block Layout
 ; CHECK: Loops for nested_loop2
-; CHECK-NEXT: 0: level 0, parent 0, 0->11
-; CHECK-NEXT: 1: level 1, parent 0, 1->7
-; CHECK-NEXT: 2: level 2, parent 1, 3->5
-; CHECK-NEXT: 3: level 2, parent 1, 5->7
-; CHECK-NEXT: 4: level 1, parent 0, 8->10
+; CHECK-NEXT: 0: level 0, parent 0, 0->11, irreducible: false
+; CHECK-NEXT: 1: level 1, parent 0, 1->7, irreducible: false
+; CHECK-NEXT: 2: level 2, parent 1, 3->5, irreducible: false
+; CHECK-NEXT: 3: level 2, parent 1, 5->7, irreducible: false
+; CHECK-NEXT: 4: level 1, parent 0, 8->10, irreducible: false
 ; CHECK-NEXT: End Loops
 nested_loop2() {
 entry:
@@ -270,11 +270,11 @@ ret:
 ; CHECK-NEXT: 10: ret
 ; CHECK-NEXT: End Block Layout
 ; CHECK: Loops for nested_loop3
-; CHECK-NEXT: 0: level 0, parent 0, 0->11
-; CHECK-NEXT: 1: level 1, parent 0, 1->7
-; CHECK-NEXT: 2: level 2, parent 1, 3->5
-; CHECK-NEXT: 3: level 2, parent 1, 5->7
-; CHECK-NEXT: 4: level 1, parent 0, 8->10
+; CHECK-NEXT: 0: level 0, parent 0, 0->11, irreducible: false
+; CHECK-NEXT: 1: level 1, parent 0, 1->7, irreducible: false
+; CHECK-NEXT: 2: level 2, parent 1, 3->5, irreducible: false
+; CHECK-NEXT: 3: level 2, parent 1, 5->7, irreducible: false
+; CHECK-NEXT: 4: level 1, parent 0, 8->10, irreducible: false
 ; CHECK-NEXT: End Loops
 nested_loop3() {
 entry:
@@ -308,8 +308,8 @@ ret:
 ; CHECK-NEXT: 3: loop1_head
 ; CHECK-NEXT: End Block Layout
 ; CHECK: Loops for irreducible_loop
-; CHECK-NEXT: 0: level 0, parent 0, 0->4
-; CHECK-NEXT: 1: level 1, parent 0, 1->4
+; CHECK-NEXT: 0: level 0, parent 0, 0->4, irreducible: false
+; CHECK-NEXT: 1: level 1, parent 0, 1->4, irreducible: true
 ; CHECK-NEXT: End Loops
 irreducible_loop() {
 entry:

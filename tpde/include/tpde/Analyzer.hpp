@@ -62,6 +62,7 @@ struct Analyzer {
     u32 definitions = 0, definitions_in_childs = 0;
     u32 max_gp_pressure = 0;
     u32 max_fp_pressure = 0;
+    bool is_irreducible = false;
   };
 
   util::SmallVector<Loop, 16> loops = {};
@@ -285,12 +286,13 @@ template <IRAdaptor Adaptor>
 void Analyzer<Adaptor>::print_loops(std::ostream &os) const {
   for (u32 i = 0; i < loops.size(); ++i) {
     const auto &loop = loops[i];
-    os << std::format("  {}: level {}, parent {}, {}->{}\n",
+    os << std::format("  {}: level {}, parent {}, {}->{}, irreducible: {}\n",
                       i,
                       loop.level,
                       loop.parent,
                       static_cast<u32>(loop.begin),
-                      static_cast<u32>(loop.end));
+                      static_cast<u32>(loop.end),
+                      loop.is_irreducible);
   }
 }
 
@@ -551,6 +553,8 @@ void Analyzer<Adaptor>::build_loop_tree_and_block_layout(
         loops.push_back(
             Loop{.level = loops[parent_loop].level + 1, .parent = parent_loop});
         loop_blocks[i].loop_idx = loop_idx;
+      } else {
+        loops[loop_idx].is_irreducible = true;
       }
       ++loops[loop_idx].num_blocks;
     } else {
