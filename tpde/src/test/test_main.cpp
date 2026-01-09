@@ -66,9 +66,15 @@ int main(int argc, char *argv[]) {
                               {"precise-liveness"});
 
   args::Flag print_spills(parser,
-                          "print_spills",
-                          "Print spilled values per block",
-                          {"print-spills"});
+                           "print_spills",
+                           "Print spilled values per block",
+                           {"print-spills"});
+
+  args::Flag print_pressure(
+      parser,
+      "print_pressure",
+      "Print register pressure per block and loop",
+      {"print-pressure"});
 
   args::Flag no_fixed_assignments(
       parser,
@@ -234,11 +240,17 @@ int main(int argc, char *argv[]) {
       }
 
       if (print_spills) {
-        std::cout << "Spills for " << adaptor.func_link_name(func) << "\n";
-        analyzer.print_spills(std::cout);
-        std::cout << "End Spills\n";
-      }
-    }
+         std::cout << "Spills for " << adaptor.func_link_name(func) << "\n";
+         analyzer.print_spills(std::cout);
+         std::cout << "End Spills\n";
+       }
+
+      if (print_pressure) {
+         std::cout << "Register Pressure for " << adaptor.func_link_name(func) << "\n";
+         analyzer.print_register_pressure(std::cout);
+         std::cout << "End Register Pressure\n";
+       }
+     }
 
     return 0;
   }

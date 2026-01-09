@@ -60,6 +60,8 @@ struct Analyzer {
     // TODO(ts): add skip_target?
 
     u32 definitions = 0, definitions_in_childs = 0;
+    u32 max_gp_pressure = 0;
+    u32 max_fp_pressure = 0;
   };
 
   util::SmallVector<Loop, 16> loops = {};
@@ -106,6 +108,24 @@ struct Analyzer {
   // todo(salto): this will change into colors instead of registers later on.
 
   u32 num_insts;
+
+  struct ValuePartsInfo {
+    u32 count;
+    util::SmallVector<u8, 8> bank_ids;
+  };
+
+  struct BlockPressure {
+    u32 gp_pressure = 0;
+    u32 fp_pressure = 0;
+  };
+
+  struct ValueInterval {
+    u32 first;
+    u32 last;
+  };
+
+  util::SmallVector<ValuePartsInfo, SMALL_VALUE_NUM> value_parts_cache = {};
+  util::SmallVector<BlockPressure, SMALL_BLOCK_NUM> block_pressure = {};
 
   explicit Analyzer(Adaptor *adaptor) : adaptor(adaptor) {}
 
@@ -156,6 +176,15 @@ struct Analyzer {
 
   const Loop &loop_from_idx(const u32 idx) const noexcept { return loops[idx]; }
 
+  const BlockPressure &get_block_pressure(const BlockIndex idx) const noexcept {
+    return block_pressure[static_cast<u32>(idx)];
+  }
+
+  void get_loop_max_pressure(u32 loop_idx, u32 &gp, u32 &fp) const noexcept {
+    gp = loops[loop_idx].max_gp_pressure;
+    fp = loops[loop_idx].max_fp_pressure;
+  }
+
   bool block_has_multiple_incoming(const BlockIndex idx) const noexcept {
     return block_has_multiple_incoming(block_ref(idx));
   }
@@ -178,6 +207,7 @@ struct Analyzer {
   void print_liveness(std::ostream &os) const;
   void print_precise_liveness(std::ostream &os) const;
   void print_spills(std::ostream &os) const;
+  void print_register_pressure(std::ostream &os) const;
 
 protected:
   // for use during liveness analysis
@@ -405,6 +435,28 @@ void Analyzer<Adaptor>::print_spills(std::ostream &os) const {
 }
 
 template <IRAdaptor Adaptor>
+void Analyzer<Adaptor>::print_register_pressure(std::ostream &os) const {
+  os << "Block Pressure:\n";
+  for (u32 i = 0; i < block_layout.size(); ++i) {
+    os << std::format("  Block {} ({}): GP={}, FP={}\n",
+                      i,
+                      adaptor->block_fmt_ref(block_layout[i]),
+                      block_pressure[i].gp_pressure,
+                      block_pressure[i].fp_pressure);
+  }
+
+  os << "\nLoop Max Pressure:\n";
+  for (u32 i = 0; i < loops.size(); ++i) {
+    os << std::format("  Loop {}: GP={}, FP={} (blocks {}->{})\n",
+                      i,
+                      loops[i].max_gp_pressure,
+                      loops[i].max_fp_pressure,
+                      static_cast<u32>(loops[i].begin),
+                      static_cast<u32>(loops[i].end));
+  }
+}
+
+template <IRAdaptor Adaptor>
 typename Analyzer<Adaptor>::LivenessInfo &
     Analyzer<Adaptor>::liveness_maybe(const IRValueRef val) noexcept {
   const ValLocalIdx val_idx = adaptor->val_local_idx(val);
@@ -570,6 +622,25 @@ void Analyzer<Adaptor>::build_loop_tree_and_block_layout(
   }
 
   assert(static_cast<u32>(loops[0].end) == block_rpo.size());
+
+  // Compute per-loop maximum register pressure
+  for (u32 loop_idx = 0; loop_idx < loops.size(); ++loop_idx) {
+    const auto &loop = loops[loop_idx];
+    u32 max_gp = 0;
+    u32 max_fp = 0;
+
+    for (u32 block_idx = static_cast<u32>(loop.begin);
+         block_idx < static_cast<u32>(loop.end);
+         ++block_idx) {
+      if (block_idx < block_pressure.size()) {
+        max_gp = std::max(max_gp, block_pressure[block_idx].gp_pressure);
+        max_fp = std::max(max_fp, block_pressure[block_idx].fp_pressure);
+      }
+    }
+
+    loops[loop_idx].max_gp_pressure = max_gp;
+    loops[loop_idx].max_fp_pressure = max_fp;
+  }
 }
 
 template <IRAdaptor Adaptor>
@@ -904,6 +975,53 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
   precise_liveness.resize(num_blocks);
   for (auto &pli : precise_liveness) {
     pli.next_uses.clear();
+  }
+
+  // Cache value parts for all ValLocalIdx
+  value_parts_cache.resize(liveness_max_value + 1);
+  for (auto &vpi : value_parts_cache) {
+    vpi = ValuePartsInfo{.count = 0};
+  }
+
+  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+    const IRBlockRef block = block_layout[block_idx];
+
+    for (const IRValueRef phi : adaptor->block_phis(block)) {
+      const ValLocalIdx val_idx = adaptor->val_local_idx(phi);
+      auto &vpi = value_parts_cache[static_cast<u32>(val_idx)];
+      if (vpi.count == 0) {
+        const auto parts = adaptor->val_parts(phi);
+        vpi.count = parts.count();
+        for (u32 i = 0; i < parts.count(); ++i) {
+          vpi.bank_ids.push_back(parts.reg_bank(i).id());
+        }
+      }
+    }
+
+    for (const IRInstRef inst : adaptor->block_insts(block)) {
+      for (const IRValueRef res : adaptor->inst_results(inst)) {
+        const ValLocalIdx val_idx = adaptor->val_local_idx(res);
+        auto &vpi = value_parts_cache[static_cast<u32>(val_idx)];
+        if (vpi.count == 0) {
+          const auto parts = adaptor->val_parts(res);
+          vpi.count = parts.count();
+          for (u32 i = 0; i < parts.count(); ++i) {
+            vpi.bank_ids.push_back(parts.reg_bank(i).id());
+          }
+        }
+      }
+      for (const IRValueRef operand : adaptor->inst_operands(inst)) {
+        const ValLocalIdx val_idx = adaptor->val_local_idx(operand);
+        auto &vpi = value_parts_cache[static_cast<u32>(val_idx)];
+        if (vpi.count == 0) {
+          const auto parts = adaptor->val_parts(operand);
+          vpi.count = parts.count();
+          for (u32 i = 0; i < parts.count(); ++i) {
+            vpi.bank_ids.push_back(parts.reg_bank(i).id());
+          }
+        }
+      }
+    }
   }
 
   // Build DFS order that skips loop/back edges (successors already on stack).
@@ -1242,13 +1360,134 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
         const auto child_header = static_cast<u32>(loops[child_loop].begin);
         ensure_live_in_out(child_header, live_loop_no_header_phis);
         self(self, child_loop);
+       }
+     };
+
+     for (const auto root_loop : loop_children[0]) {
+       loop_tree_dfs(loop_tree_dfs, root_loop);
+     }
+   }
+
+  // Calculate per-block register pressure using interval overlap
+  block_pressure.resize(num_blocks);
+  for (auto &bp : block_pressure) {
+    bp = BlockPressure{};
+  }
+
+  for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+    const auto &pli = precise_liveness[block_idx];
+    const IRBlockRef block = block_layout[block_idx];
+    const bool has_phis = block_has_phis(block);
+
+    util::SmallVector<std::pair<ValueInterval, u32>, 64> intervals;
+
+    for (const auto &[val_idx, uses] : pli.next_uses) {
+      if (static_cast<u32>(val_idx) >= value_parts_cache.size()) {
+        continue;
       }
+
+      u32 first = INF;
+      for (const auto use : uses) {
+        if (use != INF) {
+          first = use;
+          break;
+        }
+      }
+
+      if (first == INF) {
+        continue;
+      }
+
+      u32 interval_first;
+      if (first & DEF_BIT) {
+        interval_first = INF;
+        for (const auto use : uses) {
+          if (use != INF && (use & DEF_BIT) == 0) {
+            interval_first = use;
+            break;
+          }
+        }
+      } else {
+        interval_first = 0;
+      }
+
+      if (interval_first == INF) {
+        continue;
+      }
+
+      u32 interval_last = 0;
+      for (u32 i = uses.size(); i-- > 0;) {
+        if (uses[i] != INF) {
+          interval_last = uses[i];
+          break;
+        }
+      }
+
+      intervals.emplace_back(
+          ValueInterval{.first = interval_first, .last = interval_last},
+          static_cast<u32>(val_idx));
+    }
+
+    if (intervals.empty()) {
+      continue;
+    }
+
+    const u32 block_span =
+        std::size(adaptor->block_insts(block)) + (has_phis ? 1 : 0);
+
+    struct Event {
+      u32 pos;
+      i32 delta;
+      u32 gp_parts;
+      u32 fp_parts;
     };
 
-    for (const auto root_loop : loop_children[0]) {
-      loop_tree_dfs(loop_tree_dfs, root_loop);
+    util::SmallVector<Event, 128> events;
+
+    for (const auto &[interval, val_idx] : intervals) {
+      const auto &vpi = value_parts_cache[val_idx];
+      u32 gp_parts = 0;
+      u32 fp_parts = 0;
+      for (u32 i = 0; i < vpi.count; ++i) {
+        if (vpi.bank_ids[i] == 0) {
+          gp_parts++;
+        } else if (vpi.bank_ids[i] == 1) {
+          fp_parts++;
+        }
+      }
+
+      events.push_back(
+          Event{.pos = interval.first, .delta = 1, .gp_parts = gp_parts, .fp_parts = fp_parts});
+      events.push_back(
+          Event{.pos = interval.last + 1, .delta = -1, .gp_parts = gp_parts, .fp_parts = fp_parts});
     }
+
+    std::sort(events.begin(), events.end(),
+              [](const Event &a, const Event &b) { return a.pos < b.pos; });
+
+    u32 gp_pressure = 0;
+    u32 fp_pressure = 0;
+    u32 max_gp = 0;
+    u32 max_fp = 0;
+
+    u32 event_idx = 0;
+    for (u32 pos = 0; pos <= block_span; ++pos) {
+      while (event_idx < events.size() && events[event_idx].pos == pos) {
+        gp_pressure += events[event_idx].delta * events[event_idx].gp_parts;
+        fp_pressure += events[event_idx].delta * events[event_idx].fp_parts;
+        ++event_idx;
+      }
+
+      if (pos < block_span) {
+        max_gp = std::max(max_gp, gp_pressure);
+        max_fp = std::max(max_fp, fp_pressure);
+      }
+    }
+
+    block_pressure[block_idx].gp_pressure = max_gp;
+    block_pressure[block_idx].fp_pressure = max_fp;
   }
+
   TPDE_LOG_TRACE("Precise Liveness Analysis completed");
 }
 
