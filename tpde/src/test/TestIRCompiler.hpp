@@ -80,6 +80,7 @@ struct TestIRCompilerX64
 
   bool compile_add(IRInstRef) noexcept;
   bool compile_sub(IRInstRef) noexcept;
+  bool compile_div(IRInstRef) noexcept;
   bool compile_condselect(IRInstRef) noexcept;
 };
 } // namespace tpde::test

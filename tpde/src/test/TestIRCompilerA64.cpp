@@ -86,6 +86,7 @@ struct TestIRCompilerA64
 
   bool compile_add(IRInstRef) noexcept;
   bool compile_sub(IRInstRef) noexcept;
+  bool compile_div(IRInstRef) noexcept;
   bool compile_condselect(IRInstRef) noexcept;
 };
 
@@ -179,6 +180,7 @@ bool TestIRCompilerA64::compile_inst(IRInstRef inst_idx, InstRange) noexcept {
     this->release_spilled_regs(spilled);
     return true;
   }
+  case TestIR::Value::Op::div: return compile_div(inst_idx);
   case call: {
     const auto func_idx = value.call_func_idx;
     auto operands = std::span<IRValueRef>{
@@ -243,6 +245,28 @@ bool TestIRCompilerA64::compile_sub(IRInstRef inst_idx) noexcept {
   res.set_modified();
   return true;
 }
+
+bool TestIRCompilerA64::compile_div(IRInstRef inst_idx) noexcept {
+  const TestIR::Value &value = ir()->values[static_cast<u32>(inst_idx)];
+
+  const auto lhs_idx =
+      static_cast<IRValueRef>(ir()->value_operands[value.op_begin_idx]);
+  const auto rhs_idx =
+      static_cast<IRValueRef>(ir()->value_operands[value.op_begin_idx + 1]);
+
+  auto [lhs_vr, lhs] = this->val_ref_single(lhs_idx);
+  auto [rhs_vr, rhs] = this->val_ref_single(rhs_idx);
+  auto [res_vr, res] =
+      this->result_ref_single(static_cast<IRValueRef>(inst_idx));
+
+  AsmReg lhs_reg = lhs.load_to_reg();
+  AsmReg rhs_reg = rhs.load_to_reg();
+  AsmReg res_reg = res.alloc_try_reuse(lhs);
+  ASM(UDIVx, res_reg, lhs_reg, rhs_reg);
+  res.set_modified();
+  return true;
+}
+
 bool TestIRCompilerA64::compile_condselect(IRInstRef inst_idx) noexcept {
   const TestIR::Value &value = ir()->values[static_cast<u32>(inst_idx)];
 
