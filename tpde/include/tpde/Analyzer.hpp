@@ -1261,7 +1261,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
 
           auto &pli = precise_liveness[block_idx];
           // todo(salto): optimize
-          const u32 block_span = std::size(adaptor->block_insts(
+          const u32 block_span = std::ranges::distance(adaptor->block_insts(
                                      block_ref(BlockIndex{block_idx}))) +
                                  block_has_phis(BlockIndex{block_idx});
 
@@ -1437,7 +1437,7 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
     }
 
     const u32 block_span =
-        std::size(adaptor->block_insts(block)) + (has_phis ? 1 : 0);
+        std::ranges::distance(adaptor->block_insts(block)) + (has_phis ? 1 : 0);
 
     struct Event {
       u32 pos;
