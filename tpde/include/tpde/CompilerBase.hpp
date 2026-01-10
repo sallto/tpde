@@ -2806,14 +2806,34 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
 
     auto it_cpy = it;
     ++it_cpy;
-    if (!derived()->compile_inst(inst, InstRange{.from = it_cpy, .to = end}))
-        [[unlikely]] {
-      TPDE_LOG_ERR("Failed to compile instruction {}",
-                   this->adaptor->inst_fmt_ref(inst));
-      return false;
-    }
+     if (!derived()->compile_inst(inst, InstRange{.from = it_cpy, .to = end}))
+         [[unlikely]] {
+       TPDE_LOG_ERR("Failed to compile instruction {}",
+                    this->adaptor->inst_fmt_ref(inst));
+       return false;
+     }
 
-#ifndef NDEBUG
+     // Post-process instruction results for spilling
+     for (IRValueRef result : adaptor->inst_results(inst)) {
+       ValLocalIdx res_idx = adaptor->val_local_idx(result);
+       if (res_idx == INVALID_VAL_LOCAL_IDX) continue;
+       u32 idx = static_cast<u32>(res_idx);
+       if (idx < analyzer.spilled_values.bit_size && analyzer.spilled_values.is_set(idx)) {
+         ValueAssignment *assignment = val_assignment(res_idx);
+         if (!assignment) continue;
+         const auto parts = adaptor->val_parts(result);
+         const u32 part_count = parts.count();
+         for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
+           AssignmentPartRef ap{assignment, part_idx};
+           if (ap.register_valid()) {
+            TPDE_LOG_INFO("Spilling result {}", static_cast<u32>(res_idx));
+             spill(ap);
+           }
+         }
+       }
+     }
+
+ #ifndef NDEBUG
     {
       verification_ir.active_compilation=false;
       // Update uses with final allocations after compilation
