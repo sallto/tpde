@@ -76,6 +76,12 @@ int main(int argc, char *argv[]) {
       "Print register pressure per block and loop",
       {"print-pressure"});
 
+  args::Flag print_domtree(
+      parser,
+      "print_domtree",
+      "Print the dominator tree",
+      {"print-domtree"});
+
   args::Flag no_fixed_assignments(
       parser,
       "no_fixed_assignments",
@@ -245,14 +251,20 @@ int main(int argc, char *argv[]) {
          std::cout << "End Spills\n";
        }
 
-      if (print_pressure) {
-         std::cout << "Register Pressure for " << adaptor.func_link_name(func) << "\n";
-         analyzer.print_register_pressure(std::cout);
-         std::cout << "End Register Pressure\n";
-       }
-     }
+       if (print_pressure) {
+          std::cout << "Register Pressure for " << adaptor.func_link_name(func) << "\n";
+          analyzer.print_register_pressure(std::cout);
+          std::cout << "End Register Pressure\n";
+        }
 
-    return 0;
+       if (print_domtree) {
+          std::cout << "Dominator tree for func " << adaptor.func_link_name(func) << "\n";
+          analyzer.print_domtree(std::cout);
+          std::cout << "End Dominator tree\n";
+        }
+      }
+
+     return 0;
   }
 
   auto reg_str = args::get(register_list);

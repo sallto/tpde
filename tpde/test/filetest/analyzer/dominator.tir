@@ -1,0 +1,47 @@
+; SPDX-FileCopyrightText: 2025 Contributors to TPDE <https://tpde.org>
+;
+; SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+; RUN: %tpde_test --run-until=analyzer --print-domtree %s | FileCheck %s --dump-input always
+
+; CHECK: Dominator tree for func single
+; CHECK-NEXT: entry (root)
+; CHECK-NEXT: End Dominator tree
+single() {
+entry:
+  terminate
+}
+
+; CHECK: Dominator tree for func diamond
+; CHECK-NEXT: entry (root)
+; CHECK-NEXT:   true_block (idom: entry)
+; CHECK-NEXT:   false_block (idom: entry)
+; CHECK-NEXT:   end_block (idom: entry)
+; CHECK-NEXT: End Dominator tree
+diamond() {
+entry:
+  jump ^true_block, ^false_block
+true_block:
+  jump ^end_block
+false_block:
+  jump ^end_block
+end_block:
+  terminate
+}
+
+; CHECK: Dominator tree for func loop
+; CHECK-NEXT: entry (root)
+; CHECK-NEXT:   loop_head (idom: entry)
+; CHECK-NEXT:     loop_body (idom: loop_head)
+; CHECK-NEXT:     exit (idom: loop_head)
+; CHECK-NEXT: End Dominator tree
+loop() {
+entry:
+  jump ^loop_head
+loop_head:
+  jump ^loop_body, ^exit
+loop_body:
+  jump ^loop_head
+exit:
+  terminate
+}

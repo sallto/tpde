@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "DominatorTree.hpp"
 #include "IRAdaptor.hpp"
 #include "RegisterFile.hpp"
 #include "tpde/ValLocalIdx.hpp"
@@ -128,6 +129,9 @@ struct Analyzer {
   util::SmallVector<ValuePartsInfo, SMALL_VALUE_NUM> value_parts_cache = {};
   util::SmallVector<BlockPressure, SMALL_BLOCK_NUM> block_pressure = {};
 
+  /// Dominator tree for control flow analysis
+  DominatorTree<Adaptor> dominator_tree = {};
+
   explicit Analyzer(Adaptor *adaptor) : adaptor(adaptor) {}
 
   /// Start the compilation of a new function and build the loop tree and
@@ -209,6 +213,7 @@ struct Analyzer {
   void print_precise_liveness(std::ostream &os) const;
   void print_spills(std::ostream &os) const;
   void print_register_pressure(std::ostream &os) const;
+  void print_domtree(std::ostream &os) const;
 
 protected:
   // for use during liveness analysis
@@ -249,6 +254,7 @@ protected:
 template <IRAdaptor Adaptor>
 void Analyzer<Adaptor>::switch_func([[maybe_unused]] IRFuncRef func) {
   build_block_layout();
+  dominator_tree.compute(adaptor, block_layout);
   compute_liveness();
   // todo(salto): add option to disable precise liveness analysis
   compute_precise_liveness();
@@ -455,7 +461,12 @@ void Analyzer<Adaptor>::print_register_pressure(std::ostream &os) const {
                       loops[i].max_fp_pressure,
                       static_cast<u32>(loops[i].begin),
                       static_cast<u32>(loops[i].end));
-  }
+   }
+}
+
+template <IRAdaptor Adaptor>
+void Analyzer<Adaptor>::print_domtree(std::ostream &os) const {
+  dominator_tree.print(os, adaptor, block_layout);
 }
 
 template <IRAdaptor Adaptor>
