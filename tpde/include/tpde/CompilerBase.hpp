@@ -214,17 +214,17 @@ struct CompilerBase {
     MoveList parallel_copies;
     RegisterFile::RegBitSet used_global_regs = 0;
     std::unordered_map<ValLocalIdx, AsmReg> global_regs;
-    const IRInstRef current_instr; // necessary to choose good repair registers
+    const IRInstRef *current_instr; // necessary to choose good repair registers
     TreeRAContext(RegisterFile::RegBitSet used_global_regs,
                   const std::unordered_map<ValLocalIdx, AsmReg> &
                   global_regs,
-                  const IRInstRef &current_instr)
+                  const IRInstRef *current_instr)
       : used_global_regs(used_global_regs),
         global_regs(global_regs),
         current_instr(current_instr) {
     }
 
-    explicit TreeRAContext(const IRInstRef &current_instr) : used_global_regs(), global_regs(),
+    explicit TreeRAContext(const IRInstRef *current_instr) : used_global_regs(), global_regs(),
                                                              current_instr{current_instr} {
     }
   };
@@ -568,6 +568,7 @@ public:
     } else {
       Reg local = register_file.find_first_free_excluding(bank, exclusion_mask);
       Reg global = register_file.find_first_free_excluding(bank, this->tree_ra_ctx->used_global_regs);
+      TPDE_LOG_TRACE("Selected different local register {} and global {}", local.id(), global.id());
       return {local, global};
     }
     return {select_reg_evict(bank, exclusion_mask), Reg::make_invalid()};
@@ -693,13 +694,7 @@ public:
     // flow inbetween. We can use the Register state of the current block for
     // the next one.
     // no moves necessary
-    if (!analyzer.block_has_multiple_incoming(target) &&
-        std::distance(adaptor->block_succs(cur_block_ref).begin(),
-                      adaptor->block_succs(cur_block_ref).end()) == 1 &&
-        analyzer.block_idx(*adaptor->block_succs(cur_block_ref).begin()) ==
-            next_block()) {
-      return;
-    }
+
     MoveList moves;
     if (analyzer.block_has_phis(target)) {
       move_to_phi_nodes_impl(target,moves);
@@ -769,7 +764,18 @@ public:
             // No need to save value if it dies before the target
             continue;
           }
-          block_regs[target][block_regs[target].size()-1].push_back(Reg{ap.get_reg()},i);
+          // fix global colors
+          if (this->tree_ra_ctx->global_regs.contains(local_idx) && tree_ra_ctx->global_regs.at(local_idx) != ap.
+              get_reg()) {
+            moves.emplace_back(tree_ra_ctx->global_regs.at(local_idx), ap.get_reg(), ap.part_size(),
+                               local_idx,
+                               i);
+            this->register_file.unmark_used(ap.get_reg());
+            this->register_file.mark_used(tree_ra_ctx->global_regs.at(local_idx), local_idx, i);
+            ap.set_reg(tree_ra_ctx->global_regs.at(local_idx));
+            block_regs[target][block_regs[target].size() - 1].push_back(tree_ra_ctx->global_regs.at(local_idx), i);
+          } else
+            block_regs[target][block_regs[target].size() - 1].push_back(Reg{ap.get_reg()}, i);
         }
 
       }
@@ -2833,9 +2839,13 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     }
     verification_ir.set_branch_condition(std::move(branch_condition));
     // don't capture moves during codegen. They are not necessary for VIR.
-    verification_ir.active_compilation=true;
+    verification_ir.active_compilation = true;
 #endif
-    tree_ra_ctx = new TreeRAContext(inst);
+    if (!tree_ra_ctx) {
+      tree_ra_ctx = new TreeRAContext(&inst);
+    } else {
+      tree_ra_ctx->current_instr = &inst;
+    }
     auto it_cpy = it;
     ++it_cpy;
      if (!derived()->compile_inst(inst, InstRange{.from = it_cpy, .to = end}))

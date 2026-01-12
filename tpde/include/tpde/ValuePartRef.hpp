@@ -521,7 +521,7 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase 
   auto &reg_file = compiler->register_file;
   Reg reg = Reg::make_invalid();
   std::unordered_set<ValLocalIdx> operands;
-  for (auto operand: compiler->adaptor->inst_operands(compiler->tree_ra_ctx->current_instr)) {
+  for (auto operand: compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
     operands.insert(compiler->adaptor->val_local_idx(operand));
   }
   bool success = false;
@@ -809,6 +809,21 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value(
 
   AsmReg new_reg = other.salvage_keep_used(compiler);
   reg_file.update_reg_assignment(new_reg, local_idx(), part());
+  if (compiler->tree_ra_ctx->used_global_regs & (1ull << new_reg.id())) {
+    // find new global register for result
+    auto [_,global] = compiler->select_reg(reg_file.reg_bank(new_reg), compiler->tree_ra_ctx->used_global_regs);
+    if (global == AsmReg::make_invalid()) {
+      assert(false); //todo
+    }
+    compiler->tree_ra_ctx->global_regs.insert_or_assign(local_idx(), global);
+    compiler->tree_ra_ctx->used_global_regs |= (1ull << global.id());
+  } else {
+    // use the same local and global register
+    if (!compiler->tree_ra_ctx->global_regs.contains(local_idx())) {
+      compiler->tree_ra_ctx->global_regs.emplace(local_idx(), new_reg);
+      compiler->tree_ra_ctx->used_global_regs |= (1ull << new_reg.id());
+    }
+  }
   ap.set_reg(new_reg);
   ap.set_register_valid(true);
   ap.set_modified(true);

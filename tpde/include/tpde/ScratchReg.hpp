@@ -93,7 +93,7 @@ bool CompilerBase<Adaptor, Derived, Config>::ScratchReg::repair_argument(
   Reg reg = Reg::make_invalid();
   std::unordered_set<ValLocalIdx> operands;
   for (auto operand:
-       compiler->adaptor->inst_operands(compiler->tree_ra_ctx->current_instr)) {
+       compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
     operands.insert(compiler->adaptor->val_local_idx(operand));
   }
   bool success = false;
