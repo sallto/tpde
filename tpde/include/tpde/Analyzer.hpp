@@ -238,7 +238,11 @@ protected:
       util::SmallBitSet<256> &loop_heads) const noexcept;
 
   void compute_liveness() noexcept;
+public:
+  std::pair<u32, u32> get_current_and_next_use(const util::SmallVector<u32, 8> &vec,
+                                               const u32 idx);
 
+protected:
   void compute_precise_liveness() noexcept;
   void compute_spills() noexcept;
   void limit(tpde::util::SmallVector<
@@ -1014,7 +1018,10 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
     }
 
     for (const IRInstRef inst : adaptor->block_insts(block)) {
-      for (const IRValueRef res : adaptor->inst_results(inst)) {
+      for (const IRValueRef res: adaptor->inst_results(inst)) {
+        if (adaptor->val_ignore_in_liveness_analysis(res)) {
+          continue;
+        }
         const ValLocalIdx val_idx = adaptor->val_local_idx(res);
         auto &vpi = value_parts_cache[static_cast<u32>(val_idx)];
         if (vpi.count == 0) {
@@ -1025,7 +1032,10 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
           }
         }
       }
-      for (const IRValueRef operand : adaptor->inst_operands(inst)) {
+      for (const IRValueRef operand: adaptor->inst_operands(inst)) {
+        if (adaptor->val_ignore_in_liveness_analysis(operand)) {
+          continue;
+        }
         const ValLocalIdx val_idx = adaptor->val_local_idx(operand);
         auto &vpi = value_parts_cache[static_cast<u32>(val_idx)];
         if (vpi.count == 0) {
@@ -1506,7 +1516,42 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
   TPDE_LOG_TRACE("Precise Liveness Analysis completed");
 }
 
-template <IRAdaptor Adaptor>
+template<IRAdaptor Adaptor>
+std::pair<u32, u32> Analyzer<Adaptor>::get_current_and_next_use
+(const util::SmallVector<u32, 8> &vec,
+ const u32 idx) {
+  // calculate current (before idx) and next use (after execution of the
+  // current instruction). operands that die with the instruction would be
+  // [idx, INF].
+
+  // results can't be spilled before they are defined, so we must avoid
+  // spilling them, therefore return 0.
+  if (vec[0] == (idx | DEF_BIT)) {
+    assert(vec.size() >= 2);
+    return {0u, vec[1]};
+  }
+  if (vec[0] == INF) {
+    return {INF, INF};
+  }
+  if ((!(vec[0] & DEF_BIT) && vec[0] > idx)) {
+    return {vec[0], vec[0]};
+  } else if (!(vec[0] & DEF_BIT) && vec[0] == idx) {
+    assert(vec.size() >= 2);
+    return {vec[0], vec[1]};
+  }
+  for (u32 i = 1; i < vec.size(); ++i) {
+    const auto dist = vec[i];
+    // > since we want the next use. Not the current use in the instr. (notice
+    // this is different for results)
+    if (dist >= idx) {
+      // vec[i+1] must exist for the live-out entry
+      return {dist, dist == idx ? vec[i + 1] : dist};
+    }
+  }
+  return {INF, INF};
+};
+
+template<IRAdaptor Adaptor>
 void Analyzer<Adaptor>::compute_spills() noexcept {
   // Based on "Register Spilling and Live-Range Splitting for
   // SSA-Form Programs" by Hack et al. 2008
@@ -1521,7 +1566,7 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
   // todo(salto): fp und gp registers
   // todo(salto): multi-part values?
   // todo(salto): ordered set for W
-  constexpr u32 NUM_REGS = 3;
+  constexpr u32 NUM_REGS = 10;
 
   // The set of values in registers at the end of a block
   // compared to the original algorithm, we can avoid the set S (spilled
@@ -1543,39 +1588,7 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
   // todo(salto): irregular control flow
   // todo(salto): handle values with >5 parts seperately?
 
-  const auto get_current_and_next_use =
-      [&](const util::SmallVector<u32, 8> &vec,
-          const u32 idx) -> std::pair<u32, u32> {
-    // calculate current (before idx) and next use (after execution of the
-    // current instruction). operands that die with the instruction would be
-    // [idx, INF].
 
-    // results can't be spilled before they are defined, so we must avoid
-    // spilling them, therefore return 0.
-    if (vec[0] == (idx | DEF_BIT)) {
-      assert(vec.size() >= 2);
-      return {0u, vec[1]};
-    }
-    if (vec[0] == INF) {
-      return {INF, INF};
-    }
-    if ((!(vec[0] & DEF_BIT) && vec[0] > idx)) {
-      return {vec[0], vec[0]};
-    } else if (!(vec[0] & DEF_BIT) && vec[0] == idx) {
-      assert(vec.size() >= 2);
-      return {vec[0], vec[1]};
-    }
-    for (u32 i = 1; i < vec.size(); ++i) {
-      const auto dist = vec[i];
-      // > since we want the next use. Not the current use in the instr. (notice
-      // this is different for results)
-      if (dist >= idx) {
-        // vec[i+1] must exist for the live-out entry
-        return {dist, dist == idx ? vec[i + 1] : dist};
-      }
-    }
-    return {INF, INF};
-  };
   // todo(salto): register arguments
   std::unordered_set<ValLocalIdx> W;
   u32 used_regs = 0;
@@ -1694,6 +1707,10 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
     u32 idx = 0;
     for (const auto inst : adaptor->block_insts(block)) {
       for (const auto operand : adaptor->inst_operands(inst)) {
+        if (adaptor->val_ignore_in_liveness_analysis(operand)) {
+          // what can we do here?
+          continue;
+        }
         const auto val_idx = adaptor->val_local_idx(operand);
         if (!val_idx_to_num_parts.contains(val_idx)) {
           val_idx_to_num_parts[val_idx] =
@@ -1712,6 +1729,10 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
       // limits in most cases.
       u32 num_result_regs = 0;
       for (const auto result : adaptor->inst_results(inst)) {
+        if (adaptor->val_ignore_in_liveness_analysis(result)) {
+          // what can we do here?
+          continue;
+        }
         const auto val_idx = adaptor->val_local_idx(result);
         if (!val_idx_to_num_parts.contains(val_idx)) {
           val_idx_to_num_parts[val_idx] =

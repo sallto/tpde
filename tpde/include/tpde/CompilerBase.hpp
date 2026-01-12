@@ -164,6 +164,7 @@ struct CompilerBase {
   } stack = {};
 
   typename Analyzer<Adaptor>::BlockIndex cur_block_idx;
+  u32 cur_instr_idx;
 
   // Assignments
 
@@ -226,6 +227,27 @@ struct CompilerBase {
 
     explicit TreeRAContext(const IRInstRef *current_instr) : used_global_regs(), global_regs(),
                                                              current_instr{current_instr} {
+    }
+
+    void assign(ValLocalIdx idx, Reg reg) {
+      if (this->used_global_regs & (1ull << reg.id())) {
+        assert(global_regs[idx]==reg);
+        return;
+      }
+      if (global_regs.contains(idx)) {
+        this->used_global_regs &= ~(1ull << global_regs[idx].id());
+        this->used_global_regs |= (1ull << reg.id());
+        global_regs.insert_or_assign(idx, reg);
+      } else {
+        this->used_global_regs |= (1ull << reg.id());
+        global_regs.emplace(idx, reg);
+      }
+    }
+
+    void unassign(ValLocalIdx idx) {
+      auto reg = global_regs[idx];
+      this->used_global_regs &= ~(1ull << global_regs[idx].id());
+      global_regs.erase(idx);
     }
   };
 
@@ -562,6 +584,14 @@ public:
   /// Select an available register, evicting loaded values if needed.
   /// Return local, global register
   std::pair<Reg, Reg> select_reg(RegBank bank, u64 exclusion_mask) noexcept {
+    if (!this->tree_ra_ctx)[[unlikely]]{
+      Reg res = register_file.find_first_free_excluding(bank, exclusion_mask);
+      if (res.valid()) [[likely]] {
+        return {res, res};
+      }
+      return {select_reg_evict(bank, exclusion_mask), Reg::make_invalid()};
+    }
+
     Reg res = register_file.find_first_free_excluding(bank, exclusion_mask | this->tree_ra_ctx->used_global_regs);
     if (res.valid()) [[likely]] {
       return {res, res};
@@ -569,7 +599,8 @@ public:
       Reg local = register_file.find_first_free_excluding(bank, exclusion_mask);
       Reg global = register_file.find_first_free_excluding(bank, this->tree_ra_ctx->used_global_regs);
       TPDE_LOG_TRACE("Selected different local register {} and global {}", local.id(), global.id());
-      return {local, global};
+      if (local.valid() && global.valid())
+        return {local, global};
     }
     return {select_reg_evict(bank, exclusion_mask), Reg::make_invalid()};
   }
@@ -1275,6 +1306,9 @@ void CompilerBase<Adaptor, Derived, Config>::free_assignment(
       register_file.dec_lock_count_must_zero(reg); // release lock for fixed reg
       register_file.unmark_used(reg);
     } else if (ap.register_valid()) {
+      if (tree_ra_ctx->global_regs.contains(local_idx)) {
+        tree_ra_ctx->unassign(local_idx);
+      }
       const auto reg = ap.get_reg();
       assert(!register_file.is_fixed(reg));
       register_file.unmark_used(reg);
@@ -1316,6 +1350,9 @@ template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
         ValLocalIdx local_idx, ValueAssignment *assignment) noexcept {
   TPDE_LOG_TRACE("Releasing assignment for value {}", static_cast<u32>(local_idx));
   if (!assignment->delay_free) {
+    if (tree_ra_ctx->global_regs.contains(local_idx)) {
+      tree_ra_ctx->unassign(local_idx);
+    }
     free_assignment(local_idx, assignment);
     return;
   }
@@ -1687,7 +1724,7 @@ Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(
 
     u32 score = 0;
     if (ap.stack_valid()) {
-      score |= u32{1} << 31;
+      score = -1;
     }
 
     const auto &liveness = analyzer.liveness_info(local_idx);
@@ -1699,7 +1736,7 @@ Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(
 
     TPDE_LOG_DBG("  r{} ({}:{}) rc={}/{} live={}-{}{} spilled={} score={:#x}",
                  reg_id,
-                 u32(local_idx),
+                 static_cast<u32>(local_idx),
                  part,
                  refs_left,
                  liveness.ref_count,
@@ -1719,6 +1756,9 @@ Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(
     TPDE_FATAL("ran out of registers for scratch registers");
   }
   TPDE_LOG_DBG("  selected r{}", candidate.id());
+  if (tree_ra_ctx)[[likely]]{
+    tree_ra_ctx->unassign(register_file.reg_local_idx(candidate));
+  }
   evict_reg(candidate);
   return candidate;
 }
@@ -2603,6 +2643,11 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   block_regs.clear();
   phi_regs.clear();
   register_file.reset();
+  if (tree_ra_ctx) {
+    tree_ra_ctx->global_regs.clear();
+    tree_ra_ctx->used_global_regs = 0;
+    tree_ra_ctx->parallel_copies.clear();
+  }
 #ifndef NDEBUG
   generating_branch = false;
   verification_ir.reset();
@@ -2789,9 +2834,12 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
       }
     }
   }
+  cur_instr_idx = 0;
   auto &&val_range = adaptor->block_insts(block);
   auto end = val_range.end();
-  for (auto it = val_range.begin(); it != end; ++it) {
+  for (auto it = val_range.begin(); it != end; ++it,
+                                               cur_instr_idx++
+  ) {
     const IRInstRef inst = *it;
     if (this->adaptor->inst_fused(inst)) {
       continue;

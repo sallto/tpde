@@ -394,6 +394,8 @@ public:
   /// currently locked register.
   void set_value_reg(CompilerBase *compiler, AsmReg reg) noexcept;
 
+  void mov(CompilerBase *compiler, AsmReg value_reg) noexcept;
+
   bool can_salvage() const noexcept {
     if (!has_assignment()) {
       return state.c.owned && state.c.reg.valid();
@@ -461,6 +463,10 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
     auto ap = assignment();
         if (ap.register_valid()) {
       lock(compiler);
+      //assert(!(compiler->tree_ra_ctx->used_global_regs&(1ull<<state.v.reg.id()))||compiler.);
+      state.v.global_reg = state.v.reg;
+      compiler->tree_ra_ctx->global_regs.insert_or_assign(state.v.local_idx, state.v.reg);
+      compiler->tree_ra_ctx->used_global_regs |= (1ull << state.v.reg.id());
       // TODO: implement this if needed
       assert((exclusion_mask & (1ull << state.v.reg.id())) == 0 &&
              "moving registers in alloc_reg is unsupported");
@@ -473,7 +479,8 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
   }
 
   auto [reg, global_reg] = compiler->select_reg(bank, exclusion_mask);
-  if (!is_const()) {
+  if (!is_const() && has_assignment() && compiler->tree_ra_ctx) {
+    state.v.global_reg = global_reg;
     compiler->tree_ra_ctx->global_regs.emplace(state.v.local_idx, global_reg);
     compiler->tree_ra_ctx->used_global_regs |= (1ull << global_reg.id());
   }
@@ -815,6 +822,7 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value(
     if (global == AsmReg::make_invalid()) {
       assert(false); //todo
     }
+    this->state.v.global_reg = global;
     compiler->tree_ra_ctx->global_regs.insert_or_assign(local_idx(), global);
     compiler->tree_ra_ctx->used_global_regs |= (1ull << global.id());
   } else {
@@ -880,6 +888,20 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value(
   // ScratchReg's reg is fixed and used => unfix, keep used, update assignment
   reg_file.unmark_fixed(value_reg);
   reg_file.update_reg_assignment(value_reg, local_idx(), part());
+  if (compiler->tree_ra_ctx->used_global_regs & (1ull << value_reg.id())) {
+    // find new global register for result
+    auto [_,global] = compiler->select_reg(reg_file.reg_bank(value_reg), 0);
+    if (global != AsmReg::make_invalid()) {
+      compiler->tree_ra_ctx->global_regs.insert_or_assign(local_idx(), global);
+      compiler->tree_ra_ctx->used_global_regs |= (1ull << global.id());
+    }
+  } else {
+    // use the same local and global register
+    if (!compiler->tree_ra_ctx->global_regs.contains(local_idx())) {
+      compiler->tree_ra_ctx->global_regs.emplace(local_idx(), value_reg);
+      compiler->tree_ra_ctx->used_global_regs |= (1ull << value_reg.id());
+    }
+  }
   ap.set_reg(value_reg);
   ap.set_register_valid(true);
   ap.set_modified(true);
@@ -936,6 +958,38 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value_reg(
   ap.set_modified(true);
 }
 
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+void CompilerBase<Adaptor, Derived, Config>::ValuePart::mov(
+  CompilerBase *compiler, AsmReg value_reg) noexcept {
+  assert(compiler->may_change_value_state());
+
+  auto &reg_file = compiler->register_file;
+
+  // We could support this, but there shouldn't bee the need for that.
+  assert(value_reg.valid() && "cannot initialize with invalid register");
+  assert(!state.c.reg.valid() &&
+    "attempted to overwrite already initialized and locked ValuePartRef");
+
+  assert(has_assignment());
+
+  // Update the value of the assignment part
+  auto ap = assignment();
+  assert(!ap.variable_ref() && "cannot update variable ref");
+
+  assert(!ap.fixed_assignment()&&"can't move fixed assignments");
+
+  if (ap.register_valid()) {
+    compiler->derived()->mov(value_reg, ap.get_reg(), ap.part_size());
+    reg_file.unmark_used(ap.get_reg());
+  }
+
+  reg_file.mark_used(value_reg, local_idx(), part());
+  reg_file.mark_clobbered(value_reg);
+  ap.set_reg(value_reg);
+  ap.set_register_valid(true);
+  ap.set_modified(true);
+}
+
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 typename CompilerBase<Adaptor, Derived, Config>::AsmReg
     CompilerBase<Adaptor, Derived, Config>::ValuePart::salvage_keep_used(
@@ -958,6 +1012,10 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
   if (ap.fixed_assignment()) {
     compiler->register_file.dec_lock_count(cur_reg); // release fixed register
     --compiler->assignments.cur_fixed_assignment_count[ap.bank().id()];
+  }
+
+  if (compiler->tree_ra_ctx->global_regs.contains(local_idx())) {
+    compiler->tree_ra_ctx->unassign(local_idx());
   }
 
   ap.set_register_valid(false);
@@ -1097,6 +1155,10 @@ struct CompilerBase<Adaptor, Derived, Config>::ValuePartRef : ValuePart {
 
   void set_value_reg(AsmReg value_reg) noexcept {
     ValuePart::set_value_reg(compiler, value_reg);
+  }
+
+  void mov(AsmReg dst) noexcept {
+    ValuePart::mov(compiler, dst);
   }
 
   void set_recommended_reg(u8 reg) noexcept {

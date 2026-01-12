@@ -155,27 +155,29 @@ bool TestIRCompilerX64::compile_div(IRInstRef inst_idx) noexcept {
   const auto rhs_idx =
       static_cast<IRValueRef>(ir()->value_operands[value.op_begin_idx + 1]);
 
-  auto [lhs_vr, lhs] = this->val_ref_single(lhs_idx);
+  auto lhs_vr = this->val_ref(lhs_idx);
   auto [rhs_vr, rhs] = this->val_ref_single(rhs_idx);
   auto [res_vr, res] = this->result_ref_single(static_cast<IRValueRef>(inst_idx));
 
   // Reserve RAX and RDX registers (DIV instruction overwrites both)
-  ScratchReg rax_scratch{this};
   ScratchReg rdx_scratch{this};
   AsmReg rdx_reg = rdx_scratch.alloc_specific(AsmReg::DX);
 
+
   // Load dividend into RAX
-  lhs.load_to_specific(AsmReg::AX);
+  ScratchReg rax_scratch{this};
+  AsmReg rax_reg = rax_scratch.alloc_specific(AsmReg::AX);
+  auto lhs_reg = lhs_vr.part(0).load_to_reg();
+  derived()->mov(rax_reg, lhs_reg, 8);
 
   // Zero RDX for unsigned division
   ASM(XOR64rr, rdx_reg, rdx_reg);
 
-  // Load divisor and perform division
-  AsmReg divisor_reg = rhs.load_to_reg();
-  ASM(DIV64r, divisor_reg);
+
+  ASM(DIV64r, rhs.load_to_reg());
 
   // Move quotient from RAX to result
-  res.set_value(std::move(lhs));
+  res.set_value(std::move(rax_scratch));
 
   return true;
 }

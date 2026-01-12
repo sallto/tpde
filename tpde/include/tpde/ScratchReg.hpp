@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #pragma once
 #include "ValuePartRef.hpp"
+#include "ValueRef.hpp"
 
 namespace tpde {
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
@@ -110,17 +111,20 @@ bool CompilerBase<Adaptor, Derived, Config>::ScratchReg::repair_argument(
     }
     if (reg == Reg::make_invalid()) {
       // todo(salto): choose color from allowed
+      //reg =compiler->register_file.find_first_free_excluding(reg_file.reg_bank(this->cur_reg()),forbidden);
       reg = Reg{*util::BitSetIterator<>(allowed).begin()};
     }
     ValLocalIdx pawn = reg_file.reg_local_idx(reg);
     // todo(salto): constraints of pawn?
+    // |
+    //(this->has_reg() ? (1ull << this->cur_reg().id()) : 0ull)
     typename RegisterFile::RegBitSet pawnAllowed =
-        (available |
-         (this->has_reg() ? (1ull << this->cur_reg().id()) : 0ull)) &
+        (available) &
         (~forbidden);
     if (pawnAllowed != 0) {
+      Reg pawnReg = compiler->register_file.find_first_free_excluding(reg_file.reg_bank(reg), ~pawnAllowed);
       compiler->tree_ra_ctx->parallel_copies.emplace_back(
-        Reg{*util::BitSetIterator<>(pawnAllowed).begin()},
+        pawnReg,
         reg,
         8,
         pawn,
@@ -138,8 +142,9 @@ bool CompilerBase<Adaptor, Derived, Config>::ScratchReg::repair_argument(
     }
   }
   if (reg != Reg::make_invalid()) {
-    compiler->tree_ra_ctx->parallel_copies.emplace_back(
-      Reg{reg}, this->cur_reg(), 8, var, reg_file.reg_part(reg));
+    if (this->has_reg())
+      compiler->tree_ra_ctx->parallel_copies.emplace_back(
+        Reg{reg}, this->cur_reg(), 8, var, reg_file.reg_part(reg));
     return true;
   }
   return false;
@@ -154,43 +159,37 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
   reset();
 
   if (compiler->register_file.is_used(reg)) {
-    // salto: repair argument
-    // first load to a random register, then shuffle
-    auto reg_file = compiler->register_file;
-    if (!has_reg()) {
-      auto [local,_] = compiler->select_reg(reg_file.reg_bank(reg), 0);
+    auto local_idx = compiler->register_file.reg_local_idx(reg);
+    const auto &pli = compiler->analyzer.precise_liveness[static_cast<u32>(compiler->cur_block_idx)];
+    auto [c,n] = compiler->analyzer.get_current_and_next_use(pli.next_uses.at(local_idx), compiler->cur_instr_idx);
 
-      this->reg = local;
-      reg_file.mark_used(this->reg, INVALID_VAL_LOCAL_IDX, 0);
-      reg_file.mark_clobbered(this->reg);
-      reg_file.mark_fixed(this->reg);
-    }
+    // we are an empty scratch reg so we just shuffle the target register away.
+    auto &reg_file = compiler->register_file;
     bool success =
         repair_argument(compiler,
                         INVALID_VAL_LOCAL_IDX,
                         (1ull << reg.id()),
                         (reg_file.allocatable & ~reg_file.used) &
                         reg_file.bank_regs(reg_file.reg_bank(reg)));
-    reg_file.unmark_fixed(this->cur_reg());
     if (success) [[likely]] {
       auto moves =
           compiler->sequentialize(compiler->tree_ra_ctx->parallel_copies);
       for (auto move: moves) {
-        compiler->derived()->mov(move.dst, move.src, move.size);
-        if (!reg_file.is_used(Reg{move.dst})) {
-          reg_file.unmark_used(move.src);
-          reg_file.mark_used(move.dst, move.value_idx, move.part_idx);
+        if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
+          compiler->tree_ra_ctx->assign(move.value_idx, move.dst);
+          ValueRef vr{compiler, move.value_idx};
+          vr.disown();
+          vr.part_unowned(move.part_idx).mov(move.dst);
         } else {
-          reg_file.update_reg_assignment(
+          compiler->derived()->mov(move.dst, move.src, 8);
+          reg_file.mark_used(
             Reg{move.dst}, move.value_idx, move.part_idx);
+          reg_file.mark_clobbered(Reg{move.dst});
+          reg_file.mark_fixed(Reg{move.dst});
         }
       }
-      reg_file.unmark_used(this->cur_reg());
-      compiler->register_file.mark_clobbered(reg);
-      compiler->register_file.mark_fixed(reg);
-      this->reg = reg;
+      // target register must now be free
       compiler->tree_ra_ctx->parallel_copies.clear();
-      return reg;
     } else {
       compiler->evict_reg(reg);
     }
