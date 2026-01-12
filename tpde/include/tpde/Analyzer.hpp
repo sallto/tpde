@@ -98,7 +98,7 @@ struct Analyzer {
 
   struct PreciseLivenessInfo {
     // val_local_idx -> list of next-use distances from the start of each block.
-    std::unordered_map<ValLocalIdx, util::SmallVector<u32, 8>> next_uses;
+    std::unordered_map<ValLocalIdx, util::SmallVector<u32, 32> > next_uses;
   };
 
   // pro block liveness info
@@ -239,7 +239,7 @@ protected:
 
   void compute_liveness() noexcept;
 public:
-  std::pair<u32, u32> get_current_and_next_use(const util::SmallVector<u32, 8> &vec,
+  std::pair<u32, u32> get_current_and_next_use(const util::SmallVector<u32, 32> &vec,
                                                const u32 idx);
 
 protected:
@@ -1518,11 +1518,21 @@ void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
 
 template<IRAdaptor Adaptor>
 std::pair<u32, u32> Analyzer<Adaptor>::get_current_and_next_use
-(const util::SmallVector<u32, 8> &vec,
+(const util::SmallVector<u32, 32> &vec,
  const u32 idx) {
   // calculate current (before idx) and next use (after execution of the
   // current instruction). operands that die with the instruction would be
   // [idx, INF].
+
+#ifndef NDEBUG
+  // Verify the vector is sorted (ignoring DEF_BIT) in debug builds
+  for (u32 i = 1; i < vec.size(); ++i) {
+    const u32 prev_val = vec[i - 1] & ~DEF_BIT;
+    const u32 curr_val = vec[i] & ~DEF_BIT;
+    assert((prev_val <= curr_val || curr_val == (INF & ~DEF_BIT)) &&
+           "get_current_and_next_use: vector is not sorted");
+  }
+#endif
 
   // results can't be spilled before they are defined, so we must avoid
   // spilling them, therefore return 0.
@@ -1539,16 +1549,27 @@ std::pair<u32, u32> Analyzer<Adaptor>::get_current_and_next_use
     assert(vec.size() >= 2);
     return {vec[0], vec[1]};
   }
-  for (u32 i = 1; i < vec.size(); ++i) {
-    const auto dist = vec[i];
-    // > since we want the next use. Not the current use in the instr. (notice
-    // this is different for results)
-    if (dist >= idx) {
-      // vec[i+1] must exist for the live-out entry
-      return {dist, dist == idx ? vec[i + 1] : dist};
-    }
+
+  // Binary search for the first element >= idx (ignoring DEF_BIT)
+  // We start from index 1 since we already checked vec[0] above
+  const auto it = std::lower_bound(
+    vec.begin() + 1,
+    vec.end(),
+    idx,
+    [](const u32 dist, const u32 target) {
+      // Compare distances, masking off the DEF_BIT
+      return (dist & ~DEF_BIT) < target;
+    });
+
+  if (it == vec.end()) {
+    return {INF, INF};
   }
-  return {INF, INF};
+
+  const u32 dist = *it;
+  // vec[i+1] must exist for the live-out entry
+  const u32 next_idx = std::distance(vec.begin(), it) + 1;
+  assert(next_idx < vec.size() && "next use index out of bounds");
+  return {dist, dist == idx ? vec[next_idx] : dist};
 };
 
 template<IRAdaptor Adaptor>
@@ -1682,12 +1703,6 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
       }
     }
 
-    TPDE_LOG_TRACE("W for block {}:", static_cast<u32>(block_idx(block)));
-    TPDE_LOG_TRACE("num_reg: {}", used_regs);
-    for (const auto val_idx : W) {
-      TPDE_LOG_TRACE("{}", static_cast<u32>(val_idx));
-    }
-
 
     // todo(salto): for 1 incoming, is the prev block guaranteed to be the
     // incoming one?
@@ -1745,18 +1760,6 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
 
         num_result_regs += val_idx_to_num_parts[val_idx];
       }
-      // num_result_regs = 0;
-      TPDE_LOG_TRACE("num_reg: {},{}", used_regs, num_result_regs);
-      TPDE_LOG_TRACE("W for instr_idx {}:", idx);
-      for (const auto val_idx : W) {
-        const auto [current, next_use] = get_current_and_next_use(
-            precise_liveness[static_cast<u32>(block_idx(block))]
-                .next_uses[val_idx],
-            idx);
-        TPDE_LOG_TRACE(
-            "{}:{},{}", static_cast<u32>(val_idx), current, next_use);
-      }
-      TPDE_LOG_TRACE("");
 
       // we still have enough registers, no spills needed
       if (used_regs + num_result_regs <= NUM_REGS) {
@@ -1778,9 +1781,6 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
         const auto [current_use, next_use] = get_current_and_next_use(vec, idx);
         // we can evict all dead values by default.
         if (current_use == INF) {
-          TPDE_LOG_TRACE("Evicting dead value {} at instruction idx {}",
-                         static_cast<u32>(val_idx),
-                         idx);
           used_regs -= val_idx_to_num_parts[val_idx];
           it = W.erase(it);
           // todo(salto): maybe break if we already have enough registers?
