@@ -12,6 +12,12 @@ private:
   // TODO(ts): get this using the CompilerConfig?
   AsmReg reg = AsmReg::make_invalid();
 
+  bool repair_argument(CompilerBase *compiler,
+                       ValLocalIdx var,
+                       typename RegisterFile::RegBitSet constraints,
+                       typename RegisterFile::RegBitSet available,
+                       typename RegisterFile::RegBitSet forbidden = 0);
+
 public:
   explicit ScratchReg(CompilerBase *compiler) : compiler(compiler) {}
 
@@ -76,6 +82,69 @@ typename CompilerBase<Adaptor, Derived, Config>::ScratchReg &
   return *this;
 }
 
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+bool CompilerBase<Adaptor, Derived, Config>::ScratchReg::repair_argument(
+  CompilerBase *compiler,
+  ValLocalIdx var,
+  typename RegisterFile::RegBitSet constraints,
+  typename RegisterFile::RegBitSet available,
+  typename RegisterFile::RegBitSet forbidden) {
+  auto &reg_file = compiler->register_file;
+  Reg reg = Reg::make_invalid();
+  std::unordered_set<ValLocalIdx> operands;
+  for (auto operand:
+       compiler->adaptor->inst_operands(compiler->tree_ra_ctx->current_instr)) {
+    operands.insert(compiler->adaptor->val_local_idx(operand));
+  }
+  bool success = false;
+  typename RegisterFile::RegBitSet allowed =
+      constraints & (~forbidden); // todo(salto): constraints
+  while (reg == Reg::make_invalid() && allowed != 0) {
+    for (u64 candidate: util::BitSetIterator<>(allowed)) {
+      if (reg_file.is_used(Reg{candidate}) &&
+          (!operands.contains(reg_file.reg_local_idx(Reg{candidate})) &&
+           !reg_file.is_fixed(Reg{candidate}))) {
+        reg = Reg{candidate};
+        break;
+      }
+    }
+    if (reg == Reg::make_invalid()) {
+      // todo(salto): choose color from allowed
+      reg = Reg{*util::BitSetIterator<>(allowed).begin()};
+    }
+    ValLocalIdx pawn = reg_file.reg_local_idx(reg);
+    // todo(salto): constraints of pawn?
+    typename RegisterFile::RegBitSet pawnAllowed =
+        (available |
+         (this->has_reg() ? (1ull << this->cur_reg().id()) : 0ull)) &
+        (~forbidden);
+    if (pawnAllowed != 0) {
+      compiler->tree_ra_ctx->parallel_copies.emplace_back(
+        Reg{*util::BitSetIterator<>(pawnAllowed).begin()},
+        reg,
+        8,
+        pawn,
+        reg_file.reg_part(reg));
+      success = true;
+    } else {
+      success = repair_argument(compiler,
+                                pawn,
+                                available | (1ull << this->cur_reg().id()),
+                                forbidden | (1ull << reg.id()));
+    }
+    if (!success) {
+      allowed &= ~(1ull << reg.id());
+      reg = Reg::make_invalid();
+    }
+  }
+  if (reg != Reg::make_invalid()) {
+    compiler->tree_ra_ctx->parallel_copies.emplace_back(
+      Reg{reg}, this->cur_reg(), 8, var, reg_file.reg_part(reg));
+    return true;
+  }
+  return false;
+}
+
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 typename CompilerBase<Adaptor, Derived, Config>::AsmReg
     CompilerBase<Adaptor, Derived, Config>::ScratchReg::alloc_specific(
@@ -85,7 +154,46 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
   reset();
 
   if (compiler->register_file.is_used(reg)) {
-    compiler->evict_reg(reg);
+    // salto: repair argument
+    // first load to a random register, then shuffle
+    auto reg_file = compiler->register_file;
+    if (!has_reg()) {
+      auto [local,_] = compiler->select_reg(reg_file.reg_bank(reg), 0);
+
+      this->reg = local;
+      reg_file.mark_used(this->reg, INVALID_VAL_LOCAL_IDX, 0);
+      reg_file.mark_clobbered(this->reg);
+      reg_file.mark_fixed(this->reg);
+    }
+    bool success =
+        repair_argument(compiler,
+                        INVALID_VAL_LOCAL_IDX,
+                        (1ull << reg.id()),
+                        (reg_file.allocatable & ~reg_file.used) &
+                        reg_file.bank_regs(reg_file.reg_bank(reg)));
+    reg_file.unmark_fixed(this->cur_reg());
+    if (success) [[likely]] {
+      auto moves =
+          compiler->sequentialize(compiler->tree_ra_ctx->parallel_copies);
+      for (auto move: moves) {
+        compiler->derived()->mov(move.dst, move.src, move.size);
+        if (!reg_file.is_used(Reg{move.dst})) {
+          reg_file.unmark_used(move.src);
+          reg_file.mark_used(move.dst, move.value_idx, move.part_idx);
+        } else {
+          reg_file.update_reg_assignment(
+            Reg{move.dst}, move.value_idx, move.part_idx);
+        }
+      }
+      reg_file.unmark_used(this->cur_reg());
+      compiler->register_file.mark_clobbered(reg);
+      compiler->register_file.mark_fixed(reg);
+      this->reg = reg;
+      compiler->tree_ra_ctx->parallel_copies.clear();
+      return reg;
+    } else {
+      compiler->evict_reg(reg);
+    }
   }
 
   compiler->register_file.mark_used(reg, INVALID_VAL_LOCAL_IDX, 0);
@@ -107,7 +215,11 @@ CompilerBase<Adaptor, Derived, Config>::AsmReg
     return reg;
   }
   TPDE_LOG_INFO("Allocating new register");
-  reg = compiler->select_reg(bank, /*exclusion_mask=*/0);
+  // todo(salto)
+  auto [local, global] = compiler->select_reg(bank, /*exclusion_mask=*/0);
+  //compiler->tree_ra_ctx->global_regs.push_back(global);
+  //compiler->tree_ra_ctx->used_global_regs |= (1ull << reg.id()),
+  reg = local;
   reg_file.mark_used(reg, INVALID_VAL_LOCAL_IDX, 0);
   reg_file.mark_clobbered(reg);
   reg_file.mark_fixed(reg);

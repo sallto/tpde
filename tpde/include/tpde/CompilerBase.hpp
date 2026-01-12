@@ -205,6 +205,31 @@ struct CompilerBase {
         : value_idx(val), part_idx(part), dst(d), src(s), size(sz) {}
   };
   using MoveList = util::SmallVector<RegisterMove, 16>;
+
+  /// Tree Register Allocator context for tracking parallel copies during
+  /// instruction compilation. Based on the tree scan register allocation
+  /// algorithm which processes operations in a single pass.
+  struct TreeRAContext {
+    /// List of parallel copies
+    MoveList parallel_copies;
+    RegisterFile::RegBitSet used_global_regs = 0;
+    std::unordered_map<ValLocalIdx, AsmReg> global_regs;
+    const IRInstRef current_instr; // necessary to choose good repair registers
+    TreeRAContext(RegisterFile::RegBitSet used_global_regs,
+                  const std::unordered_map<ValLocalIdx, AsmReg> &
+                  global_regs,
+                  const IRInstRef &current_instr)
+      : used_global_regs(used_global_regs),
+        global_regs(global_regs),
+        current_instr(current_instr) {
+    }
+
+    explicit TreeRAContext(const IRInstRef &current_instr) : used_global_regs(), global_regs(),
+                                                             current_instr{current_instr} {
+    }
+  };
+
+  TreeRAContext *tree_ra_ctx = nullptr;
 #ifndef NDEBUG
   /// Whether we are currently in the middle of generating branch-related code
   /// and therefore must not change any value-related state.
@@ -535,12 +560,17 @@ private:
 
 public:
   /// Select an available register, evicting loaded values if needed.
-  Reg select_reg(RegBank bank, u64 exclusion_mask) noexcept {
-    Reg res = register_file.find_first_free_excluding(bank, exclusion_mask);
+  /// Return local, global register
+  std::pair<Reg, Reg> select_reg(RegBank bank, u64 exclusion_mask) noexcept {
+    Reg res = register_file.find_first_free_excluding(bank, exclusion_mask | this->tree_ra_ctx->used_global_regs);
     if (res.valid()) [[likely]] {
-      return res;
+      return {res, res};
+    } else {
+      Reg local = register_file.find_first_free_excluding(bank, exclusion_mask);
+      Reg global = register_file.find_first_free_excluding(bank, this->tree_ra_ctx->used_global_regs);
+      return {local, global};
     }
-    return select_reg_evict(bank, exclusion_mask);
+    return {select_reg_evict(bank, exclusion_mask), Reg::make_invalid()};
   }
 
   /// Reload a value part from memory or recompute variable address.
@@ -614,25 +644,25 @@ public:
       if (moves[j].src == moves[i].dst) {
         switch (moves[j].status) {
         case MoveStatus::TO_MOVE: {
-          move_one(j, moves, result);
-          break;
-        }
-        case MoveStatus::MOVING: {
-          auto tmp = this->select_reg(register_file.reg_bank(moves[j].src), 0);
-          // todo(salto): what if no reg is available, shouldn't happen, since
-          // phis leave 2 free registers todo(salto): call derived->mov
-          result.emplace_back(tmp,
-                              moves[j].src,
-                              moves[j].size,
-                              moves[j].value_idx,
-                              moves[j].part_idx);
-          moves[j].src = tmp;
-          break;
-        }
-        case MoveStatus::DONE: {
-          // already done
-          break;
-        }
+            move_one(j, moves, result);
+            break;
+          }
+          case MoveStatus::MOVING: {
+            auto [tmp, _] = this->select_reg(register_file.reg_bank(moves[j].src), 0);
+            // todo(salto): what if no reg is available, shouldn't happen, since
+            // phis leave 2 free registers todo(salto): call derived->mov
+            result.emplace_back(tmp,
+                                moves[j].src,
+                                moves[j].size,
+                                moves[j].value_idx,
+                                moves[j].part_idx);
+            moves[j].src = tmp;
+            break;
+          }
+          case MoveStatus::DONE: {
+            // already done
+            break;
+          }
         }
       }
     }
@@ -2646,6 +2676,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
 
   for (u32 i = 0; i < analyzer.block_layout.size(); ++i) {
     const auto block_ref = analyzer.block_layout[i];
+
     TPDE_LOG_TRACE(
         "Compiling block {} ({})", i, adaptor->block_fmt_ref(block_ref));
     if (!derived()->compile_block(block_ref, i)) [[unlikely]] {
@@ -2682,6 +2713,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
 
   return true;
 }
+
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 bool CompilerBase<Adaptor, Derived, Config>::compile_block(
@@ -2803,7 +2835,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     // don't capture moves during codegen. They are not necessary for VIR.
     verification_ir.active_compilation=true;
 #endif
-
+    tree_ra_ctx = new TreeRAContext(inst);
     auto it_cpy = it;
     ++it_cpy;
      if (!derived()->compile_inst(inst, InstRange{.from = it_cpy, .to = end}))

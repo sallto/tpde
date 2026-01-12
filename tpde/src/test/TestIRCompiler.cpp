@@ -155,57 +155,27 @@ bool TestIRCompilerX64::compile_div(IRInstRef inst_idx) noexcept {
   const auto rhs_idx =
       static_cast<IRValueRef>(ir()->value_operands[value.op_begin_idx + 1]);
 
-  auto lhs = this->val_ref(lhs_idx);
-  auto rhs = this->val_ref(rhs_idx);
+  auto [lhs_vr, lhs] = this->val_ref_single(lhs_idx);
+  auto [rhs_vr, rhs] = this->val_ref_single(rhs_idx);
+  auto [res_vr, res] = this->result_ref_single(static_cast<IRValueRef>(inst_idx));
 
-  // x86-64 division requires dividend in RAX:RDX and divisor in any register
-  // We need to preserve RAX and RDX if they're currently used
-  AsmReg rax_reg{AsmReg::AX};
-  AsmReg rdx_reg{AsmReg::DX};
-
-  // Save current RAX and RDX if they contain live values
-  bool rax_needs_save = this->register_file.is_used(rax_reg);
-  bool rdx_needs_save = this->register_file.is_used(rdx_reg);
-
-  ValuePartRef saved_rax{this, RegBank{0}};  // GP_BANK = 0
-  ValuePartRef saved_rdx{this, RegBank{0}};  // GP_BANK = 0
-  
-  if (rax_needs_save) {
-    saved_rax.alloc_specific(rax_reg);
-    saved_rax.set_modified();
-  }
-  if (rdx_needs_save) {
-    saved_rdx.alloc_specific(rdx_reg);
-    saved_rdx.set_modified();
-  }
+  // Reserve RAX and RDX registers (DIV instruction overwrites both)
+  ScratchReg rax_scratch{this};
+  ScratchReg rdx_scratch{this};
+  AsmReg rdx_reg = rdx_scratch.alloc_specific(AsmReg::DX);
 
   // Load dividend into RAX
-  lhs.part(0).load_to_specific(rax_reg);
-  
+  lhs.load_to_specific(AsmReg::AX);
+
   // Zero RDX for unsigned division
   ASM(XOR64rr, rdx_reg, rdx_reg);
-  
-  // Load divisor into a register
-  AsmReg rhs_reg = rhs.part(0).load_to_reg();
-  
-  // Perform unsigned division
-  ASM(DIV64r, rhs_reg);
-  
-  // Result is in RAX, move it to the result register
-  auto [res_vr, res] = this->result_ref_single(static_cast<IRValueRef>(inst_idx));
-  AsmReg res_reg = res.alloc_reg();
-  if (res_reg != rax_reg) {
-    ASM(MOV64rr, res_reg, rax_reg);
-  }
-  res.set_modified();
 
-  // Restore RAX and RDX if they were saved
-  if (rax_needs_save) {
-    saved_rax.load_to_specific(rax_reg);
-  }
-  if (rdx_needs_save) {
-    saved_rdx.load_to_specific(rdx_reg);
-  }
+  // Load divisor and perform division
+  AsmReg divisor_reg = rhs.load_to_reg();
+  ASM(DIV64r, divisor_reg);
+
+  // Move quotient from RAX to result
+  res.set_value(std::move(lhs));
 
   return true;
 }

@@ -71,6 +71,7 @@ public:
   /// need to be saved/restored.
   RegBitSet clobbered = 0;
   std::array<u8, NumBanks> clocks{};
+  std::array<u8, NumBanks> last_used_reg{RegsPerBank - 1, 2 * RegsPerBank - 1};
 
   struct Assignment {
     ValLocalIdx local_idx;
@@ -86,6 +87,7 @@ public:
     clobbered = {};
     clocks = {};
     lock_counts = {};
+    last_used_reg = {RegsPerBank - 1, 2 * RegsPerBank - 1};
   }
 
   [[nodiscard]] bool is_used(const Reg reg) const noexcept {
@@ -192,14 +194,22 @@ public:
 
   [[nodiscard]] Reg
       find_first_free_excluding(const RegBank bank,
-                                const u64 exclusion_mask) const noexcept {
-    // TODO(ts): implement preferred registers
-    const RegBitSet free_bank = allocatable & ~used & bank_regs(bank);
-    const RegBitSet selectable = free_bank & ~exclusion_mask;
-    if (selectable == 0) {
-      return Reg::make_invalid();
-    }
-    return Reg{static_cast<u8>(util::cnt_tz(selectable))};
+                                const u64 exclusion_mask) noexcept {
+        //todo(salto): round robin
+        // TODO(ts): implement preferred registers
+        const RegBitSet free_bank = allocatable & ~used & bank_regs(bank);
+        const RegBitSet selectable = free_bank & ~exclusion_mask;
+        if (selectable == 0) {
+          return Reg::make_invalid();
+        }
+        const u8 bank_id = bank.id();
+        const u8 start = last_used_reg[bank_id] + 1;
+        // Mask off bits below 'start' to search upper portion first
+        const RegBitSet upper = selectable & ~((1ull << start) - 1);
+        const u8 found =
+            static_cast<u8>(util::cnt_tz(upper != 0 ? upper : selectable));
+        last_used_reg[bank_id] = found;
+        return Reg{found};
   }
 
   [[nodiscard]] Reg
