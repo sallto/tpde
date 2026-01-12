@@ -1573,8 +1573,6 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
   // values), since all spills are after definition
   std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx>> W_exits;
 
-  util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> block_rpo{};
-  build_rpo_block_order(block_rpo);
   // todo(salto): arguments on the stack don't need to be added to W in entry,
   // but register arguments need to be in W at the start.
 
@@ -1604,7 +1602,8 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
     }
   }*/
 
-  for (const auto block : block_rpo) {
+  for (u32 i = 0; i < this->block_layout.size(); ++i) {
+    const auto block = this->block_layout[i];
     // We need to choose which values to keep in W across the multiple incoming
     // edges. prefer values that are used in many predecessors.
     util::SmallVector<ValLocalIdx, 16> incoming_from_all;
