@@ -1585,6 +1585,12 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
   std::unordered_map<BlockIndex, std::unordered_map<ValLocalIdx, u32>>
       W_entry_freq;
 
+  /*if constexpr (Adaptor::TPDE_LIVENESS_VISIT_ARGS) {
+    for (const IRValueRef arg : adaptor->cur_args()) {
+      W_entry_freq[0][adaptor->val_local_idx(arg)]
+    }
+  }*/
+
   for (const auto block : block_rpo) {
     // We need to choose which values to keep in W across the multiple incoming
     // edges. prefer values that are used in many predecessors.
@@ -1824,7 +1830,10 @@ void Analyzer<Adaptor>::compute_spills() noexcept {
     for (const auto val_idx : W) {
       for (const auto succ : adaptor->block_succs(block)) {
         const auto succ_idx = block_idx(succ);
-        W_entry_freq[succ_idx][val_idx]++;
+        if (precise_liveness[static_cast<u32>(succ_idx)].next_uses[val_idx].empty()) {
+          continue;
+        }
+        ++W_entry_freq[succ_idx][val_idx];
       }
     }
   }
