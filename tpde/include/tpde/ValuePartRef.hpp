@@ -465,8 +465,7 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
       lock(compiler);
       //assert(!(compiler->tree_ra_ctx->used_global_regs&(1ull<<state.v.reg.id()))||compiler.);
       state.v.global_reg = state.v.reg;
-      compiler->tree_ra_ctx->global_regs.insert_or_assign(state.v.local_idx, state.v.reg);
-      compiler->tree_ra_ctx->used_global_regs |= (1ull << state.v.reg.id());
+       compiler->global_assign(local_idx(), state.v.reg);
       // TODO: implement this if needed
       assert((exclusion_mask & (1ull << state.v.reg.id())) == 0 &&
              "moving registers in alloc_reg is unsupported");
@@ -479,11 +478,12 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
   }
 
   auto [reg, global_reg] = compiler->select_reg(bank, exclusion_mask);
-  if (!is_const() && has_assignment() && compiler->tree_ra_ctx) {
-    state.v.global_reg = global_reg;
-    compiler->tree_ra_ctx->global_regs.emplace(state.v.local_idx, global_reg);
-    compiler->tree_ra_ctx->used_global_regs |= (1ull << global_reg.id());
-  }
+   if (!is_const() && has_assignment()) {
+     if (!global_reg.valid()) {
+       compiler->global_assign(local_idx(), reg);
+     } else
+       compiler->global_assign(local_idx(), global_reg);
+   }
   auto &reg_file = compiler->register_file;
   reg_file.mark_clobbered(reg);
   if (has_assignment()) {
@@ -527,10 +527,11 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase 
                                                                    typename RegisterFile::RegBitSet forbidden) {
   auto &reg_file = compiler->register_file;
   Reg reg = Reg::make_invalid();
-  std::unordered_set<ValLocalIdx> operands;
-  for (auto operand: compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
-    operands.insert(compiler->adaptor->val_local_idx(operand));
-  }
+   std::unordered_set<ValLocalIdx> operands;
+   // commented out current_instr usage
+   // for (auto operand: compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
+   //   operands.insert(compiler->adaptor->val_local_idx(operand));
+   // }
   bool success = false;
   typename RegisterFile::RegBitSet allowed = constraints & (~forbidden); // todo(salto): constraints
   while (reg == Reg::make_invalid() && allowed != 0) {
@@ -550,7 +551,7 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase 
     typename RegisterFile::RegBitSet pawnAllowed =
         (available | (this->has_reg() ? (1ull << this->cur_reg().id()) : 0ull)) & (~forbidden);
     if (pawnAllowed != 0) {
-      compiler->tree_ra_ctx->parallel_copies.emplace_back(Reg{*util::BitSetIterator<>(pawnAllowed).begin()}, reg, 8,
+      compiler->parallel_copies.emplace_back(Reg{*util::BitSetIterator<>(pawnAllowed).begin()}, reg, 8,
                                                           pawn,
                                                           this->part());
       success = true;
@@ -564,7 +565,7 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase 
     }
   }
   if (reg != Reg::make_invalid()) {
-    compiler->tree_ra_ctx->parallel_copies.emplace_back(Reg{reg}, this->cur_reg(), this->part_size(), this->local_idx(),
+    compiler->parallel_copies.emplace_back(Reg{reg}, this->cur_reg(), this->part_size(), this->local_idx(),
                                                         this->part());
     return true;
   }
@@ -613,7 +614,7 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_specific_impl(
                                      this->bank()));
     auto old_reg = this->cur_reg();
     if (success)[[likely]]{
-      auto moves = compiler->sequentialize(compiler->tree_ra_ctx->parallel_copies);
+      auto moves = compiler->sequentialize(compiler->parallel_copies);
       for (auto move: moves) {
         compiler->derived()->mov(move.dst, move.src, move.size);
         if (!reg_file.is_used(Reg{move.dst})) {
@@ -629,7 +630,7 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_specific_impl(
       }
       compiler->register_file.mark_clobbered(reg);
 
-      compiler->tree_ra_ctx->parallel_copies.clear();
+      compiler->parallel_copies.clear();
       return reg;
     } else {
       compiler->evict_reg(reg);
@@ -816,20 +817,17 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value(
 
   AsmReg new_reg = other.salvage_keep_used(compiler);
   reg_file.update_reg_assignment(new_reg, local_idx(), part());
-  if (compiler->tree_ra_ctx->used_global_regs & (1ull << new_reg.id())) {
+  if (compiler->global_register_file.used & (1ull << new_reg.id())) {
     // find new global register for result
-    auto [_,global] = compiler->select_reg(reg_file.reg_bank(new_reg), compiler->tree_ra_ctx->used_global_regs);
+    auto [_,global] = compiler->select_reg(reg_file.reg_bank(new_reg), compiler->global_register_file.used);
     if (global == AsmReg::make_invalid()) {
       assert(false); //todo
     }
-    this->state.v.global_reg = global;
-    compiler->tree_ra_ctx->global_regs.insert_or_assign(local_idx(), global);
-    compiler->tree_ra_ctx->used_global_regs |= (1ull << global.id());
+    compiler->global_assign(local_idx(), global);
   } else {
     // use the same local and global register
-    if (!compiler->tree_ra_ctx->global_regs.contains(local_idx())) {
-      compiler->tree_ra_ctx->global_regs.emplace(local_idx(), new_reg);
-      compiler->tree_ra_ctx->used_global_regs |= (1ull << new_reg.id());
+    if (!compiler->global_reg_for(local_idx()).valid()) {
+      compiler->global_assign(local_idx(), new_reg);
     }
   }
   ap.set_reg(new_reg);
@@ -888,18 +886,16 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value(
   // ScratchReg's reg is fixed and used => unfix, keep used, update assignment
   reg_file.unmark_fixed(value_reg);
   reg_file.update_reg_assignment(value_reg, local_idx(), part());
-  if (compiler->tree_ra_ctx->used_global_regs & (1ull << value_reg.id())) {
+  if (compiler->global_register_file.used & (1ull << value_reg.id())) {
     // find new global register for result
     auto [_,global] = compiler->select_reg(reg_file.reg_bank(value_reg), 0);
     if (global != AsmReg::make_invalid()) {
-      compiler->tree_ra_ctx->global_regs.insert_or_assign(local_idx(), global);
-      compiler->tree_ra_ctx->used_global_regs |= (1ull << global.id());
+      compiler->global_assign(local_idx(), global);
     }
   } else {
     // use the same local and global register
-    if (!compiler->tree_ra_ctx->global_regs.contains(local_idx())) {
-      compiler->tree_ra_ctx->global_regs.emplace(local_idx(), value_reg);
-      compiler->tree_ra_ctx->used_global_regs |= (1ull << value_reg.id());
+    if (!compiler->global_reg_for(local_idx()).valid()) {
+      compiler->global_assign(local_idx(), value_reg);
     }
   }
   ap.set_reg(value_reg);
@@ -1014,8 +1010,8 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
     --compiler->assignments.cur_fixed_assignment_count[ap.bank().id()];
   }
 
-  if (compiler->tree_ra_ctx->global_regs.contains(local_idx())) {
-    compiler->tree_ra_ctx->unassign(local_idx());
+  if (compiler->global_reg_for(local_idx()).valid()) {
+    compiler->global_unassign(local_idx());
   }
 
   ap.set_register_valid(false);

@@ -186,6 +186,8 @@ struct CompilerBase {
   } assignments = {};
 
   RegisterFile register_file;
+  RegisterFile global_register_file;
+
   enum class MoveStatus {
     TO_MOVE,
     MOVING,
@@ -208,50 +210,86 @@ struct CompilerBase {
   using MoveList = util::SmallVector<RegisterMove, 16>;
 
   /// Tree Register Allocator context for tracking parallel copies during
-  /// instruction compilation. Based on the tree scan register allocation
-  /// algorithm which processes operations in a single pass.
-  struct TreeRAContext {
-    /// List of parallel copies
-    MoveList parallel_copies;
-    RegisterFile::RegBitSet used_global_regs = 0;
-    std::unordered_map<ValLocalIdx, AsmReg> global_regs;
-    const IRInstRef *current_instr; // necessary to choose good repair registers
-    TreeRAContext(RegisterFile::RegBitSet used_global_regs,
-                  const std::unordered_map<ValLocalIdx, AsmReg> &
-                  global_regs,
-                  const IRInstRef *current_instr)
-      : used_global_regs(used_global_regs),
-        global_regs(global_regs),
-        current_instr(current_instr) {
-    }
+  // TreeRAContext retired, replaced with global_register_file
+  // /// instruction compilation. Based on the tree scan register allocation
+  // /// algorithm which processes operations in a single pass.
+  // struct TreeRAContext {
+  //   /// List of parallel copies
+  //   MoveList parallel_copies;
+  //   RegisterFile::RegBitSet used_global_regs = 0;
+  //   std::unordered_map<ValLocalIdx, AsmReg> global_regs;
+  //   // const IRInstRef *current_instr; // necessary to choose good repair registers - commented out
+  //   TreeRAContext(RegisterFile::RegBitSet used_global_regs,
+  //                 const std::unordered_map<ValLocalIdx, AsmReg> &
+  //                 global_regs,
+  //                 const IRInstRef * /*current_instr*/)
+  //     : used_global_regs(used_global_regs),
+  //       global_regs(global_regs)/*,
+  //       current_instr(current_instr)*/ {
+  //   }
 
-    explicit TreeRAContext(const IRInstRef *current_instr) : used_global_regs(), global_regs(),
-                                                             current_instr{current_instr} {
-    }
+  //   explicit TreeRAContext(const IRInstRef * /*current_instr*/) : used_global_regs(), global_regs() /*,
+  //                                                            current_instr{current_instr}*/ {
+  //   }
 
-    void assign(ValLocalIdx idx, Reg reg) {
-      if (this->used_global_regs & (1ull << reg.id())) {
-        assert(global_regs[idx]==reg);
-        return;
+  //   void assign(ValLocalIdx idx, Reg reg) {
+  //     assert(reg!=Reg::make_invalid() && "tried to assign invalid register as global color");
+  //     if (this->used_global_regs & (1ull << reg.id())) {
+  //       assert(global_regs[idx]==reg);
+  //       return;
+  //     }
+  //     if (global_regs.contains(idx)) {
+  //       this->used_global_regs &= ~(1ull << global_regs[idx].id());
+  //       this->used_global_regs |= (1ull << reg.id());
+  //       global_regs.insert_or_assign(idx, reg);
+  //     } else {
+  //       this->used_global_regs |= (1ull << reg.id());
+  //       global_regs.emplace(idx, reg);
+  //     }
+  //   }
+
+  //   void unassign(ValLocalIdx idx) {
+  //     auto reg = global_regs[idx];
+  //     this->used_global_regs &= ~(1ull << global_regs[idx].id());
+  //     global_regs.erase(idx);
+  //   }
+  // };
+
+  // TreeRAContext *tree_ra_ctx = nullptr;
+  MoveList parallel_copies;
+
+  void global_assign(ValLocalIdx idx, Reg reg) noexcept {
+    if (global_register_file.is_used(reg) &&
+        global_register_file.reg_local_idx(reg) == idx) {
+      return;
+    }
+    if (global_register_file.is_used(reg)) {
+      // unassign the old one if different
+      ValLocalIdx old_idx = global_register_file.reg_local_idx(reg);
+      global_register_file.unmark_used(reg);
+      global_register_file.mark_used(reg, idx, 0); // assume part 0 for now
+    } else {
+      global_register_file.mark_used(reg, idx, 0);
+    }
+  }
+
+  void global_unassign(ValLocalIdx idx) noexcept {
+    for (auto reg_id: global_register_file.used_regs()) {
+      if (global_register_file.reg_local_idx(Reg{reg_id}) == idx) {
+        global_register_file.unmark_used(Reg{reg_id});
+        break;
       }
-      if (global_regs.contains(idx)) {
-        this->used_global_regs &= ~(1ull << global_regs[idx].id());
-        this->used_global_regs |= (1ull << reg.id());
-        global_regs.insert_or_assign(idx, reg);
-      } else {
-        this->used_global_regs |= (1ull << reg.id());
-        global_regs.emplace(idx, reg);
+    }
+  }
+
+  Reg global_reg_for(ValLocalIdx idx) const noexcept {
+    for (auto reg_id: global_register_file.used_regs()) {
+      if (global_register_file.reg_local_idx(Reg{reg_id}) == idx) {
+        return Reg{reg_id};
       }
     }
-
-    void unassign(ValLocalIdx idx) {
-      auto reg = global_regs[idx];
-      this->used_global_regs &= ~(1ull << global_regs[idx].id());
-      global_regs.erase(idx);
-    }
-  };
-
-  TreeRAContext *tree_ra_ctx = nullptr;
+    return Reg::make_invalid();
+  }
 #ifndef NDEBUG
   /// Whether we are currently in the middle of generating branch-related code
   /// and therefore must not change any value-related state.
@@ -584,23 +622,16 @@ public:
   /// Select an available register, evicting loaded values if needed.
   /// Return local, global register
   std::pair<Reg, Reg> select_reg(RegBank bank, u64 exclusion_mask) noexcept {
-    if (!this->tree_ra_ctx)[[unlikely]]{
-      Reg res = register_file.find_first_free_excluding(bank, exclusion_mask);
-      if (res.valid()) [[likely]] {
-        return {res, res};
-      }
-      return {select_reg_evict(bank, exclusion_mask), Reg::make_invalid()};
-    }
-
-    Reg res = register_file.find_first_free_excluding(bank, exclusion_mask | this->tree_ra_ctx->used_global_regs);
+    Reg res = register_file.find_first_free_excluding(bank, exclusion_mask | global_register_file.used);
     if (res.valid()) [[likely]] {
       return {res, res};
     } else {
       Reg local = register_file.find_first_free_excluding(bank, exclusion_mask);
-      Reg global = register_file.find_first_free_excluding(bank, this->tree_ra_ctx->used_global_regs);
+      Reg global = register_file.find_first_free_excluding(bank, global_register_file.used);
       TPDE_LOG_TRACE("Selected different local register {} and global {}", local.id(), global.id());
-      if (local.valid() && global.valid())
+      if (local.valid() && global.valid()) {
         return {local, global};
+      }
     }
     return {select_reg_evict(bank, exclusion_mask), Reg::make_invalid()};
   }
@@ -796,15 +827,15 @@ public:
             continue;
           }
           // fix global colors
-          if (this->tree_ra_ctx->global_regs.contains(local_idx) && tree_ra_ctx->global_regs.at(local_idx) != ap.
-              get_reg()) {
-            moves.emplace_back(tree_ra_ctx->global_regs.at(local_idx), ap.get_reg(), ap.part_size(),
+           Reg global_reg = global_reg_for(local_idx);
+          if (global_reg.valid() && global_reg != ap.get_reg()) {
+            moves.emplace_back(global_reg, ap.get_reg(), ap.part_size(),
                                local_idx,
                                i);
             this->register_file.unmark_used(ap.get_reg());
-            this->register_file.mark_used(tree_ra_ctx->global_regs.at(local_idx), local_idx, i);
-            ap.set_reg(tree_ra_ctx->global_regs.at(local_idx));
-            block_regs[target][block_regs[target].size() - 1].push_back(tree_ra_ctx->global_regs.at(local_idx), i);
+            this->register_file.mark_used(global_reg, local_idx, i);
+            ap.set_reg(global_reg);
+            block_regs[target][block_regs[target].size() - 1].push_back(global_reg, i);
           } else
             block_regs[target][block_regs[target].size() - 1].push_back(Reg{ap.get_reg()}, i);
         }
@@ -1306,8 +1337,8 @@ void CompilerBase<Adaptor, Derived, Config>::free_assignment(
       register_file.dec_lock_count_must_zero(reg); // release lock for fixed reg
       register_file.unmark_used(reg);
     } else if (ap.register_valid()) {
-      if (tree_ra_ctx->global_regs.contains(local_idx)) {
-        tree_ra_ctx->unassign(local_idx);
+      if (global_reg_for(local_idx).valid()) {
+        global_unassign(local_idx);
       }
       const auto reg = ap.get_reg();
       assert(!register_file.is_fixed(reg));
@@ -1350,8 +1381,8 @@ template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
         ValLocalIdx local_idx, ValueAssignment *assignment) noexcept {
   TPDE_LOG_TRACE("Releasing assignment for value {}", static_cast<u32>(local_idx));
   if (!assignment->delay_free) {
-    if (tree_ra_ctx->global_regs.contains(local_idx)) {
-      tree_ra_ctx->unassign(local_idx);
+    if (global_reg_for(local_idx).valid()) {
+      global_unassign(local_idx);
     }
     free_assignment(local_idx, assignment);
     return;
@@ -1756,8 +1787,8 @@ Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(
     TPDE_FATAL("ran out of registers for scratch registers");
   }
   TPDE_LOG_DBG("  selected r{}", candidate.id());
-  if (tree_ra_ctx)[[likely]]{
-    tree_ra_ctx->unassign(register_file.reg_local_idx(candidate));
+  if (global_reg_for(register_file.reg_local_idx(candidate)).valid()) {
+    global_unassign(register_file.reg_local_idx(candidate));
   }
   evict_reg(candidate);
   return candidate;
@@ -2642,12 +2673,13 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   block_states.resize(analyzer.block_layout.size());
   block_regs.clear();
   phi_regs.clear();
-  register_file.reset();
-  if (tree_ra_ctx) {
-    tree_ra_ctx->global_regs.clear();
-    tree_ra_ctx->used_global_regs = 0;
-    tree_ra_ctx->parallel_copies.clear();
-  }
+   register_file.reset();
+   global_register_file.reset();
+  // if (tree_ra_ctx) {
+  //   tree_ra_ctx->global_regs.clear();
+  //   tree_ra_ctx->used_global_regs = 0;
+  // }
+  parallel_copies.clear();
 #ifndef NDEBUG
   generating_branch = false;
   verification_ir.reset();
@@ -2672,7 +2704,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   CCAssigner *cc_assigner = derived()->cur_cc_assigner();
   assert(cc_assigner != nullptr);
 
-  register_file.allocatable = cc_assigner->get_ccinfo().allocatable_regs;
+   register_file.allocatable = cc_assigner->get_ccinfo().allocatable_regs;
+  global_register_file.allocatable = cc_assigner->get_ccinfo().allocatable_regs;
 
   // This initializes the stack frame, which must reserve space for
   // callee-saved registers, vararg save area, etc.
@@ -2889,14 +2922,14 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     // don't capture moves during codegen. They are not necessary for VIR.
     verification_ir.active_compilation = true;
 #endif
-    if (!tree_ra_ctx) {
-      tree_ra_ctx = new TreeRAContext(&inst);
-    } else {
-      tree_ra_ctx->current_instr = &inst;
-    }
+    // if (!tree_ra_ctx) {
+    //   tree_ra_ctx = new TreeRAContext(&inst);
+    // } else {
+    //   tree_ra_ctx->current_instr = &inst;
+    // }
     auto it_cpy = it;
     ++it_cpy;
-     if (!derived()->compile_inst(inst, InstRange{.from = it_cpy, .to = end}))
+    if (!derived()->compile_inst(inst, InstRange{.from = it_cpy, .to = end}))
          [[unlikely]] {
        TPDE_LOG_ERR("Failed to compile instruction {}",
                     this->adaptor->inst_fmt_ref(inst));

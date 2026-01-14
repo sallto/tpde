@@ -92,11 +92,16 @@ bool CompilerBase<Adaptor, Derived, Config>::ScratchReg::repair_argument(
   typename RegisterFile::RegBitSet forbidden) {
   auto &reg_file = compiler->register_file;
   Reg reg = Reg::make_invalid();
-  std::unordered_set<ValLocalIdx> operands;
-  for (auto operand:
-       compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
-    operands.insert(compiler->adaptor->val_local_idx(operand));
-  }
+   std::unordered_set<ValLocalIdx> operands;
+   // commented out current_instr usage
+   // for (auto operand:
+   //      compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
+   //   if (compiler->adaptor->val_ignore_in_liveness_analysis(operand)) {
+   //     operands.insert(INVALID_VAL_LOCAL_IDX);
+   //     continue;
+   //   }
+   //   operands.insert(compiler->adaptor->val_local_idx(operand));
+   // }
   bool success = false;
   typename RegisterFile::RegBitSet allowed =
       constraints & (~forbidden); // todo(salto): constraints
@@ -123,7 +128,7 @@ bool CompilerBase<Adaptor, Derived, Config>::ScratchReg::repair_argument(
         (~forbidden);
     if (pawnAllowed != 0) {
       Reg pawnReg = compiler->register_file.find_first_free_excluding(reg_file.reg_bank(reg), ~pawnAllowed);
-      compiler->tree_ra_ctx->parallel_copies.emplace_back(
+      compiler->parallel_copies.emplace_back(
         pawnReg,
         reg,
         8,
@@ -143,7 +148,7 @@ bool CompilerBase<Adaptor, Derived, Config>::ScratchReg::repair_argument(
   }
   if (reg != Reg::make_invalid()) {
     if (this->has_reg())
-      compiler->tree_ra_ctx->parallel_copies.emplace_back(
+      compiler->parallel_copies.emplace_back(
         Reg{reg}, this->cur_reg(), 8, var, reg_file.reg_part(reg));
     return true;
   }
@@ -173,10 +178,19 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
                         reg_file.bank_regs(reg_file.reg_bank(reg)));
     if (success) [[likely]] {
       auto moves =
-          compiler->sequentialize(compiler->tree_ra_ctx->parallel_copies);
+          compiler->sequentialize(compiler->parallel_copies);
       for (auto move: moves) {
         if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
-          compiler->tree_ra_ctx->assign(move.value_idx, move.dst);
+          ValueAssignment *assignment = compiler->val_assignment(move.value_idx);
+          if (!assignment)
+            continue;
+          AssignmentPartRef ap{assignment, move.part_idx};
+          if (ap.register_valid() && assignment->pending_free) {
+            ap.set_register_valid(false);
+            reg_file.unmark_used(move.src);
+            continue;
+          }
+          compiler->global_assign(move.value_idx, move.dst);
           ValueRef vr{compiler, move.value_idx};
           vr.disown();
           vr.part_unowned(move.part_idx).mov(move.dst);
@@ -189,7 +203,7 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
         }
       }
       // target register must now be free
-      compiler->tree_ra_ctx->parallel_copies.clear();
+      compiler->parallel_copies.clear();
     } else {
       compiler->evict_reg(reg);
     }
