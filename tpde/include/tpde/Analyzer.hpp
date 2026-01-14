@@ -1566,9 +1566,14 @@ std::pair<u32, u32> Analyzer<Adaptor>::get_current_and_next_use
   }
 
   const u32 dist = *it;
+  if (dist == INF) {
+    return {INF, INF};
+  }
   // vec[i+1] must exist for the live-out entry
   const u32 next_idx = std::distance(vec.begin(), it) + 1;
-  assert(next_idx < vec.size() && "next use index out of bounds");
+  if (next_idx >= vec.size()) {
+    return {dist, INF};
+  }
   return {dist, dist == idx ? vec[next_idx] : dist};
 };
 
