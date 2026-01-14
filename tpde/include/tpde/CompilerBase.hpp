@@ -758,8 +758,9 @@ public:
     // no moves necessary
 
     MoveList moves;
+    typename RegisterFile::RegBitSet phi_regs;
     if (analyzer.block_has_phis(target)) {
-      move_to_phi_nodes_impl(target,moves);
+      phi_regs = move_to_phi_nodes_impl(target, moves);
     }
 
     auto block_state_it = block_regs.find(target);
@@ -777,8 +778,14 @@ public:
             continue;
           }
           if (!ap.register_valid()) {
-            // doesn't evict registers, so it is safe to call
-            reload_to_reg(state.registers[i], ap);
+            if (register_file.is_used(state.registers[i]) || (phi_regs & (1ull << state.registers[i].id()))) {
+              auto [reg,_] = this->select_reg(register_file.reg_bank(state.registers[i]), phi_regs);
+              reload_to_reg(reg, ap);
+              cur_reg = reg;
+            } else {
+              reload_to_reg(state.registers[i], ap);
+              continue;
+            }
           }
           moves.emplace_back(state.registers[i],
                                cur_reg,
@@ -796,6 +803,27 @@ public:
         if (local_idx == INVALID_VAL_LOCAL_IDX) {
           // scratch regs and constants can never be held across blocks
           // (outside of constants in phis, which are handled elsewhere)
+          continue;
+        }
+        // our register is used as a phi. if we still need the value otherwise, we either need to move it to a different reg
+        // or spill it. todo(salto): implement moving to different reg.
+        if (phi_regs & (1ull << reg)) {
+          ValueAssignment *assignment = val_assignment(local_idx);
+          if (!assignment)
+            continue;
+          for (u32 i = 0; i < assignment->part_count; i++) {
+            AssignmentPartRef ap{val_assignment(local_idx), i};
+            if (ap.fixed_assignment()) {
+              // fixed registers do not need to be moved
+              continue;
+            }
+            if (!ap.modified() || ap.variable_ref()) {
+              // No need to spill values that were already spilled or are variable
+              // refs.
+              continue;
+            }
+            spill(ap);
+          }
           continue;
         }
         if (seen.contains(local_idx)) {
@@ -850,7 +878,7 @@ public:
     }
   }
 
-  void move_to_phi_nodes_impl(BlockIndex target, MoveList& moves) noexcept;
+  typename RegisterFile::RegBitSet move_to_phi_nodes_impl(BlockIndex target, MoveList &moves) noexcept;
 
   /// Count available registers in a specific bank
   u32 count_available_registers(RegBank bank) const noexcept {
@@ -2178,8 +2206,9 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
-void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
-    BlockIndex target, MoveList &moves) noexcept {
+typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet CompilerBase<Adaptor, Derived,
+  Config>::move_to_phi_nodes_impl(
+  BlockIndex target, MoveList &moves) noexcept {
   // PHI-nodes are always moved to their stack-slot (unless they are fixed)
   //
   // However, we need to take care of PHI-dependencies (cycles and chains)
@@ -2191,7 +2220,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
 
   struct ScratchWrapper {
     Derived *self;
-    AsmReg cur_reg = AsmReg::make_invalid();
+    AsmReg reg = AsmReg::make_invalid();
     bool backed_up = false;
     bool was_modified = false;
     u8 part = 0;
@@ -2202,12 +2231,12 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
     ~ScratchWrapper() { reset(); }
 
     void reset() {
-      if (cur_reg.invalid()) {
+      if (reg.invalid()) {
         return;
       }
 
-      self->register_file.unmark_fixed(cur_reg);
-      self->register_file.unmark_used(cur_reg);
+      self->register_file.unmark_fixed(reg);
+      self->register_file.unmark_used(reg);
 
       if (backed_up) {
         // restore the register state
@@ -2220,23 +2249,23 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
           if (!ap.variable_ref()) {
             // TODO(ts): assert that this always happens?
             assert(ap.stack_valid());
-            self->load_from_stack(cur_reg, ap.frame_off(), ap.part_size());
+            self->load_from_stack(reg, ap.frame_off(), ap.part_size());
           }
-          ap.set_reg(cur_reg);
+          ap.set_reg(reg);
           ap.set_register_valid(true);
           ap.set_modified(was_modified);
-          self->register_file.mark_used(cur_reg, local_idx, part);
+          self->register_file.mark_used(reg, local_idx, part);
         }
         backed_up = false;
       }
-      cur_reg = AsmReg::make_invalid();
+      reg = AsmReg::make_invalid();
     }
 
     AsmReg alloc_from_bank(RegBank bank, u64 exclusion_mask=0) {
-      if (cur_reg.valid() && self->register_file.reg_bank(cur_reg) == bank) {
-        return cur_reg;
+      if (reg.valid() && self->register_file.reg_bank(reg) == bank) {
+        return reg;
       }
-      if (cur_reg.valid()) {
+      if (reg.valid()) {
         reset();
       }
 
@@ -2270,7 +2299,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
       reg_file.mark_used(reg, INVALID_VAL_LOCAL_IDX, 0);
       reg_file.mark_clobbered(reg);
       reg_file.mark_fixed(reg);
-      cur_reg = reg;
+      this->reg = reg;
       return reg;
     }
 
@@ -2393,6 +2422,8 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
         AsmReg reg = val_vpr.cur_reg_unlocked();
         if (!reg.valid()) {
           reg = scratch.alloc_from_bank(val_vpr.bank());
+          // preserve value from original reg
+          scratch.reset();
           val_vpr.reload_into_specific_fixed(reg);
         }
 
@@ -2419,7 +2450,7 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
       }
 
       AsmReg reg = val_vpr.cur_reg_unlocked();
-
+      //todo(salto): do this all with the repairing routine
       if (!reg.valid()) {
         if (phi_ap.fixed_assignment()) {
           val_vpr.reload_into_specific_fixed(phi_ap.get_reg());
@@ -2436,14 +2467,14 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
               reg = target_phi_reg;
             } else {
               // need a intermediate register, sequentialize will resolve move issues later
-              reg = scratch.alloc_from_bank(val_vpr.bank(), used_phi_regs);
-              val_vpr.reload_into_specific_fixed(reg);
+              auto [selected_reg,_] = this->select_reg(val_vpr.bank(), used_phi_regs);
+              reg = selected_reg;
+              val_vpr.reload_into_specific_fixed(reg, val_vpr.part_size());
             }
-
-
           } else {
-            reg = scratch.alloc_from_bank(val_vpr.bank(), used_phi_regs);
-            val_vpr.reload_into_specific_fixed(reg);
+            auto [selected_reg,_] = this->select_reg(val_vpr.bank(), used_phi_regs);
+            reg = selected_reg;
+            val_vpr.reload_into_specific_fixed(reg, val_vpr.part_size());
           }
         }
       }
@@ -2595,9 +2626,10 @@ void CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
       register_file.unmark_used(move.dst);
     }
   }
+  return used_phi_regs;
 }
 
-template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 typename CompilerBase<Adaptor, Derived, Config>::BlockIndex
     CompilerBase<Adaptor, Derived, Config>::next_block() const noexcept {
   return static_cast<BlockIndex>(static_cast<u32>(cur_block_idx) + 1);
