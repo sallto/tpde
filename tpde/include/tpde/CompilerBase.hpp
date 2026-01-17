@@ -758,7 +758,7 @@ public:
     // no moves necessary
 
     MoveList moves;
-    typename RegisterFile::RegBitSet phi_regs;
+    typename RegisterFile::RegBitSet phi_regs = 0;
     if (analyzer.block_has_phis(target)) {
       phi_regs = move_to_phi_nodes_impl(target, moves);
     }
