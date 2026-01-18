@@ -165,10 +165,7 @@ bool TestIRCompilerX64::compile_div(IRInstRef inst_idx) noexcept {
 
 
   // Load dividend into RAX
-  ScratchReg rax_scratch{this};
-  AsmReg rax_reg = rax_scratch.alloc_specific(AsmReg::AX);
-  auto lhs_reg = lhs_vr.part(0).load_to_reg();
-  derived()->mov(rax_reg, lhs_reg, 8);
+  ScratchReg lhs_scratch = lhs_vr.part(0).into_scratch_specific(AsmReg::AX);
 
   // Zero RDX for unsigned division
   ASM(XOR64rr, rdx_reg, rdx_reg);
@@ -177,7 +174,7 @@ bool TestIRCompilerX64::compile_div(IRInstRef inst_idx) noexcept {
   ASM(DIV64r, rhs.load_to_reg());
 
   // Move quotient from RAX to result
-  res.set_value(std::move(rax_scratch));
+  res.set_value(std::move(lhs_scratch));
 
   return true;
 }

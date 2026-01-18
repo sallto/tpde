@@ -198,6 +198,8 @@ private:
                   typename RegisterFile::RegBitSet available,
                   typename RegisterFile::RegBitSet forbidden = 0);
 
+  void execute_moves(CompilerBase *compiler, AsmReg old_reg);
+
 public:
   /// Allocate and lock a register for the value part, *without* reloading the
   /// value. Does nothing if a register is already allocated.
@@ -290,6 +292,34 @@ public:
   /// \note The target register or the current value part may not be fixed
   void load_to_specific(CompilerBase *compiler, AsmReg reg) noexcept {
     alloc_specific_impl(compiler, reg, true);
+  }
+
+  ScratchReg
+  into_scratch_specific(CompilerBase *compiler,
+                        AsmReg reg) {
+    ScratchReg res{compiler};
+    //todo(salto): make codegen better if this->isinreg(reg)
+    res.alloc_specific(reg);
+
+    AsmReg src_reg = AsmReg::make_invalid();
+    if (has_assignment()) {
+      auto ap = assignment();
+      if (ap.register_valid()) {
+        src_reg = ap.get_reg();
+      }
+    } else if (has_reg()) {
+      src_reg = cur_reg();
+    }
+
+    if (src_reg.valid()) {
+      if (src_reg != reg) {
+        compiler->derived()->mov(reg, src_reg, part_size());
+      }
+      return res;
+    }
+
+    ValuePart::reload_into_specific_fixed(compiler, reg, part_size());
+    return res;
   }
 
   /// Copy value into a different register.
@@ -564,11 +594,34 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase 
     }
   }
   if (reg != Reg::make_invalid()) {
-    compiler->parallel_copies.emplace_back(Reg{reg}, this->cur_reg(), this->part_size(), this->local_idx(),
-                                                        this->part());
+    assert(has_assignment()&&assignment().register_valid());
+    auto ap = assignment();
+    compiler->parallel_copies.emplace_back(Reg{reg}, ap.get_reg(), this->part_size(), this->local_idx(),
+                                           this->part());
     return true;
   }
   return false;
+}
+
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+void CompilerBase<Adaptor, Derived, Config>::ValuePart::execute_moves(CompilerBase *compiler,
+                                                                      AsmReg old_reg) {
+  auto moves = compiler->sequentialize(compiler->parallel_copies);
+  auto &reg_file = compiler->register_file;
+  for (auto move: moves) {
+    compiler->derived()->mov(move.dst, move.src, move.size);
+    if (!reg_file.is_used(Reg{move.dst})) {
+      AssignmentPartRef ap{compiler->val_assignment(move.value_idx), move.part_idx};
+      ap.set_reg(move.dst);
+      ap.set_register_valid(true);
+      if (move.src != old_reg)
+        reg_file.unmark_used(move.src);
+      reg_file.mark_used(move.dst, move.value_idx, move.part_idx);
+    } else {
+      reg_file.update_reg_assignment(Reg{move.dst}, move.value_idx, move.part_idx);
+    }
+  }
+  compiler->parallel_copies.clear();
 }
 
 template
@@ -612,23 +665,9 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_specific_impl(
                                                          this->bank()));
     auto old_reg = this->cur_reg();
     if (success)[[likely]]{
-      auto moves = compiler->sequentialize(compiler->parallel_copies);
-      for (auto move: moves) {
-        compiler->derived()->mov(move.dst, move.src, move.size);
-        if (!reg_file.is_used(Reg{move.dst})) {
-          AssignmentPartRef ap{compiler->val_assignment(move.value_idx), move.part_idx};
-          ap.set_reg(move.dst);
-          ap.set_register_valid(true);
-          if (move.src != old_reg)
-            reg_file.unmark_used(move.src);
-          reg_file.mark_used(move.dst, move.value_idx, move.part_idx);
-        } else {
-          reg_file.update_reg_assignment(Reg{move.dst}, move.value_idx, move.part_idx);
-        }
-      }
-      compiler->register_file.mark_clobbered(reg);
+      execute_moves(compiler, old_reg);
 
-      compiler->parallel_copies.clear();
+      reg_file.mark_clobbered(reg);
       return reg;
     } else {
       compiler->evict_reg(reg);
@@ -1108,6 +1147,10 @@ struct CompilerBase<Adaptor, Derived, Config>::ValuePartRef : ValuePart {
 
   AsmReg reload_into_specific_fixed(AsmReg reg, unsigned size = 0) noexcept {
     return ValuePart::reload_into_specific_fixed(compiler, reg, size);
+  }
+
+  ScratchReg into_scratch_specific(AsmReg reg) noexcept {
+    return ValuePart::into_scratch_specific(compiler, reg);
   }
 
   AsmReg reload_into_specific_fixed(CompilerBase *compiler,
