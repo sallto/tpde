@@ -168,9 +168,9 @@ namespace tpde {
         reset();
 
         if (compiler->register_file.is_used(reg)) {
-            auto local_idx = compiler->register_file.reg_local_idx(reg);
-            const auto &pli = compiler->analyzer.precise_liveness[static_cast<u32>(compiler->cur_block_idx)];
-            auto [c,n] = compiler->analyzer.get_current_and_next_use(pli, local_idx, compiler->cur_instr_idx);
+            //auto local_idx = compiler->register_file.reg_local_idx(reg);
+            //const auto &pli = compiler->analyzer.precise_liveness[static_cast<u32>(compiler->cur_block_idx)];
+            //auto [c,n] = compiler->analyzer.get_current_and_next_use(pli, local_idx, compiler->cur_instr_idx);
 
             // we are an empty scratch reg so we just shuffle the target register away.
             auto &reg_file = compiler->register_file;

@@ -194,7 +194,7 @@ private:
 
   bool
   repair_argument(CompilerBase *compiler,
-                  ValLocalIdx var, typename RegisterFile::RegBitSet constraints,
+                  typename RegisterFile::RegBitSet constraints,
                   typename RegisterFile::RegBitSet available,
                   typename RegisterFile::RegBitSet forbidden = 0);
 
@@ -521,7 +521,7 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
 
 template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 bool
-CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase *compiler, ValLocalIdx var,
+CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase *compiler,
                                                                    typename RegisterFile::RegBitSet constraints,
                                                                    typename RegisterFile::RegBitSet available,
                                                                    typename RegisterFile::RegBitSet forbidden) {
@@ -552,12 +552,11 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase 
         (available | (this->has_reg() ? (1ull << this->cur_reg().id()) : 0ull)) & (~forbidden);
     if (pawnAllowed != 0) {
       compiler->parallel_copies.emplace_back(Reg{*util::BitSetIterator<>(pawnAllowed).begin()}, reg, 8,
-                                                          pawn,
-                                                          this->part());
+                                             pawn,
+                                             this->part());
       success = true;
     } else {
-      success = repair_argument(compiler, pawn, available | (1ull << this->cur_reg().id()),
-                                forbidden | (1ull << reg.id()));
+      success = repair_argument(compiler, available | (1ull << this->cur_reg().id()), forbidden | (1ull << reg.id()));
     }
     if (!success) {
       allowed &= ~(1ull << reg.id());
@@ -609,9 +608,8 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_specific_impl(
       }
     }
     bool success = repair_argument(compiler,
-                                   this->local_idx(), (1ull << reg.id()),
-                                   (reg_file.allocatable & ~reg_file.used) & reg_file.bank_regs(
-                                     this->bank()));
+                                   (1ull << reg.id()), (reg_file.allocatable & ~reg_file.used) & reg_file.bank_regs(
+                                                         this->bank()));
     auto old_reg = this->cur_reg();
     if (success)[[likely]]{
       auto moves = compiler->sequentialize(compiler->parallel_copies);

@@ -265,7 +265,7 @@ struct CompilerBase {
     }
     if (global_register_file.is_used(reg)) {
       // unassign the old one if different
-      ValLocalIdx old_idx = global_register_file.reg_local_idx(reg);
+      //ValLocalIdx old_idx = global_register_file.reg_local_idx(reg);
       global_register_file.unmark_used(reg);
       global_register_file.mark_used(reg, idx, 0); // assume part 0 for now
     } else {
@@ -751,7 +751,6 @@ public:
   }
 
   void move_values_to_match(BlockIndex target) noexcept {
-    auto cur_block_ref = analyzer.block_ref(cur_block_idx);
     // next block immediately follows the current block and there is no control
     // flow inbetween. We can use the Register state of the current block for
     // the next one.
