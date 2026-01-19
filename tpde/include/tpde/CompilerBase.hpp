@@ -2987,7 +2987,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
          for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
            AssignmentPartRef ap{assignment, part_idx};
            if (ap.register_valid()) {
-            TPDE_LOG_INFO("Spilling result {}", static_cast<u32>(res_idx));
+             TPDE_LOG_INFO("Spilling result {} from register {}", static_cast<u32>(res_idx), ap.get_reg().id());
              spill(ap);
            }
          }
