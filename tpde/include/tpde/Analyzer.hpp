@@ -1624,7 +1624,7 @@ namespace tpde {
         // todo(salto): fp und gp registers - currently using combined count
         // todo(salto): multi-part values?
         // todo(salto): ordered set for W
-        constexpr u32 NUM_REGS = 10;
+        constexpr u32 NUM_REGS = 16 - 2; //can't use rbp and rsp
 
         // The set of values in registers at the end of a block
         // compared to the original algorithm, we can avoid the set S (spilled
@@ -1673,9 +1673,22 @@ namespace tpde {
                     assert(block_layout[0] == compiler->adaptor->cur_entry_block());
                     // TODO: Query cc_assigner to determine which args are in registers
                     // and add them to W with appropriate used_regs tracking
+                    auto *cc_assiger = compiler->cur_cc_assigner();
+                    const auto &cc_info = cc_assiger->get_ccinfo();
+                    const u64 arg_regs = cc_info.arg_regs;
+                    u64 free_regs = std::popcount(arg_regs);
                     for (const IRValueRef arg: adaptor->cur_args()) {
-                        // Placeholder: need to determine if this arg is in a register
-                        // If so: W.insert(adaptor->val_local_idx(arg)) and update used_regs
+                        //todo(salto): is this correct
+                        auto local_idx = adaptor->val_local_idx(arg);
+                        if (free_regs < val_idx_to_num_parts[local_idx]) {
+                            // rest of args must be on stack
+                            break;
+                        }
+                        // fixme(salto): multi-part, ignore_liveness?
+                        W.insert(local_idx);
+                        val_idx_to_num_parts[local_idx] = adaptor->val_parts(arg).count();
+                        used_regs += val_idx_to_num_parts[local_idx];
+                        free_regs -= val_idx_to_num_parts[local_idx];
                     }
                 }
             }
