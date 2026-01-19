@@ -56,6 +56,11 @@ define void @add_v5i8(ptr %p, ptr %q) {
 ; X64-NEXT:    movzx ebx, byte ptr [rsi + 0x2]
 ; X64-NEXT:    movzx r12d, byte ptr [rsi + 0x3]
 ; X64-NEXT:    movzx r13d, byte ptr [rsi + 0x4]
+; X64-NEXT:    mov byte ptr [rbp - 0x30], r10b
+; X64-NEXT:    mov byte ptr [rbp - 0x2f], r11b
+; X64-NEXT:    mov byte ptr [rbp - 0x2e], bl
+; X64-NEXT:    mov byte ptr [rbp - 0x2d], r12b
+; X64-NEXT:    mov byte ptr [rbp - 0x2c], r13b
 ; X64-NEXT:    lea eax, [rax + r10]
 ; X64-NEXT:    lea ecx, [rcx + r11]
 ; X64-NEXT:    lea edx, [rdx + rbx]
@@ -73,7 +78,7 @@ define void @add_v5i8(ptr %p, ptr %q) {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <add_v5i8>:
-; ARM64:         sub sp, sp, #0xa0
+; ARM64:         sub sp, sp, #0xb0
 ; ARM64-NEXT:    stp x29, x30, [sp]
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    nop
@@ -87,6 +92,11 @@ define void @add_v5i8(ptr %p, ptr %q) {
 ; ARM64-NEXT:    ldrb w9, [x1, #0x2]
 ; ARM64-NEXT:    ldrb w10, [x1, #0x3]
 ; ARM64-NEXT:    ldrb w11, [x1, #0x4]
+; ARM64-NEXT:    strb w7, [x29, #0xa0]
+; ARM64-NEXT:    strb w8, [x29, #0xa1]
+; ARM64-NEXT:    strb w9, [x29, #0xa2]
+; ARM64-NEXT:    strb w10, [x29, #0xa3]
+; ARM64-NEXT:    strb w11, [x29, #0xa4]
 ; ARM64-NEXT:    add w7, w7, w2
 ; ARM64-NEXT:    add w8, w8, w3
 ; ARM64-NEXT:    add w9, w9, w4
@@ -98,7 +108,7 @@ define void @add_v5i8(ptr %p, ptr %q) {
 ; ARM64-NEXT:    strb w10, [x0, #0x3]
 ; ARM64-NEXT:    strb w11, [x0, #0x4]
 ; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64-NEXT:    add sp, sp, #0xb0
 ; ARM64-NEXT:    ret
   %a = load <5 x i8>, ptr %p
   %b = load <5 x i8>, ptr %q
