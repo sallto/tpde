@@ -669,10 +669,10 @@ define void @udiv_i32_no_salvage(i32 %0, i32 %1) {
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov eax, edi
 ; X64-NEXT:    div esi
-; X64-NEXT:    mov dword ptr [rbp - 0x2c], eax
+; X64-NEXT:    mov ecx, eax
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    div dword ptr [rbp - 0x2c]
+; X64-NEXT:    div ecx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -701,10 +701,10 @@ define void @udiv_i64_no_salvage(i64 %0, i64 %1) {
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    div rsi
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rax
+; X64-NEXT:    mov rcx, rax
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    div qword ptr [rbp - 0x30]
+; X64-NEXT:    div rcx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;

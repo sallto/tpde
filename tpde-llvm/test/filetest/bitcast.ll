@@ -204,28 +204,26 @@ define void @bitcast_v6i8_v3i16(ptr %src, ptr %dst) {
 ; X64-LABEL: <bitcast_v6i8_v3i16>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
-; X64-NEXT:    movzx ebx, byte ptr [rdi + 0x3]
-; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x4]
-; X64-NEXT:    movzx r9d, byte ptr [rdi + 0x5]
+; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x3]
+; X64-NEXT:    movzx r9d, byte ptr [rdi + 0x4]
+; X64-NEXT:    movzx r10d, byte ptr [rdi + 0x5]
 ; X64-NEXT:    mov byte ptr [rbp - 0x30], al
 ; X64-NEXT:    mov byte ptr [rbp - 0x2f], cl
 ; X64-NEXT:    mov byte ptr [rbp - 0x2e], dl
-; X64-NEXT:    mov byte ptr [rbp - 0x2d], bl
-; X64-NEXT:    mov byte ptr [rbp - 0x2c], r8b
-; X64-NEXT:    mov byte ptr [rbp - 0x2b], r9b
+; X64-NEXT:    mov byte ptr [rbp - 0x2d], r8b
+; X64-NEXT:    mov byte ptr [rbp - 0x2c], r9b
+; X64-NEXT:    mov byte ptr [rbp - 0x2b], r10b
 ; X64-NEXT:    movzx eax, word ptr [rbp - 0x30]
 ; X64-NEXT:    mov word ptr [rsi], ax
 ; X64-NEXT:    movzx eax, word ptr [rbp - 0x2e]
 ; X64-NEXT:    mov word ptr [rsi + 0x2], ax
 ; X64-NEXT:    movzx eax, word ptr [rbp - 0x2c]
 ; X64-NEXT:    mov word ptr [rsi + 0x4], ax
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;

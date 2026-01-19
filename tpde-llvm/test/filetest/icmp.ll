@@ -2356,18 +2356,16 @@ define void @icmp_eq_i128_0(i128 %0) {
 ; X64-LABEL: <icmp_eq_i128_0>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    xor ecx, ecx
 ; X64-NEXT:    mov rdx, rdi
-; X64-NEXT:    mov rbx, rsi
+; X64-NEXT:    mov r8, rsi
 ; X64-NEXT:    xor rdx, rax
-; X64-NEXT:    xor rbx, rcx
-; X64-NEXT:    or rdx, rbx
+; X64-NEXT:    xor r8, rcx
+; X64-NEXT:    or rdx, r8
 ; X64-NEXT:    sete al
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -2393,16 +2391,14 @@ define void @icmp_eq_i128_i128(i128 %0, i128 %1) {
 ; X64-LABEL: <icmp_eq_i128_i128>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    mov rbx, rsi
+; X64-NEXT:    mov r8, rsi
 ; X64-NEXT:    xor rax, rdx
-; X64-NEXT:    xor rbx, rcx
-; X64-NEXT:    or rax, rbx
+; X64-NEXT:    xor r8, rcx
+; X64-NEXT:    or rax, r8
 ; X64-NEXT:    sete al
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -2426,16 +2422,14 @@ define void @icmp_ne_i128_i128(i128 %0, i128 %1) {
 ; X64-LABEL: <icmp_ne_i128_i128>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    mov rbx, rsi
+; X64-NEXT:    mov r8, rsi
 ; X64-NEXT:    xor rax, rdx
-; X64-NEXT:    xor rbx, rcx
-; X64-NEXT:    or rax, rbx
+; X64-NEXT:    xor r8, rcx
+; X64-NEXT:    or rax, r8
 ; X64-NEXT:    setne al
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;

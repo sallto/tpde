@@ -865,10 +865,10 @@ define i32 @srem_i32_no_salvage(i32 %0, i32 %1) {
 ; X64-NEXT:    mov eax, edi
 ; X64-NEXT:    cdq
 ; X64-NEXT:    idiv esi
-; X64-NEXT:    mov dword ptr [rbp - 0x2c], edx
+; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    mov eax, edi
 ; X64-NEXT:    cdq
-; X64-NEXT:    idiv dword ptr [rbp - 0x2c]
+; X64-NEXT:    idiv ecx
 ; X64-NEXT:    mov eax, edx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -901,10 +901,10 @@ define i64 @srem_i64_no_salvage(i64 %0, i64 %1) {
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    cqo
 ; X64-NEXT:    idiv rsi
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rdx
+; X64-NEXT:    mov rcx, rdx
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    cqo
-; X64-NEXT:    idiv qword ptr [rbp - 0x30]
+; X64-NEXT:    idiv rcx
 ; X64-NEXT:    mov rax, rdx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
