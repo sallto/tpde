@@ -1404,16 +1404,14 @@ define void @load_struct_i32_i32_i32_i32_i32_i32(ptr %0) {
 ; X64-LABEL: <load_struct_i32_i32_i32_i32_i32_i32>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
-; X64-NEXT:    mov ebx, dword ptr [rdi + 0xc]
-; X64-NEXT:    mov esi, dword ptr [rdi + 0x10]
-; X64-NEXT:    mov r8d, dword ptr [rdi + 0x14]
-; X64-NEXT:    pop rbx
+; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
+; X64-NEXT:    mov r8d, dword ptr [rdi + 0x10]
+; X64-NEXT:    mov r9d, dword ptr [rdi + 0x14]
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
