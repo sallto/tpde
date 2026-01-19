@@ -20,7 +20,13 @@
 #include "util/SmallVector.hpp"
 
 namespace tpde {
-    template<IRAdaptor Adaptor>
+    /// An index into block_layout
+    enum class BlockIndex : u32 {
+    };
+
+    static constexpr BlockIndex INVALID_BLOCK_IDX = static_cast<BlockIndex>(~0u);
+
+    template<IRAdaptor Adaptor, typename CompilerType>
     struct Analyzer {
         // some forwards for the IR type defs
         using IRValueRef = typename Adaptor::IRValueRef;
@@ -37,11 +43,8 @@ namespace tpde {
         /// Reference to the adaptor
         Adaptor *adaptor;
 
-        /// An index into block_layout
-        enum class BlockIndex : u32 {
-        };
-
-        static constexpr BlockIndex INVALID_BLOCK_IDX = static_cast<BlockIndex>(~0u);
+        /// Reference to the compiler base
+        CompilerType *compiler;
 
         /// The block layout, a BlockIndex is an index into this array
         util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> block_layout = {};
@@ -132,7 +135,8 @@ namespace tpde {
         /// Dominator tree for control flow analysis
         DominatorTree<Adaptor> dominator_tree = {};
 
-        explicit Analyzer(Adaptor *adaptor) : adaptor(adaptor) {
+        explicit Analyzer(Adaptor *adaptor, CompilerType *compiler = nullptr)
+            : adaptor(adaptor), compiler(compiler) {
         }
 
         /// Start the compilation of a new function and build the loop tree and
@@ -267,8 +271,8 @@ namespace tpde {
                    bool after_instr = false);
     };
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::switch_func([[maybe_unused]] IRFuncRef func) {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::switch_func([[maybe_unused]] IRFuncRef func) {
         build_block_layout();
         dominator_tree.compute(adaptor, block_layout);
         compute_liveness();
@@ -277,8 +281,8 @@ namespace tpde {
         compute_spills();
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::print_rpo(std::ostream &os) const {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::print_rpo(std::ostream &os) const {
         // build_rpo_block_order clobbers block data, so save and restore.
         util::SmallVector<std::tuple<IRBlockRef, u32, u32>, SMALL_BLOCK_NUM> data;
         for (IRBlockRef cur: adaptor->cur_blocks()) {
@@ -297,15 +301,15 @@ namespace tpde {
         }
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::print_block_layout(std::ostream &os) const {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::print_block_layout(std::ostream &os) const {
         for (u32 i = 0; i < block_layout.size(); ++i) {
             os << std::format("  {}: {}\n", i, adaptor->block_fmt_ref(block_layout[i]));
         }
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::print_loops(std::ostream &os) const {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::print_loops(std::ostream &os) const {
         for (u32 i = 0; i < loops.size(); ++i) {
             const auto &loop = loops[i];
             os << std::format("  {}: level {}, parent {}, {}->{}, irreducible: {}\n",
@@ -318,8 +322,8 @@ namespace tpde {
         }
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::print_liveness(std::ostream &os) const {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::print_liveness(std::ostream &os) const {
         for (u32 i = 0; i <= liveness_max_value; ++i) {
             if (liveness[i].epoch != liveness_epoch) {
                 os << std::format("  {}: ignored\n", i);
@@ -338,8 +342,8 @@ namespace tpde {
         }
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::print_precise_liveness(std::ostream &os) const {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::print_precise_liveness(std::ostream &os) const {
         const u32 num_blocks = static_cast<u32>(block_layout.size());
         util::SmallVector<u32, 64> block_lengths;
         block_lengths.resize(num_blocks);
@@ -393,8 +397,8 @@ namespace tpde {
         }
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::print_spills(std::ostream &os) const {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::print_spills(std::ostream &os) const {
         const u32 num_blocks = static_cast<u32>(block_layout.size());
 
         for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
@@ -458,8 +462,8 @@ namespace tpde {
         }
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::print_register_pressure(std::ostream &os) const {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::print_register_pressure(std::ostream &os) const {
         os << "Block Pressure:\n";
         for (u32 i = 0; i < block_layout.size(); ++i) {
             os << std::format("  Block {} ({}): GP={}, FP={}\n",
@@ -480,14 +484,14 @@ namespace tpde {
         }
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::print_domtree(std::ostream &os) const {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::print_domtree(std::ostream &os) const {
         dominator_tree.print(os, adaptor, block_layout);
     }
 
-    template<IRAdaptor Adaptor>
-    typename Analyzer<Adaptor>::LivenessInfo &
-    Analyzer<Adaptor>::liveness_maybe(const IRValueRef val) noexcept {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
+    Analyzer<Adaptor, CompilerType>::liveness_maybe(const IRValueRef val) noexcept {
         const ValLocalIdx val_idx = adaptor->val_local_idx(val);
         if constexpr (Adaptor::TPDE_PROVIDES_HIGHEST_VAL_IDX) {
             assert(liveness.size() > static_cast<u32>(val_idx));
@@ -504,8 +508,8 @@ namespace tpde {
         }
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::build_block_layout() {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::build_block_layout() {
         util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> block_rpo{};
         build_rpo_block_order(block_rpo);
 
@@ -521,8 +525,8 @@ namespace tpde {
         build_loop_tree_and_block_layout(block_rpo, loop_parent, loop_heads);
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::build_loop_tree_and_block_layout(
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::build_loop_tree_and_block_layout(
         const util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &block_rpo,
         const util::SmallVector<u32, SMALL_BLOCK_NUM> &loop_parent,
         const util::SmallBitSet<256> &loop_heads) {
@@ -676,8 +680,8 @@ namespace tpde {
         }
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::build_rpo_block_order(
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::build_rpo_block_order(
         util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &out) const noexcept {
         out.clear();
 
@@ -827,8 +831,8 @@ namespace tpde {
 #endif
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::identify_loops(
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::identify_loops(
         const util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &block_rpo,
         util::SmallVector<u32, SMALL_BLOCK_NUM> &loop_parent,
         util::SmallBitSet<256> &loop_heads) const noexcept {
@@ -999,8 +1003,8 @@ namespace tpde {
     }
 
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::compute_precise_liveness() noexcept {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::compute_precise_liveness() noexcept {
         // todo(salto): irreducible loops?
         TPDE_LOG_TRACE("Starting Precise Liveness Analysis");
         const u32 num_blocks = static_cast<u32>(block_layout.size());
@@ -1534,8 +1538,8 @@ namespace tpde {
         TPDE_LOG_TRACE("Precise Liveness Analysis completed");
     }
 
-    template<IRAdaptor Adaptor>
-    std::pair<u32, u32> Analyzer<Adaptor>::get_current_and_next_use
+    template<IRAdaptor Adaptor, typename CompilerType>
+    std::pair<u32, u32> Analyzer<Adaptor, CompilerType>::get_current_and_next_use
     (const PreciseLivenessInfo &pli,
      const ValLocalIdx val_idx,
      const u32 idx) {
@@ -1605,8 +1609,8 @@ namespace tpde {
         return {dist, dist == idx ? vec[next_idx] : dist};
     };
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::compute_spills() noexcept {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
         // Based on "Register Spilling and Live-Range Splitting for
         // SSA-Form Programs" by Hack et al. 2008
         // Simplified since we don't store reload or spill positions.
@@ -1617,7 +1621,7 @@ namespace tpde {
         spilled_values.resize(liveness_max_value + 1);
         spilled_values.zero();
 
-        // todo(salto): fp und gp registers
+        // todo(salto): fp und gp registers - currently using combined count
         // todo(salto): multi-part values?
         // todo(salto): ordered set for W
         constexpr u32 NUM_REGS = 10;
@@ -1657,6 +1661,24 @@ namespace tpde {
   }*/
 
         for (u32 i = 0; i < this->block_layout.size(); ++i) {
+            // TODO(salto): Handle register arguments in entry block
+            // For the entry block (i == 0), we should initialize W with arguments
+            // that are passed in registers. This requires determining which arguments
+            // get register assignments based on the calling convention.
+            // Currently, argument assignments are determined later during prologue
+            // generation, so we can't easily determine this here without duplicating
+            // the CCAssigner logic.
+            if constexpr (Adaptor::TPDE_LIVENESS_VISIT_ARGS) {
+                if (i == 0) {
+                    assert(block_layout[0] == compiler->adaptor->cur_entry_block());
+                    // TODO: Query cc_assigner to determine which args are in registers
+                    // and add them to W with appropriate used_regs tracking
+                    for (const IRValueRef arg: adaptor->cur_args()) {
+                        // Placeholder: need to determine if this arg is in a register
+                        // If so: W.insert(adaptor->val_local_idx(arg)) and update used_regs
+                    }
+                }
+            }
             const auto block = this->block_layout[i];
             // We need to choose which values to keep in W across the multiple incoming
             // edges. prefer values that are used in many predecessors.
@@ -1900,8 +1922,8 @@ namespace tpde {
         TPDE_LOG_TRACE("Spill Analysis completed");
     }
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::limit(
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::limit(
         tpde::util::SmallVector<
             std::tuple<tpde::ValLocalIdx, tpde::u32, tpde::u32, tpde::u32>,
             16UL> &W_next_uses,
@@ -1936,8 +1958,8 @@ namespace tpde {
     }
 
 
-    template<IRAdaptor Adaptor>
-    void Analyzer<Adaptor>::compute_liveness() noexcept {
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::compute_liveness() noexcept {
         // implement the liveness algorithm described in
         // http://databasearchitects.blogspot.com/2020/04/linear-time-liveness-analysis.html
         // and Kohn et al.: Adaptive Execution of Compiled Queries

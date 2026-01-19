@@ -37,7 +37,7 @@ static constexpr u32 PHI_REGISTER_THRESHOLD = 12;
 // whether all the required derived methods are implemented?
 
 template <IRAdaptor Adaptor>
-using VIR = VerificationIR<Adaptor, typename Analyzer<Adaptor>::BlockIndex, typename Adaptor::IRInstRef>;
+using VIR = VerificationIR<Adaptor, BlockIndex, typename Adaptor::IRInstRef>;
 
 /// Thread-local storage access mode
 enum class TLSModel {
@@ -120,12 +120,14 @@ struct CompilerBase {
   using IRBlockRef = typename Adaptor::IRBlockRef;
   using IRFuncRef = typename Adaptor::IRFuncRef;
 
-  using BlockIndex = typename Analyzer<Adaptor>::BlockIndex;
+  // BlockIndex is now defined at namespace scope in Analyzer.hpp
+  using BlockIndex = tpde::BlockIndex;
 
   using Assembler = typename Config::Assembler;
   using AsmReg = typename Config::AsmReg;
 
   using RegisterFile = tpde::RegisterFile<Config::NUM_BANKS, 32>;
+  using Analyzer = tpde::Analyzer<Adaptor, CompilerBase>;
 
   /// A default implementation for ValRefSpecial.
   // Note: Subclasses can override this, always used Derived::ValRefSpecial.
@@ -136,7 +138,7 @@ struct CompilerBase {
 
 #pragma region CompilerData
   Adaptor *adaptor;
-  Analyzer<Adaptor> analyzer;
+  Analyzer analyzer;
 
   // data for frame management
 
@@ -163,7 +165,7 @@ struct CompilerBase {
     std::unordered_map<u32, std::vector<i32>> dynamic_free_lists{};
   } stack = {};
 
-  typename Analyzer<Adaptor>::BlockIndex cur_block_idx;
+  BlockIndex cur_block_idx;
   u32 cur_instr_idx;
 
   // Assignments
@@ -177,12 +179,12 @@ struct CompilerBase {
     AssignmentAllocator allocator;
 
     std::array<u32, Config::NUM_BANKS> cur_fixed_assignment_count = {};
-    util::SmallVector<ValueAssignment *, Analyzer<Adaptor>::SMALL_VALUE_NUM>
-        value_ptrs;
+    util::SmallVector<ValueAssignment *, Analyzer::SMALL_VALUE_NUM>
+    value_ptrs;
 
     ValLocalIdx variable_ref_list;
-    util::SmallVector<ValLocalIdx, Analyzer<Adaptor>::SMALL_BLOCK_NUM>
-        delayed_free_lists;
+    util::SmallVector<ValLocalIdx, Analyzer::SMALL_BLOCK_NUM>
+    delayed_free_lists;
   } assignments = {};
 
   RegisterFile register_file;
@@ -301,7 +303,9 @@ struct CompilerBase {
       registers.fill(INVALID_VAL_LOCAL_IDX);
     }
   };
-  util::SmallVector<RegisterState, Analyzer<Adaptor>::SMALL_BLOCK_NUM> block_states;
+
+  util::SmallVector<RegisterState, Analyzer::SMALL_BLOCK_NUM> block_states;
+
   struct ValueState {
     ValLocalIdx val_local_idx;
 
@@ -438,7 +442,7 @@ public:
 
   /// Initialize a CompilerBase, should be called by the derived classes
   explicit CompilerBase(Adaptor *adaptor)
-      : adaptor(adaptor), analyzer(adaptor), assembler() {
+    : adaptor(adaptor), analyzer(adaptor, this), assembler() {
     static_assert(std::is_base_of_v<CompilerBase, Derived>);
     static_assert(Compiler<Derived, Config>);
   }
@@ -622,7 +626,8 @@ public:
   /// Select an available register, evicting loaded values if needed.
   /// Return local, global register
   std::pair<Reg, Reg> select_reg(RegBank bank, u64 exclusion_mask) noexcept {
-    Reg res = register_file.find_first_free_excluding(bank, exclusion_mask | global_register_file.used);
+    //todo(salto): fix lookups to global reg file ex. add_i128_no_salvage_reg
+    Reg res = register_file.find_first_free_excluding(bank, exclusion_mask);
     if (res.valid()) [[likely]] {
       return {res, res};
     } else {
@@ -2011,7 +2016,7 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
   // Earliest succeeding block after the current block that is not the
   // immediately succeeding block. Used to determine whether a value needs to
   // be spilled.
-  BlockIndex earliest_next_succ = Analyzer<Adaptor>::INVALID_BLOCK_IDX;
+  BlockIndex earliest_next_succ = INVALID_BLOCK_IDX;
 
   bool must_spill = force_spill;
   if (!must_spill) {
@@ -2836,7 +2841,7 @@ template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     const IRBlockRef block, const u32 block_idx) noexcept {
   cur_block_idx =
-      static_cast<typename Analyzer<Adaptor>::BlockIndex>(block_idx);
+      static_cast<BlockIndex>(block_idx);
 
   label_place(block_labels[block_idx]);
   #ifndef NDEBUG

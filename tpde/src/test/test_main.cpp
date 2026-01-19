@@ -202,11 +202,22 @@ int main(int argc, char *argv[]) {
   if (run_until.Get() == RunTestUntil::ir_parsing) {
     return 0;
   }
+  auto reg_str = args::get(register_list);
+  std::vector<Reg> registers = {};
+  if (!reg_str.empty()) {
+    auto view = reg_str | std::ranges::views::split(',') |
+                std::ranges::views::transform([](auto &&rng) {
+                  std::string token(&*rng.begin(), std::ranges::distance(rng));
+                  return Reg{std::stoul(token)};
+                });
+    registers.assign(view.begin(), view.end());
+  }
 
   if (run_until.Get() == RunTestUntil::only_analyzer) {
     test::TestIRAdaptor adaptor{&ir};
-
-    Analyzer<test::TestIRAdaptor> analyzer{&adaptor};
+    // for now just always use x64 todo(salto): respect arch
+    test::TestIRCompilerX64 compiler{&adaptor, no_fixed_assignments, registers};
+    Analyzer<test::TestIRAdaptor, test::TestIRCompilerX64> analyzer{&adaptor, (&compiler)};
 
     for (auto func : adaptor.funcs()) {
       if (adaptor.func_extern(func)) {
@@ -267,16 +278,7 @@ int main(int argc, char *argv[]) {
      return 0;
   }
 
-  auto reg_str = args::get(register_list);
-  std::vector<Reg> registers = {};
-  if (!reg_str.empty()) {
-    auto view = reg_str | std::ranges::views::split(',') |
-                std::ranges::views::transform([](auto &&rng) {
-                  std::string token(&*rng.begin(), std::ranges::distance(rng));
-                  return Reg{std::stoul(token)};
-                });
-    registers.assign(view.begin(), view.end());
-  }
+
   // TODO(ts): multiple arch select
   if (arch.Get() == Arch::x64) {
     test::TestIRAdaptor adaptor{&ir};
