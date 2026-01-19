@@ -337,6 +337,10 @@ concept IRAdaptor = requires(T a) {
     a.inst_results(ARG(typename T::IRInstRef))
   } -> IRRange<typename T::IRValueRef>;
 
+  /// Whether the instruction has a call. Relevant for better register allocation
+  /// if your instruction only generates a call in rare circumstances it is safe to return false here.
+  { a.inst_has_call(ARG(typename T::IRInstRef)) } -> std::convertible_to<bool>;
+
   /// Whether to skip the instruction during compilation.
   { a.inst_fused(ARG(typename T::IRInstRef)) } -> std::convertible_to<bool>;
 
