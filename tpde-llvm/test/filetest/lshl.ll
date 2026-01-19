@@ -402,28 +402,25 @@ define i128 @shl_i128_i128(i128 %v, i128 %s) {
 ; X64-LABEL: <shl_i128_i128>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rcx
+; X64-NEXT:    nop dword ptr [rax]
+; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    shl rsi, cl
-; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    shr rax
+; X64-NEXT:    mov r8, rdi
+; X64-NEXT:    shr r8
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    not cl
-; X64-NEXT:    shr rax, cl
-; X64-NEXT:    or rax, rsi
+; X64-NEXT:    shr r8, cl
+; X64-NEXT:    or r8, rsi
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    shl rdi, cl
-; X64-NEXT:    xor ebx, ebx
+; X64-NEXT:    xor r9d, r9d
 ; X64-NEXT:    test dl, 0x40
-; X64-NEXT:    cmovne rax, rdi
-; X64-NEXT:    cmove rbx, rdi
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rax
-; X64-NEXT:    mov rax, rbx
-; X64-NEXT:    mov rdx, qword ptr [rbp - 0x38]
-; X64-NEXT:    pop rbx
+; X64-NEXT:    cmovne r8, rdi
+; X64-NEXT:    cmove r9, rdi
+; X64-NEXT:    mov rax, r9
+; X64-NEXT:    mov rdx, r8
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;

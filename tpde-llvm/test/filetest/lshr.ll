@@ -419,25 +419,24 @@ define i128 @lshr_i128_i128(i128 %v, i128 %s) {
 ; X64-LABEL: <lshr_i128_i128>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rcx
+; X64-NEXT:    nop dword ptr [rax]
+; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    shr rdi, cl
-; X64-NEXT:    lea rax, [rsi + rsi]
+; X64-NEXT:    lea r8, [rsi + rsi]
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    not cl
-; X64-NEXT:    shl rax, cl
-; X64-NEXT:    or rax, rdi
+; X64-NEXT:    shl r8, cl
+; X64-NEXT:    or r8, rdi
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    shr rsi, cl
-; X64-NEXT:    xor ebx, ebx
+; X64-NEXT:    xor r9d, r9d
 ; X64-NEXT:    test dl, 0x40
-; X64-NEXT:    cmovne rax, rsi
-; X64-NEXT:    cmove rbx, rsi
-; X64-NEXT:    mov rdx, rbx
-; X64-NEXT:    pop rbx
+; X64-NEXT:    cmovne r8, rsi
+; X64-NEXT:    cmove r9, rsi
+; X64-NEXT:    mov rax, r8
+; X64-NEXT:    mov rdx, r9
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
