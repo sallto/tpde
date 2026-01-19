@@ -26,6 +26,151 @@ namespace tpde {
 
     static constexpr BlockIndex INVALID_BLOCK_IDX = static_cast<BlockIndex>(~0u);
 
+    /// Helper class to track the working set of values in registers during spill
+    /// analysis. Maintains consistency between the set of values and the register
+    /// count.
+    template<IRAdaptor Adaptor>
+    class WorkingSetTracker {
+    private:
+        using IRValueRef = typename Adaptor::IRValueRef;
+        std::unordered_set<ValLocalIdx> values_;
+        u32 used_regs_ = 0;
+        std::unordered_map<ValLocalIdx, u32> &val_parts_map_;
+        Adaptor *adaptor_;
+
+    public:
+        explicit WorkingSetTracker(std::unordered_map<ValLocalIdx, u32> &val_parts_map,
+                                   Adaptor *adaptor)
+            : val_parts_map_(val_parts_map), adaptor_(adaptor) {
+        }
+
+        /// Insert a value into the working set.
+        /// Returns true if the value was newly inserted.
+        bool insert(ValLocalIdx val_idx) {
+            const auto [it, inserted] = values_.insert(val_idx);
+            if (inserted) {
+                const auto parts_it = val_parts_map_.find(val_idx);
+                assert(parts_it != val_parts_map_.end() &&
+                    "Value not found in parts map");
+                used_regs_ += parts_it->second;
+            }
+            return inserted;
+        }
+
+        /// Erase a value from the working set.
+        /// Returns true if the value was found and erased.
+        bool erase(ValLocalIdx val_idx) {
+            const auto it = values_.find(val_idx);
+            if (it != values_.end()) {
+                const auto parts_it = val_parts_map_.find(val_idx);
+                assert(parts_it != val_parts_map_.end() &&
+                    "Value not found in parts map");
+                used_regs_ -= parts_it->second;
+                values_.erase(it);
+                return true;
+            }
+            return false;
+        }
+
+        /// Check if a value is in the working set.
+        bool contains(ValLocalIdx val_idx) const {
+            return values_.contains(val_idx);
+        }
+
+        /// Clear all values from the working set.
+        void clear() {
+            values_.clear();
+            used_regs_ = 0;
+        }
+
+        /// Replace the working set with a new set of values.
+        void replace_with(const std::unordered_set<ValLocalIdx> &new_values) {
+            values_ = new_values;
+            recalculate_used_regs();
+        }
+
+        /// Replace the working set with values from a vector.
+        void replace_with(const util::SmallVector<ValLocalIdx, 16> &new_values) {
+            values_.clear();
+            values_.insert(new_values.begin(), new_values.end());
+            recalculate_used_regs();
+        }
+
+        /// Get the current register usage.
+        u32 used_regs() const { return used_regs_; }
+
+        /// Check if there's capacity for additional registers.
+        bool has_capacity_for(u32 additional_regs, u32 total_capacity) const {
+            return used_regs_ + additional_regs <= total_capacity;
+        }
+
+        /// Check if a specific value can fit.
+        bool can_fit(ValLocalIdx val_idx, u32 total_capacity) const {
+            const auto parts_it = val_parts_map_.find(val_idx);
+            if (parts_it == val_parts_map_.end()) {
+                return false;
+            }
+            return used_regs_ + parts_it->second <= total_capacity;
+        }
+
+        /// Get number of parts for a value (asserts if not cached).
+        u32 num_parts(ValLocalIdx val_idx) const {
+            const auto parts_it = val_parts_map_.find(val_idx);
+            assert(parts_it != val_parts_map_.end() &&
+                "Value not found in parts map");
+            return parts_it->second;
+        }
+
+        /// Check if parts are cached for a value.
+        bool has_parts_cached(ValLocalIdx val_idx) const {
+            return val_parts_map_.contains(val_idx);
+        }
+
+        /// Get number of parts for a value, returning 0 if not cached.
+        u32 num_parts_or_zero(ValLocalIdx val_idx) const {
+            const auto parts_it = val_parts_map_.find(val_idx);
+            return parts_it != val_parts_map_.end() ? parts_it->second : 0;
+        }
+
+        /// Cache the parts count for a value if not already cached.
+        void ensure_parts_cached(ValLocalIdx val_idx, u32 num_parts) {
+            if (!val_parts_map_.contains(val_idx)) {
+                val_parts_map_[val_idx] = num_parts;
+            }
+        }
+
+        /// Insert a value into the working set, automatically getting its parts count
+        /// from the adaptor if needed. Returns true if the value was newly inserted.
+        bool insert_value(IRValueRef value) {
+            ValLocalIdx val_idx = adaptor_->val_local_idx(value);
+            if (!has_parts_cached(val_idx)) {
+                u32 num_parts = adaptor_->val_parts(value).count();
+                ensure_parts_cached(val_idx, num_parts);
+            }
+            return insert(val_idx);
+        }
+
+        /// Iteration support (const).
+        auto begin() const { return values_.begin(); }
+        auto end() const { return values_.end(); }
+
+        /// Iteration support (non-const).
+        auto begin() { return values_.begin(); }
+        auto end() { return values_.end(); }
+
+    private:
+        /// Recalculate used_regs from scratch based on current values.
+        void recalculate_used_regs() {
+            used_regs_ = 0;
+            for (const auto val_idx: values_) {
+                const auto parts_it = val_parts_map_.find(val_idx);
+                assert(parts_it != val_parts_map_.end() &&
+                    "Value not found in parts map");
+                used_regs_ += parts_it->second;
+            }
+        }
+    };
+
     template<IRAdaptor Adaptor, typename CompilerType>
     struct Analyzer {
         // some forwards for the IR type defs
@@ -264,10 +409,9 @@ namespace tpde {
         void limit(tpde::util::SmallVector<
                        std::tuple<tpde::ValLocalIdx, tpde::u32, tpde::u32, tpde::u32>,
                        16UL> &W_next_uses,
-                   tpde::u32 &used_regs,
                    const tpde::u32 NUM_REGS,
                    tpde::u32 &idx,
-                   std::unordered_set<tpde::ValLocalIdx> &W,
+                   WorkingSetTracker<Adaptor> &working_set,
                    bool after_instr = false);
     };
 
@@ -1625,6 +1769,7 @@ namespace tpde {
         // todo(salto): multi-part values?
         // todo(salto): ordered set for W
         constexpr u32 NUM_REGS = 16 - 2; //can't use rbp and rsp
+        constexpr u32 NUM_CALLER_SAVED = 7;
 
         // The set of values in registers at the end of a block
         // compared to the original algorithm, we can avoid the set S (spilled
@@ -1636,6 +1781,7 @@ namespace tpde {
 
         // todo(salto): cache val_idx to num parts, regbank
         std::unordered_map<ValLocalIdx, u32> val_idx_to_num_parts;
+        val_idx_to_num_parts.reserve(liveness_max_value + 1);
         // todo(salto): values with multiple regbanks
         // todo(salto): ignore liveness?
 
@@ -1646,19 +1792,12 @@ namespace tpde {
 
 
         // todo(salto): register arguments
-        std::unordered_set<ValLocalIdx> W;
-        u32 used_regs = 0;
+        WorkingSetTracker<Adaptor> working_set(val_idx_to_num_parts, adaptor);
 
         // block -> val_idx -> # of predecessor that have val_idx in W at their end.
         // todo(salto): better datastructure!
         std::unordered_map<BlockIndex, std::unordered_map<ValLocalIdx, u32> >
                 W_entry_freq;
-
-        /*if constexpr (Adaptor::TPDE_LIVENESS_VISIT_ARGS) {
-    for (const IRValueRef arg : adaptor->cur_args()) {
-      W_entry_freq[0][adaptor->val_local_idx(arg)]
-    }
-  }*/
 
         for (u32 i = 0; i < this->block_layout.size(); ++i) {
             // TODO(salto): Handle register arguments in entry block
@@ -1680,15 +1819,15 @@ namespace tpde {
                     for (const IRValueRef arg: adaptor->cur_args()) {
                         //todo(salto): is this correct
                         auto local_idx = adaptor->val_local_idx(arg);
-                        if (free_regs < val_idx_to_num_parts[local_idx]) {
+                        const u32 num_parts = adaptor->val_parts(arg).count();
+                        working_set.ensure_parts_cached(local_idx, num_parts);
+                        if (free_regs < num_parts) {
                             // rest of args must be on stack
                             break;
                         }
                         // fixme(salto): multi-part, ignore_liveness?
-                        W.insert(local_idx);
-                        val_idx_to_num_parts[local_idx] = adaptor->val_parts(arg).count();
-                        used_regs += val_idx_to_num_parts[local_idx];
-                        free_regs -= val_idx_to_num_parts[local_idx];
+                        working_set.insert(local_idx);
+                        free_regs -= num_parts;
                     }
                 }
             }
@@ -1707,12 +1846,12 @@ namespace tpde {
                     for (const auto old_val_idx: incoming_from_all) {
                         incoming_from_some.push_back(old_val_idx);
                     }
-                    from_all_registers = val_idx_to_num_parts[val_idx];
+                    from_all_registers = working_set.num_parts(val_idx);
                     incoming_from_all.clear();
                     incoming_from_all.push_back(val_idx);
                 } else if (freq == max_seen_freq) {
                     incoming_from_all.push_back(val_idx);
-                    from_all_registers += val_idx_to_num_parts[val_idx];
+                    from_all_registers += working_set.num_parts(val_idx);
                 } else {
                     incoming_from_some.push_back(val_idx);
                 }
@@ -1734,17 +1873,15 @@ namespace tpde {
                                    0)
                                .first;
                     });
-                W = {};
+                working_set.clear();
                 for (const auto val_idx: incoming_from_all) {
-                    if (used_regs + val_idx_to_num_parts[val_idx] > NUM_REGS) {
+                    if (!working_set.can_fit(val_idx, NUM_REGS)) {
                         break;
                     }
-                    W.insert(val_idx);
-                    used_regs += val_idx_to_num_parts[val_idx];
+                    working_set.insert(val_idx);
                 }
             } else {
-                W = {incoming_from_all.begin(), incoming_from_all.end()};
-                used_regs = from_all_registers;
+                working_set.replace_with(incoming_from_all);
                 // todo(salto): check if the effort for incoming_from_some is worth it.
                 // todo(salto): sort could be replaced by top-k
                 std::sort(
@@ -1763,27 +1900,19 @@ namespace tpde {
                                .first;
                     });
                 for (const auto val_idx: incoming_from_some) {
-                    if (used_regs + val_idx_to_num_parts[val_idx] > NUM_REGS) {
+                    if (!working_set.can_fit(val_idx, NUM_REGS)) {
                         break;
                     }
-                    W.insert(val_idx);
-                    used_regs += val_idx_to_num_parts[val_idx];
+                    working_set.insert(val_idx);
                 }
             }
-
-
-            // todo(salto): for 1 incoming, is the prev block guaranteed to be the
-            // incoming one?
 
             // W is the working set. The values in registers
             // keep used registers seperately, since one value can use multiple
             // registers.
             for (const auto phi: adaptor->block_phis(block)) {
-                const auto val_idx = adaptor->val_local_idx(phi);
-
-                W.insert(val_idx);
                 // todo(salto): should we be able to spill phis?
-                used_regs += this->adaptor->val_parts(phi).count();
+                working_set.insert_value(phi);
             }
 
             u32 idx = 0;
@@ -1793,13 +1922,7 @@ namespace tpde {
                         // what can we do here?
                         continue;
                     }
-                    const auto val_idx = adaptor->val_local_idx(operand);
-                    if (!val_idx_to_num_parts.contains(val_idx)) {
-                        val_idx_to_num_parts[val_idx] =
-                                this->adaptor->val_parts(operand).count();
-                    }
-                    used_regs += W.contains(val_idx) ? 0 : val_idx_to_num_parts[val_idx];
-                    W.insert(val_idx);
+                    working_set.insert_value(operand);
                 }
 
                 // we process results and operands at once whenever possible. The original
@@ -1815,23 +1938,20 @@ namespace tpde {
                         // what can we do here?
                         continue;
                     }
-                    const auto val_idx = adaptor->val_local_idx(result);
-                    if (!val_idx_to_num_parts.contains(val_idx)) {
-                        val_idx_to_num_parts[val_idx] =
-                                this->adaptor->val_parts(result).count();
-                    }
                     // the original algorithm doesn't add results to W until after both
                     // limits. Iterating through results could be expensive, so we wan't to
                     // avoid iterating it twice. Results have a current_use of 0 so they
                     // will not be spilled.
-                    W.insert(val_idx);
+                    working_set.insert_value(result);
 
-                    num_result_regs += val_idx_to_num_parts[val_idx];
+                    const auto val_idx = adaptor->val_local_idx(result);
+                    const u32 num_parts = working_set.num_parts(val_idx);
+                    num_result_regs += num_parts;
                 }
-
+                //todo(salto): check wether if with [[unlikely]] has better performance
+                const u32 current_capacity = NUM_REGS - adaptor->inst_has_call(inst) * NUM_CALLER_SAVED;
                 // we still have enough registers, no spills needed
-                if (used_regs + num_result_regs <= NUM_REGS) {
-                    used_regs += num_result_regs;
+                if (working_set.has_capacity_for(num_result_regs, current_capacity)) {
                     ++idx;
                     continue;
                 }
@@ -1839,9 +1959,8 @@ namespace tpde {
                 // then maybe we can avoid some sorts We spill the furthest next-use
                 // value. (val_idx, ,current_use,next_use, num_parts)
                 util::SmallVector<std::tuple<ValLocalIdx, u32, u32, u32>, 16> W_next_uses;
-                auto it = W.begin();
-                while (it != W.end()) {
-                    const auto val_idx = *it;
+                util::SmallVector<ValLocalIdx, 16> dead_values;
+                for (const auto val_idx: working_set) {
                     const auto [current_use, next_use] = get_current_and_next_use(
                         precise_liveness[static_cast<u32>(block_idx(block))],
                         val_idx,
@@ -1850,25 +1969,26 @@ namespace tpde {
                            "Value is used, but its liveness was not computed.");
                     // we can evict all dead values by default.
                     if (current_use == INF) {
-                        used_regs -= val_idx_to_num_parts[val_idx];
-                        it = W.erase(it);
+                        dead_values.push_back(val_idx);
                         // todo(salto): maybe break if we already have enough registers?
                         continue;
                     }
                     W_next_uses.emplace_back(
-                        val_idx, current_use, next_use, val_idx_to_num_parts[val_idx]);
-                    ++it;
+                        val_idx, current_use, next_use, working_set.num_parts(val_idx));
+                }
+                // Remove dead values
+                for (const auto val_idx: dead_values) {
+                    working_set.erase(val_idx);
                 }
                 // Evicting dead values was enough to free up registers, avoid more
                 // expensive spill calculation.
-                if (used_regs + num_result_regs <= NUM_REGS) {
-                    used_regs += num_result_regs;
+                if (working_set.has_capacity_for(num_result_regs, current_capacity)) {
                     ++idx;
                     continue;
                 }
 
                 // we are limited by the results.
-                if (used_regs <= NUM_REGS) {
+                if (working_set.used_regs() <= current_capacity) {
                     // sort by next use instead of current use since we have enough space
                     // for all the operands and we might be able to evict a operand for a
                     // result.
@@ -1880,8 +2000,7 @@ namespace tpde {
                                   // parts?
                                   return std::get < 2 > (a) > std::get < 2 > (b);
                               });
-                    used_regs += num_result_regs;
-                    limit(W_next_uses, used_regs, NUM_REGS, idx, W, true);
+                    limit(W_next_uses, current_capacity, idx, working_set, true);
                 } else {
                     // sort by current use since we need space for operands
                     std::sort(W_next_uses.begin(),
@@ -1894,10 +2013,10 @@ namespace tpde {
                                              ? (std::get < 2 > (a) > std::get < 2 > (b))
                                              : std::get < 1 > (a) > std::get < 1 > (b);
                               });
-                    limit(W_next_uses, used_regs, NUM_REGS, idx, W);
+                    limit(W_next_uses, current_capacity, idx, working_set, false);
                     // in the same instruction we are limited both by the results and the
                     // operands todo(salto): check how often this happens.
-                    if (used_regs + num_result_regs > NUM_REGS) {
+                    if (!working_set.has_capacity_for(num_result_regs, current_capacity)) {
                         TPDE_LOG_TRACE("Second limit pass for instruction {}", idx);
 
                         // todo(salto): we could check if we can evict the next values of
@@ -1910,13 +2029,12 @@ namespace tpde {
                                       // parts?
                                       return std::get < 2 > (a) > std::get < 2 > (b);
                                   });
-                        used_regs += num_result_regs;
-                        limit(W_next_uses, used_regs, NUM_REGS, idx, W, true);
+                        limit(W_next_uses, current_capacity, idx, working_set, true);
                     }
                 }
                 ++idx;
             }
-            for (const auto val_idx: W) {
+            for (const auto val_idx: working_set) {
                 for (const auto succ: adaptor->block_succs(block)) {
                     const auto succ_idx = block_idx(succ);
                     const auto &pli = precise_liveness[static_cast<u32>(succ_idx)];
@@ -1940,13 +2058,12 @@ namespace tpde {
         tpde::util::SmallVector<
             std::tuple<tpde::ValLocalIdx, tpde::u32, tpde::u32, tpde::u32>,
             16UL> &W_next_uses,
-        tpde::u32 &used_regs,
         const tpde::u32 NUM_REGS,
         tpde::u32 &idx,
-        std::unordered_set<tpde::ValLocalIdx> &W,
+        WorkingSetTracker<Adaptor> &working_set,
         bool after_instr) {
         for (const auto &[val_idx, current_use, next_use, num_parts]: W_next_uses) {
-            if (used_regs <= NUM_REGS) {
+            if (working_set.used_regs() <= NUM_REGS) {
                 break;
             }
 
@@ -1965,8 +2082,7 @@ namespace tpde {
                 spilled_values.mark_set(static_cast<u32>(val_idx));
             }
 
-            W.erase(val_idx);
-            used_regs -= num_parts;
+            working_set.erase(val_idx);
         }
     }
 
