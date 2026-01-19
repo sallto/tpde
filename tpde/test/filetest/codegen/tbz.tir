@@ -13,7 +13,7 @@ define @tbz(%a) {
 ; CHECK-NEXT:    30: tbnz x0, #0x2f, 0x3c <tbz+0x1c>
 ; CHECK-NEXT:    34: sub x1, x0, x0
 ; CHECK-NEXT:    38: b 0x40 <tbz+0x20>
-; CHECK-NEXT:    3c: add x2, x0, x0
+; CHECK-NEXT:    3c: add x1, x0, x0
 ; CHECK-NEXT:    40: ldp x29, x30, [sp]
 ; CHECK-NEXT:    44: add sp, sp, #0xa0
 ; CHECK-NEXT:    48: ret
@@ -40,7 +40,7 @@ define @tbz_small(%a) {
 ; CHECK-NEXT:     ...
 ; CHECK-NEXT:    874: sub x1, x0, x0
 ; CHECK-NEXT:    878: b 0x880 <tbz_small+0x810>
-; CHECK-NEXT:    87c: add x2, x0, x0
+; CHECK-NEXT:    87c: add x1, x0, x0
 ; CHECK-NEXT:    880: ldp x29, x30, [sp]
 ; CHECK-NEXT:    884: add sp, sp, #0xa0
 ; CHECK-NEXT:    888: ret
@@ -71,7 +71,7 @@ define @tbz_medium(%a) {
 ; CHECK-NEXT:     ...
 ; CHECK-NEXT:    87cc: sub x1, x0, x0
 ; CHECK-NEXT:    87d0: b 0x87d8 <tbz_medium+0x7f28>
-; CHECK-NEXT:    87d4: add x2, x0, x0
+; CHECK-NEXT:    87d4: add x1, x0, x0
 ; CHECK-NEXT:    87d8: ldp x29, x30, [sp]
 ; CHECK-NEXT:    87dc: add sp, sp, #0xa0
 ; CHECK-NEXT:    87e0: ret
@@ -102,7 +102,7 @@ define @tbz_large(%a) {
 ; CHECK-NEXT:     ...
 ; CHECK-NEXT:    1082c: sub x1, x0, x0
 ; CHECK-NEXT:    10830: b 0x10838 <tbz_large+0x8028>
-; CHECK-NEXT:    10834: add x2, x0, x0
+; CHECK-NEXT:    10834: add x1, x0, x0
 ; CHECK-NEXT:    10838: ldp x29, x30, [sp]
 ; CHECK-NEXT:    1083c: add sp, sp, #0xa0
 ; CHECK-NEXT:    10840: ret
