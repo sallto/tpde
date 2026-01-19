@@ -14,8 +14,7 @@ define void @ashr_v1i8(ptr %p, ptr %q) {
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rsi]
 ; X64-NEXT:    movsx eax, al
-; X64-NEXT:    mov byte ptr [rbp - 0x29], cl
-; X64-NEXT:    movzx edx, byte ptr [rbp - 0x29]
+; X64-NEXT:    mov edx, ecx
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    sar eax, cl
 ; X64-NEXT:    mov byte ptr [rdi], al
@@ -35,6 +34,7 @@ define void @ashr_v1i8(ptr %p, ptr %q) {
 ; ARM64-NEXT:    ldp x29, x30, [sp]
 ; ARM64-NEXT:    add sp, sp, #0xa0
 ; ARM64-NEXT:    ret
+; todo(salto): move mov ecx, edx is in encoding template, but unnecessary
   %a = load <1 x i8>, ptr %p
   %b = load <1 x i8>, ptr %q
   %r = ashr <1 x i8> %a, %b
@@ -85,36 +85,34 @@ define void @ashr_v5i8(ptr %p, ptr %q) {
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
-; X64-NEXT:    movzx ebx, byte ptr [rdi + 0x3]
-; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x4]
-; X64-NEXT:    movzx r9d, byte ptr [rsi]
-; X64-NEXT:    movzx r10d, byte ptr [rsi + 0x1]
-; X64-NEXT:    movzx r11d, byte ptr [rsi + 0x2]
+; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x3]
+; X64-NEXT:    movzx r9d, byte ptr [rdi + 0x4]
+; X64-NEXT:    movzx r10d, byte ptr [rsi]
+; X64-NEXT:    movzx r11d, byte ptr [rsi + 0x1]
+; X64-NEXT:    movzx ebx, byte ptr [rsi + 0x2]
 ; X64-NEXT:    movzx r12d, byte ptr [rsi + 0x3]
 ; X64-NEXT:    movzx r13d, byte ptr [rsi + 0x4]
 ; X64-NEXT:    movsx eax, al
-; X64-NEXT:    mov byte ptr [rbp - 0x2f], cl
-; X64-NEXT:    mov ecx, r9d
-; X64-NEXT:    sar eax, cl
-; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x2f]
-; X64-NEXT:    movsx ecx, cl
-; X64-NEXT:    mov rsi, rcx
+; X64-NEXT:    mov esi, ecx
 ; X64-NEXT:    mov ecx, r10d
+; X64-NEXT:    sar eax, cl
+; X64-NEXT:    movsx esi, sil
+; X64-NEXT:    mov ecx, r11d
 ; X64-NEXT:    sar esi, cl
 ; X64-NEXT:    movsx edx, dl
-; X64-NEXT:    mov ecx, r11d
+; X64-NEXT:    mov ecx, ebx
 ; X64-NEXT:    sar edx, cl
-; X64-NEXT:    movsx ebx, bl
-; X64-NEXT:    mov ecx, r12d
-; X64-NEXT:    sar ebx, cl
 ; X64-NEXT:    movsx r8d, r8b
-; X64-NEXT:    mov ecx, r13d
+; X64-NEXT:    mov ecx, r12d
 ; X64-NEXT:    sar r8d, cl
+; X64-NEXT:    movsx r9d, r9b
+; X64-NEXT:    mov ecx, r13d
+; X64-NEXT:    sar r9d, cl
 ; X64-NEXT:    mov byte ptr [rdi], al
 ; X64-NEXT:    mov byte ptr [rdi + 0x1], sil
 ; X64-NEXT:    mov byte ptr [rdi + 0x2], dl
-; X64-NEXT:    mov byte ptr [rdi + 0x3], bl
-; X64-NEXT:    mov byte ptr [rdi + 0x4], r8b
+; X64-NEXT:    mov byte ptr [rdi + 0x3], r8b
+; X64-NEXT:    mov byte ptr [rdi + 0x4], r9b
 ; X64-NEXT:    pop r13
 ; X64-NEXT:    pop r12
 ; X64-NEXT:    pop rbx
@@ -165,30 +163,28 @@ define void @ashr_v5i8_3(ptr %p) {
 ; X64-LABEL: <ashr_v5i8_3>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
-; X64-NEXT:    movzx ebx, byte ptr [rdi + 0x3]
-; X64-NEXT:    movzx esi, byte ptr [rdi + 0x4]
+; X64-NEXT:    movzx esi, byte ptr [rdi + 0x3]
+; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x4]
 ; X64-NEXT:    movsx eax, al
 ; X64-NEXT:    sar eax, 0x3
 ; X64-NEXT:    movsx ecx, cl
 ; X64-NEXT:    sar ecx, 0x3
 ; X64-NEXT:    movsx edx, dl
 ; X64-NEXT:    sar edx, 0x3
-; X64-NEXT:    movsx ebx, bl
-; X64-NEXT:    sar ebx, 0x3
 ; X64-NEXT:    movsx esi, sil
 ; X64-NEXT:    sar esi, 0x3
+; X64-NEXT:    movsx r8d, r8b
+; X64-NEXT:    sar r8d, 0x3
 ; X64-NEXT:    mov byte ptr [rdi], al
 ; X64-NEXT:    mov byte ptr [rdi + 0x1], cl
 ; X64-NEXT:    mov byte ptr [rdi + 0x2], dl
-; X64-NEXT:    mov byte ptr [rdi + 0x3], bl
-; X64-NEXT:    mov byte ptr [rdi + 0x4], sil
-; X64-NEXT:    pop rbx
+; X64-NEXT:    mov byte ptr [rdi + 0x3], sil
+; X64-NEXT:    mov byte ptr [rdi + 0x4], r8b
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
