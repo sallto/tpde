@@ -2737,6 +2737,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
 
    register_file.allocatable = cc_assigner->get_ccinfo().allocatable_regs;
   global_register_file.allocatable = cc_assigner->get_ccinfo().allocatable_regs;
+  register_file.callee_saved = cc_assigner->get_ccinfo().callee_saved_regs;
+  global_register_file.callee_saved = cc_assigner->get_ccinfo().callee_saved_regs;
 
   // This initializes the stack frame, which must reserve space for
   // callee-saved registers, vararg save area, etc.

@@ -65,6 +65,8 @@ public:
 
   /// Registers that are generally allocatable and not reserved.
   RegBitSet allocatable = 0;
+  /// Registers that are callee-saved (must be preserved across calls).
+  RegBitSet callee_saved = 0;
   /// Registers that are currently in use. Requires allocatable.
   RegBitSet used = 0;
   /// Registers that were clobbered at some point. Used to track registers that
@@ -195,19 +197,21 @@ public:
   [[nodiscard]] Reg
       find_first_free_excluding(const RegBank bank,
                                 const u64 exclusion_mask) noexcept {
-        //todo(salto): round robin
         // TODO(ts): implement preferred registers
         const RegBitSet free_bank = allocatable & ~used & bank_regs(bank);
         const RegBitSet selectable = free_bank & ~exclusion_mask;
         if (selectable == 0) {
           return Reg::make_invalid();
         }
+
         const u8 bank_id = bank.id();
         const u8 start = last_used_reg[bank_id] + 1;
-        // Mask off bits below 'start' to search upper portion first
-        const RegBitSet upper = selectable & ~((1ull << start) - 1);
-        const u8 found =
-            static_cast<u8>(util::cnt_tz(upper != 0 ? upper : selectable));
+        //todo(salto): reimplement round-robin properly
+        // Prefer caller-saved registers (NOT callee-saved)
+        const RegBitSet caller_saved_sel = selectable & ~callee_saved;
+        const RegBitSet search_set = caller_saved_sel != 0 ? caller_saved_sel : selectable;
+        const u8 found = static_cast<u8>(util::cnt_tz(search_set));
+
         last_used_reg[bank_id] = found;
         return Reg{found};
   }
