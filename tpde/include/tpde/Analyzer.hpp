@@ -2062,13 +2062,56 @@ namespace tpde {
         tpde::u32 &idx,
         WorkingSetTracker<Adaptor> &working_set,
         bool after_instr) {
-        for (const auto &[val_idx, current_use, next_use, num_parts]: W_next_uses) {
-            if (working_set.used_regs() <= NUM_REGS) {
-                break;
-            }
+        // Calculate how many registers need to be freed
+        u32 regs_to_free = working_set.used_regs() > NUM_REGS
+                               ? (working_set.used_regs() - NUM_REGS)
+                               : 0;
+
+        if (regs_to_free == 0) {
+            return; // Already within capacity
+        }
+
+        // Phase 1: Collect candidate values that could be spilled
+        // These are selected in priority order (respecting the caller's sort)
+        util::SmallVector<std::tuple<ValLocalIdx, u32, u32, u32>, 16> candidates;
+        u32 total_regs_in_candidates = 0;
+
+        for (const auto &entry: W_next_uses) {
+            u32 current_use = std::get<1>(entry);
+            u32 num_parts = std::get<3>(entry);
 
             // we should have already evicted all dead values.
             assert(current_use != INF);
+
+            candidates.push_back(entry);
+            total_regs_in_candidates += num_parts;
+
+            // Stop when we have enough registers to potentially free
+            if (total_regs_in_candidates >= regs_to_free) {
+                break;
+            }
+        }
+
+        // Phase 2: Optimize selection if we have excess capacity
+        // mainly happens with large vectors, since we can only spill whole vector atm.
+        u32 excess_regs = total_regs_in_candidates - regs_to_free;
+
+        // If we have excess and multiple candidates, reorder by size
+        // This can reduce the number of values spilled
+        if (excess_regs > 0 && candidates.size() > 1)[[unlikely]] {
+            std::sort(candidates.begin(), candidates.end(),
+                      [](const auto &a, const auto &b) {
+                          // Sort by num_parts (descending) - prefer spilling larger values
+                          return std::get<3>(a) > std::get<3>(b);
+                      });
+        }
+
+        // Perform the actual spills
+        u32 regs_freed = 0;
+        for (const auto &[val_idx, current_use, next_use, num_parts]: candidates) {
+            if (regs_freed >= regs_to_free) {
+                break; // Freed enough registers
+            }
 
             TPDE_LOG_TRACE("Spilling value {} with current use {} and {} parts at "
                            "instruction idx {}",
@@ -2076,6 +2119,7 @@ namespace tpde {
                            current_use,
                            num_parts,
                            idx);
+
             // don't spill if the value is dead after the instruction
             if (!(after_instr && (next_use == INF))) {
                 // todo(salto): check if already set?
@@ -2083,6 +2127,7 @@ namespace tpde {
             }
 
             working_set.erase(val_idx);
+            regs_freed += num_parts;
         }
     }
 
