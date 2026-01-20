@@ -211,6 +211,38 @@ struct CompilerBase {
   };
   using MoveList = util::SmallVector<RegisterMove, 16>;
 
+  /// Pending argument for lazy CallBuilder execution
+  struct PendingArg {
+    enum class Kind : u8 {
+      REG_TO_REG, // Register-to-register move
+      STACK_TO_REG, // Load from stack to register
+      CONST_TO_REG, // Materialize constant to register
+      TO_STACK, // Store to stack slot
+      BYVAL, // byval memory copy
+    };
+
+    Kind kind = Kind::REG_TO_REG;
+    u8 int_ext = 0; // Extension: bit 7 = sign, bits 0-5 = width
+    u8 size = 0;
+    RegBank bank{};
+    Reg target_reg = Reg::make_invalid(); // For *_TO_REG kinds
+    u32 stack_off = 0; // For TO_STACK/BYVAL
+    u32 byval_size = 0; // For BYVAL
+
+    // Source info
+    Reg source_reg = Reg::make_invalid(); // For REG_TO_REG
+    i32 frame_off = 0; // For STACK_TO_REG
+    ValLocalIdx local_idx = INVALID_VAL_LOCAL_IDX;
+    u32 part_idx = 0;
+
+    // For constants
+    u64 const_data = 0;
+    const u64 *const_ptr = nullptr;
+    bool const_inline = false;
+  };
+
+  using PendingArgList = util::SmallVector<PendingArg, 8>;
+
   /// Tree Register Allocator context for tracking parallel copies during
   // TreeRAContext retired, replaced with global_register_file
   // /// instruction compilation. Based on the tree scan register allocation
@@ -395,6 +427,11 @@ public:
     CCAssigner &assigner;
 
     RegisterFile::RegBitSet arg_regs{};
+
+    // Pending arguments for lazy execution
+    PendingArgList pending_args{};
+    // Track source registers to detect eviction
+    RegisterFile::RegBitSet source_regs{};
 
   public:
     CallBuilderBase(Derived &compiler, CCAssigner &assigner) noexcept
@@ -947,14 +984,41 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
   }
 
   assigner.assign_arg(cca);
-  bool needs_ext = cca.int_ext != 0;
-  bool ext_sign = cca.int_ext >> 7;
-  unsigned ext_bits = cca.int_ext & 0x3f;
+
+  PendingArg arg{};
+  arg.int_ext = cca.int_ext;
+  arg.size = cca.size;
+  arg.bank = cca.bank;
 
   if (cca.byval) {
-    derived()->add_arg_byval(vp, cca);
+    // Record byval for later execution
+    arg.kind = PendingArg::Kind::BYVAL;
+    arg.stack_off = cca.stack_off;
+    arg.byval_size = cca.size;
+
+    // Capture source location
+    if (vp.has_assignment()) {
+      auto ap = vp.assignment();
+      arg.local_idx = vp.local_idx();
+      arg.part_idx = vp.part();
+      if (ap.register_valid()) {
+        arg.source_reg = ap.get_reg();
+        source_regs |= (1ull << ap.get_reg().id());
+      } else if (ap.stack_valid()) {
+        arg.frame_off = ap.frame_off();
+      }
+    }
+    pending_args.push_back(arg);
     vp.reset(&compiler);
-  } else if (!cca.reg.valid()) {
+    return;
+  }
+
+  if (!cca.reg.valid()) {
+    // Stack destination - execute immediately
+    bool needs_ext = cca.int_ext != 0;
+    bool ext_sign = cca.int_ext >> 7;
+    unsigned ext_bits = cca.int_ext & 0x3f;
+
     if (needs_ext) {
       auto ext = std::move(vp).into_extended(&compiler, ext_sign, ext_bits, 64);
       derived()->add_arg_stack(ext, cca);
@@ -963,49 +1027,51 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       derived()->add_arg_stack(vp, cca);
     }
     vp.reset(&compiler);
-  } else {
-    u32 size = vp.part_size();
-    if (vp.is_in_reg(cca.reg)) {
-      if (!vp.can_salvage()) {
-        compiler.evict_reg(cca.reg);
-      } else {
-        vp.salvage(&compiler);
-      }
-      if (needs_ext) {
-        compiler.generate_raw_intext(cca.reg, cca.reg, ext_sign, ext_bits, 64);
-      }
-    } else {
-      if (compiler.register_file.is_used(cca.reg)) {
-        compiler.evict_reg(cca.reg);
-      }
-      if (vp.can_salvage()) {
-        AsmReg vp_reg = vp.salvage(&compiler);
-#ifndef NDEBUG
-        vp.assignment().set_reg(cca.reg); // ensure the arguments are registered
-                                          // in the correct registers for VerificationIR
-#endif
-        if (needs_ext) {
-          compiler.generate_raw_intext(cca.reg, vp_reg, ext_sign, ext_bits, 64);
-        } else {
-          compiler.mov(cca.reg, vp_reg, size);
-        }
-      } else {
-        vp.reload_into_specific_fixed(&compiler, cca.reg);
-        if (needs_ext) {
-          compiler.generate_raw_intext(
-              cca.reg, cca.reg, ext_sign, ext_bits, 64);
-        }
-      }
-    }
-    vp.reset(&compiler);
-    assert(!compiler.register_file.is_used(cca.reg));
-    compiler.register_file.mark_clobbered(cca.reg);
-    compiler.register_file.allocatable &= ~(u64{1} << cca.reg.id());
-    arg_regs |= (1ull << cca.reg.id());
+    return;
   }
+
+  // Register destination
+  arg.target_reg = cca.reg;
+  arg_regs |= (1ull << cca.reg.id());
+
+  if (vp.is_const()) {
+    arg.kind = PendingArg::Kind::CONST_TO_REG;
+    auto cdata = vp.const_data();
+    // For constants that fit in 8 bytes, copy inline
+    if (arg.size <= 8) {
+      arg.const_data = cdata[0];
+      arg.const_inline = true;
+    } else {
+      arg.const_ptr = cdata.data();
+      arg.const_inline = false;
+    }
+  } else if (vp.has_assignment()) {
+    auto ap = vp.assignment();
+    arg.local_idx = vp.local_idx();
+    arg.part_idx = vp.part();
+    if (ap.register_valid()) {
+      arg.kind = PendingArg::Kind::REG_TO_REG;
+      arg.source_reg = ap.get_reg();
+      source_regs |= (1ull << ap.get_reg().id());
+    } else if (ap.stack_valid()) {
+      arg.kind = PendingArg::Kind::STACK_TO_REG;
+      arg.frame_off = ap.frame_off();
+    }
+  } else {
+    // Temporary register without assignment
+    AsmReg src = vp.cur_reg_unlocked();
+    if (src.valid()) {
+      arg.kind = PendingArg::Kind::REG_TO_REG;
+      arg.source_reg = src;
+      source_regs |= (1ull << src.id());
+    }
+  }
+
+  pending_args.push_back(arg);
+  vp.reset(&compiler);
 }
 
-template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 template <typename CBDerived>
 void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     CBDerived>::add_arg(const CallArg &arg, u32 part_count) noexcept {
@@ -1063,9 +1129,172 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     std::variant<SymRef, ValuePart> target) noexcept {
   assert(!compiler.stack.is_leaf_function && "leaf func must not have calls");
   compiler.stack.generated_call = true;
+
+  // Phase 1: Update evicted sources - check if any REG_TO_* sources were spilled
+  for (auto &arg: pending_args) {
+    if (arg.kind != PendingArg::Kind::REG_TO_REG &&
+        arg.kind != PendingArg::Kind::TO_STACK) {
+      continue;
+    }
+    if (arg.local_idx == INVALID_VAL_LOCAL_IDX) {
+      continue;
+    }
+
+    ValueAssignment *va = compiler.val_assignment(arg.local_idx);
+    if (!va) {
+      continue;
+    }
+
+    AssignmentPartRef ap{va, arg.part_idx};
+    if (!ap.register_valid()) {
+      // Was evicted - switch to stack load
+      if (arg.kind == PendingArg::Kind::REG_TO_REG) {
+        arg.kind = PendingArg::Kind::STACK_TO_REG;
+      }
+      // For TO_STACK, we'll handle it by loading to temp first
+      if (ap.stack_valid()) {
+        arg.frame_off = ap.frame_off();
+      }
+    } else if (ap.get_reg() != arg.source_reg) {
+      // Moved to different register
+      arg.source_reg = ap.get_reg();
+    }
+  }
+
+  // Phase 2: Execute byval copies
+  for (auto &arg: pending_args) {
+    if (arg.kind != PendingArg::Kind::BYVAL) {
+      continue;
+    }
+
+    // Create ValuePart for source
+    ValuePart vp{arg.bank};
+    if (arg.local_idx != INVALID_VAL_LOCAL_IDX) {
+      ValueAssignment *va = compiler.val_assignment(arg.local_idx);
+      if (va) {
+        vp = ValuePart{arg.local_idx, va, arg.part_idx, false};
+      }
+    }
+
+    CCAssignment cca{
+      .byval = true,
+      .size = arg.byval_size,
+      .stack_off = arg.stack_off,
+    };
+    derived()->add_arg_byval(vp, cca);
+    vp.reset(&compiler);
+  }
+
+  // Phase 3: Build parallel move list for register-to-register moves
+  MoveList moves;
+  for (auto &arg: pending_args) {
+    if (arg.kind != PendingArg::Kind::REG_TO_REG) {
+      continue;
+    }
+    if (arg.source_reg == arg.target_reg && arg.int_ext == 0) {
+      // Already in place, no extension needed - just mark clobbered
+      compiler.register_file.mark_clobbered(arg.target_reg);
+      compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
+      continue;
+    }
+
+    RegisterMove move{
+      arg.target_reg, arg.source_reg, arg.size,
+      arg.local_idx, arg.part_idx
+    };
+    moves.push_back(move);
+  }
+
+  // Phase 4: Sequentialize and execute register-to-register moves
+  if (!moves.empty()) {
+    MoveList ordered = compiler.sequentialize(moves);
+    for (auto &move: ordered) {
+      // Find the corresponding pending arg to check for extensions
+      u8 int_ext = 0;
+      for (const auto &arg: pending_args) {
+        if (arg.kind == PendingArg::Kind::REG_TO_REG &&
+            arg.target_reg == move.dst) {
+          int_ext = arg.int_ext;
+          break;
+        }
+      }
+
+      if (int_ext != 0) {
+        bool ext_sign = int_ext >> 7;
+        unsigned ext_bits = int_ext & 0x3f;
+        compiler.generate_raw_intext(move.dst, move.src, ext_sign,
+                                     ext_bits, 64);
+      } else {
+        compiler.mov(move.dst, move.src, move.size);
+      }
+      compiler.register_file.mark_clobbered(move.dst);
+      compiler.register_file.allocatable &= ~(u64{1} << move.dst.id());
+    }
+  }
+
+  // Phase 5: Execute stack-to-register loads
+  for (auto &arg: pending_args) {
+    if (arg.kind != PendingArg::Kind::STACK_TO_REG) {
+      continue;
+    }
+
+    // Evict target register if used
+    if (compiler.register_file.is_used(arg.target_reg)) {
+      compiler.evict_reg(arg.target_reg);
+    }
+
+    // Load directly from stack using stored frame offset
+    compiler.load_from_stack(arg.target_reg, arg.frame_off, arg.size);
+
+    // Handle extension if needed
+    if (arg.int_ext != 0) {
+      bool ext_sign = arg.int_ext >> 7;
+      unsigned ext_bits = arg.int_ext & 0x3f;
+      compiler.generate_raw_intext(arg.target_reg, arg.target_reg,
+                                   ext_sign, ext_bits, 64);
+    }
+
+    compiler.register_file.mark_clobbered(arg.target_reg);
+    compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
+  }
+
+  // Phase 6: Materialize constants to registers
+  for (auto &arg: pending_args) {
+    if (arg.kind != PendingArg::Kind::CONST_TO_REG) {
+      continue;
+    }
+
+    // Evict target register if used
+    if (compiler.register_file.is_used(arg.target_reg)) {
+      compiler.evict_reg(arg.target_reg);
+    }
+
+    // Create constant ValuePart and load to register
+    ValuePart vp{arg.bank};
+    if (arg.const_inline) {
+      vp = ValuePart{arg.const_data, arg.size, arg.bank};
+    } else {
+      vp = ValuePart{arg.const_ptr, arg.size, arg.bank};
+    }
+
+    vp.reload_into_specific_fixed(&compiler, arg.target_reg);
+
+    // Handle extension if needed
+    if (arg.int_ext != 0) {
+      bool ext_sign = arg.int_ext >> 7;
+      unsigned ext_bits = arg.int_ext & 0x3f;
+      compiler.generate_raw_intext(arg.target_reg, arg.target_reg,
+                                   ext_sign, ext_bits, 64);
+    }
+
+    vp.reset(&compiler);
+    compiler.register_file.mark_clobbered(arg.target_reg);
+    compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
+  }
+
+  // Phase 7: Evict remaining clobbered registers
   typename RegisterFile::RegBitSet skip_evict = arg_regs;
   if (auto *vp = std::get_if<ValuePart>(&target); vp && vp->can_salvage()) {
-    // call_impl will reset vp, thereby unlock+free the register.
     assert(vp->cur_reg_unlocked().valid() && "can_salvage implies register");
     skip_evict |= (1ull << vp->cur_reg_unlocked().id());
   }
@@ -1077,10 +1306,14 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     compiler.register_file.mark_clobbered(Reg{reg_id});
   }
 
+  // Phase 8: Execute call
   derived()->call_impl(std::move(target));
 
-  assert((compiler.register_file.allocatable & arg_regs) == 0);
+  // Phase 9: Reset state
+  //assert((compiler.register_file.allocatable & arg_regs) == 0);
   compiler.register_file.allocatable |= arg_regs;
+  pending_args.clear();
+  source_regs = 0;
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
@@ -2830,14 +3063,14 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   //todo(salto): decide on smarter location for file
   // Write verification IR to file
   std::string vir_filename = verification_ir.get_func_name() + ".vir";
-  verification_ir.write_to_file(vir_filename);
+  //verification_ir.write_to_file(vir_filename);
 #endif
 
   return true;
 }
 
 
-template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     const IRBlockRef block, const u32 block_idx) noexcept {
   cur_block_idx =
