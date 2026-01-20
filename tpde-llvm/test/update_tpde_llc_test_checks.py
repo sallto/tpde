@@ -109,7 +109,7 @@ def main():
                 objdump = "llvm-objdump-20 -d -r --no-show-raw-insn --symbolize-operands --no-addresses --x86-asm-syntax=intel -"
             else:
                 objdump = commands[-2]
-            if objdump.split(" ")[0] != "llvm-objdump-20":
+            if not "objdump" in objdump.split(" ")[0] :
                 common.warn("Skipping non-objdump RUN line: " + l)
                 continue
 
