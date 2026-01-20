@@ -394,24 +394,7 @@ public:
     Derived &compiler;
     CCAssigner &assigner;
 
-    struct PendingArgExt {
-      bool needs_ext = false;
-      bool ext_sign = false;
-      u8 ext_bits = 0;
-    };
-
-    struct PendingArgMove {
-      RegisterMove move;
-      ValuePart value;
-
-      PendingArgMove(RegisterMove move, ValuePart &&value) noexcept
-        : move(move), value(std::move(value)) {
-      }
-    };
-
     RegisterFile::RegBitSet arg_regs{};
-    util::SmallVector<PendingArgMove, 8> pending_arg_moves;
-    std::array<PendingArgExt, RegisterFile::NumRegs> pending_arg_exts{};
 
   public:
     CallBuilderBase(Derived &compiler, CCAssigner &assigner) noexcept
@@ -966,7 +949,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
   assigner.assign_arg(cca);
   bool needs_ext = cca.int_ext != 0;
   bool ext_sign = cca.int_ext >> 7;
-  u8 ext_bits = cca.int_ext & 0x3f;
+  unsigned ext_bits = cca.int_ext & 0x3f;
 
   if (cca.byval) {
     derived()->add_arg_byval(vp, cca);
@@ -991,39 +974,31 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       if (needs_ext) {
         compiler.generate_raw_intext(cca.reg, cca.reg, ext_sign, ext_bits, 64);
       }
-      vp.reset(&compiler);
     } else {
       if (compiler.register_file.is_used(cca.reg)) {
         compiler.evict_reg(cca.reg);
       }
-      assert(vp.has_assignment());
-      AsmReg src_reg;
-      if (vp.assignment().register_valid()) {
-        src_reg = vp.assignment().get_reg();
+      if (vp.can_salvage()) {
+        AsmReg vp_reg = vp.salvage(&compiler);
+#ifndef NDEBUG
+        vp.assignment().set_reg(cca.reg); // ensure the arguments are registered
+                                          // in the correct registers for VerificationIR
+#endif
+        if (needs_ext) {
+          compiler.generate_raw_intext(cca.reg, vp_reg, ext_sign, ext_bits, 64);
+        } else {
+          compiler.mov(cca.reg, vp_reg, size);
+        }
       } else {
-        vp.load_to_specific(&compiler, cca.reg);
-        src_reg = cca.reg;
-      }
-
-      if (src_reg == cca.reg) {
+        vp.reload_into_specific_fixed(&compiler, cca.reg);
         if (needs_ext) {
           compiler.generate_raw_intext(
-            cca.reg, cca.reg, ext_sign, ext_bits, 64);
+              cca.reg, cca.reg, ext_sign, ext_bits, 64);
         }
-        vp.reset(&compiler);
-      } else {
-        if (needs_ext) {
-          pending_arg_exts[cca.reg.id()] = PendingArgExt{
-            .needs_ext = true,
-            .ext_sign = ext_sign,
-            .ext_bits = ext_bits
-          };
-        }
-        pending_arg_moves.emplace_back(
-          RegisterMove{cca.reg, src_reg, static_cast<u8>(size)},
-          std::move(vp));
       }
     }
+    vp.reset(&compiler);
+    assert(!compiler.register_file.is_used(cca.reg));
     compiler.register_file.mark_clobbered(cca.reg);
     compiler.register_file.allocatable &= ~(u64{1} << cca.reg.id());
     arg_regs |= (1ull << cca.reg.id());
@@ -1094,44 +1069,12 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     assert(vp->cur_reg_unlocked().valid() && "can_salvage implies register");
     skip_evict |= (1ull << vp->cur_reg_unlocked().id());
   }
-  for (const auto &pending: pending_arg_moves) {
-    skip_evict |= (1ull << pending.move.src.id());
-  }
 
   auto clobbered = ~assigner.get_ccinfo().callee_saved_regs;
   for (auto reg_id : util::BitSetIterator<>{compiler.register_file.used &
                                             clobbered & ~skip_evict}) {
     compiler.evict_reg(AsmReg{reg_id});
     compiler.register_file.mark_clobbered(Reg{reg_id});
-  }
-
-  if (!pending_arg_moves.empty()) {
-    MoveList moves;
-    moves.reserve(pending_arg_moves.size());
-    for (auto &pending: pending_arg_moves) {
-      moves.push_back(pending.move);
-    }
-    MoveList result = compiler.sequentialize(moves);
-    for (const auto &move: result) {
-      const auto &ext = pending_arg_exts[move.dst.id()];
-      if (ext.needs_ext) {
-        compiler.generate_raw_intext(
-          move.dst, move.src, ext.ext_sign, ext.ext_bits, 64);
-      } else {
-        compiler.mov(move.dst, move.src, move.size);
-      }
-    }
-    for (auto &pending: pending_arg_moves) {
-      pending.value.reset(&compiler);
-    }
-    for (auto reg_id: util::BitSetIterator<>{arg_regs}) {
-      Reg reg{reg_id};
-      if (compiler.register_file.is_used(reg)) {
-        compiler.register_file.unmark_used(reg);
-      }
-    }
-    pending_arg_moves.clear();
-    pending_arg_exts.fill({});
   }
 
   derived()->call_impl(std::move(target));
