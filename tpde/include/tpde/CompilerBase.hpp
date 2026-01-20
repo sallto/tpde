@@ -1056,6 +1056,12 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     } else if (ap.stack_valid()) {
       arg.kind = PendingArg::Kind::STACK_TO_REG;
       arg.frame_off = ap.frame_off();
+    } else if (cca.sret) {
+      //todo(salto): test unlikely
+      // not worth optimizing in any way
+      vp.load_to_specific(&compiler, cca.reg);
+      vp.reset(&compiler);
+      return;
     }
   } else {
     // Temporary register without assignment
@@ -1066,6 +1072,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       source_regs |= (1ull << src.id());
     }
   }
+  //todo(salto): alloca_call
 
   pending_args.push_back(arg);
   vp.reset(&compiler);
@@ -1218,6 +1225,11 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
           break;
         }
       }
+
+      if (compiler.register_file.is_used(move.dst)) {
+        compiler.evict_reg(move.dst);
+      }
+
 
       if (int_ext != 0) {
         bool ext_sign = int_ext >> 7;
