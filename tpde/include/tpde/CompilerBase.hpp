@@ -1055,7 +1055,9 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       source_regs |= (1ull << ap.get_reg().id());
     } else if (ap.stack_valid()) {
       arg.kind = PendingArg::Kind::STACK_TO_REG;
-      arg.frame_off = ap.frame_off();
+      if (!ap.variable_ref()) {
+        arg.frame_off = ap.frame_off();
+      }
     } else if (cca.sret) {
       //todo(salto): test unlikely
       // not worth optimizing in any way
@@ -1198,8 +1200,15 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     if (arg.kind != PendingArg::Kind::REG_TO_REG) {
       continue;
     }
-    if (arg.source_reg == arg.target_reg && arg.int_ext == 0) {
-      // Already in place, no extension needed - just mark clobbered
+    if (arg.source_reg == arg.target_reg) {
+      if (arg.int_ext != 0) {
+        //todo(salto): can there be a case where we need the upper bits of reg for a different arg?
+        bool ext_sign = arg.int_ext >> 7;
+        unsigned ext_bits = arg.int_ext & 0x3f;
+        compiler.generate_raw_intext(
+            arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
+      }
+      // Already in place - just mark clobbered
       compiler.register_file.mark_clobbered(arg.target_reg);
       compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
       continue;
@@ -1255,8 +1264,17 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
       compiler.evict_reg(arg.target_reg);
     }
 
-    // Load directly from stack using stored frame offset
-    compiler.load_from_stack(arg.target_reg, arg.frame_off, arg.size);
+    if (arg.local_idx != INVALID_VAL_LOCAL_IDX) {
+      if (ValueAssignment *va = compiler.val_assignment(arg.local_idx);
+          va && va->variable_ref && va->stack_variable) {
+        AssignmentPartRef ap{va, arg.part_idx};
+        compiler.reload_to_reg(arg.target_reg, ap);
+      } else {
+        compiler.load_from_stack(arg.target_reg, arg.frame_off, arg.size);
+      }
+    } else {
+      compiler.load_from_stack(arg.target_reg, arg.frame_off, arg.size);
+    }
 
     // Handle extension if needed
     if (arg.int_ext != 0) {
