@@ -349,6 +349,8 @@ struct VerificationIR {
     current_split_block = static_cast<BlockIndex>(~0u);
     split_blocks.clear();
     current_block_idx = static_cast<BlockIndex>(~0u);
+    active_compilation = false;
+    next_constant_vreg = 0x80000000u;
   }
 
   void set_current_block(BlockIndex block_idx) noexcept {
@@ -653,4 +655,3 @@ struct VerificationIR {
 };
 
 } // namespace tpde
-

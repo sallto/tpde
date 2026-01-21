@@ -2983,8 +2983,9 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   parallel_copies.clear();
 #ifndef NDEBUG
   generating_branch = false;
-  verification_ir.reset();
+  verification_ir = VIR<Adaptor>();
   verification_ir.set_func_name(adaptor->func_link_name(func));
+  final_assignments.clear();
 #endif
 
   // Simple heuristic for initial allocation size
