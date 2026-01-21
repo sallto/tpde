@@ -675,7 +675,7 @@ class VirVerifier:
         if unvisited:
             raise ValueError(f"Not all edges were visited in function {func.name}: {unvisited}")
 
-    def verify(self):
+    def verify(self, quiet: bool = False):
         """Verify the .vir file."""
         self.parse()
 
@@ -684,9 +684,11 @@ class VirVerifier:
             self._collect_all_vregs(func)
             try:
                 self._verify_function(func)
-                print(f"Function {func.name} is valid")
+                if not quiet:
+                    print(f"Function {func.name} is valid")
             except Exception as e:
-                print(f"Function {func.name} verification failed: {e}")
+                if not quiet:
+                    print(f"Function {func.name} verification failed: {e}")
                 all_passed = False
                 continue
 
@@ -695,21 +697,27 @@ class VirVerifier:
 
 def main():
     import sys
-    if len(sys.argv) > 2:
-        print(f"Usage: {sys.argv[0]} <file.vir>/<stdin>")
+    quiet = False
+    args = []
+    for arg in sys.argv[1:]:
+        if arg == '-q':
+            quiet = True
+        else:
+            args.append(arg)
+    if len(args) > 1:
+        print(f"Usage: {sys.argv[0]} [-q] <file.vir>/<stdin>")
         sys.exit(1)
-    if len(sys.argv) == 1:
+    if len(args) == 0:
         input = sys.stdin.read()
     else:
-        with open(sys.argv[1], 'r') as f:
+        with open(args[0], 'r') as f:
             input = f.read()
     verifier = VirVerifier(input)
     try:
-        all_passed = verifier.verify()
+        all_passed = verifier.verify(quiet=quiet)
         if all_passed:
             return 0
-        else:
-            return 1
+        exit(1)
     except Exception as e:
         raise
 

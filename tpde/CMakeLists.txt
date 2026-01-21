@@ -102,6 +102,7 @@ endif ()
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(tpde PUBLIC TPDE_DEBUG)
     target_compile_definitions(tpde PUBLIC TPDE_ASSERTS)
+    target_compile_definitions(tpde PUBLIC TPDE_VIR_VERIFIER_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/filetest/vir/vir_verifier.py")
 endif ()
 
 

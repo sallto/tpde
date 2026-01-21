@@ -4,12 +4,14 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
 #include <fstream>
 #include <vector>
+#include <sys/wait.h>
 
 #include "Analyzer.hpp"
 #include "Compiler.hpp"
@@ -3090,10 +3092,27 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   this->text_writer.finish_func();
 
 #ifndef NDEBUG
-  //todo(salto): decide on smarter location for file
   // Write verification IR to file
-  std::string vir_filename = verification_ir.get_func_name() + ".vir";
-  //verification_ir.write_to_file(vir_filename);
+  std::string vir_filename = "/tmp/" + verification_ir.get_func_name() + ".vir";
+  verification_ir.write_to_file(vir_filename);
+  std::string verifier_cmd;
+#ifdef TPDE_VIR_VERIFIER_PATH
+  verifier_cmd = std::string("python3 \"") + TPDE_VIR_VERIFIER_PATH + "\" \"" + vir_filename + "\"";
+#else
+  verifier_cmd = std::string("python3 \"tpde/test/filetest/vir/vir_verifier.py\" \"") + vir_filename + "\" ";
+#endif
+  int verifier_status = std::system(verifier_cmd.c_str());
+  if (verifier_status == -1) {
+    TPDE_LOG_WARN("Failed to run vir verifier for {}", vir_filename);
+  }
+  if (WIFEXITED(verifier_status)) {
+    int exit_code = WEXITSTATUS(verifier_status);
+    if (exit_code != 0) {
+      TPDE_LOG_ERR("vir verifier failed with exit code {} for {}", exit_code, vir_filename);
+    }
+  } else {
+    TPDE_LOG_ERR("vir verifier terminated abnormally for {}", vir_filename);
+  }
 #endif
 
   return true;
