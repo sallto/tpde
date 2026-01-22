@@ -19,5 +19,6 @@ config.environment["FILECHECK_OPTS"] = "--enable-var-scope --dump-input-filter=a
 llvm_config.with_environment('PATH', config.llvm_tools_dir, append_path=True)
 llvm_config.with_environment('PATH', config.tpde_obj_root, append_path=True)
 config.substitutions.append(("%tpde_test", "tpde_test"))
-config.substitutions.append(('%objdump', 'llvm-objdump -d -r --no-show-raw-insn --symbolize-operands --no-addresses --x86-asm-syntax=intel -'))
+config.substitutions.append(('%objdump',
+                             'llvm-objdump -d -r --no-show-raw-insn --symbolize-operands --no-addresses --x86-asm-syntax=intel -'))
 config.substitutions.append(('%vir_verify', 'python3 %S/vir_verifier.py'))
