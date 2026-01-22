@@ -283,20 +283,28 @@ struct VerificationIR {
       BlockInfo(BlockInfo &&) noexcept = default;
       BlockInfo &operator=(BlockInfo &&) noexcept = default;
 
-      std::string format() const {
-        std::string result = (static_cast<u32>(block_idx) & 0x80000000u)
-          ? std::format("block split_b{}:\n", static_cast<u32>(block_idx) & 0x7FFFFFFFu)
-          : std::format("block b{}:\n", static_cast<u32>(block_idx));
-        std::map<std::pair<ValLocalIdx, u32>, Allocation> current_allocs;
-        for (const auto &entry : entries) {
-          if (entry.kind == BlockEntryKind::Edit && entry.edit.kind == EditKind::Reload) {
-            current_allocs[{entry.edit.val_idx, entry.edit.from.part_idx}] = entry.edit.to;
+    std::string format() const {
+      std::string result =
+          (static_cast<u32>(block_idx) & 0x80000000u)
+              ? std::format("block split_b{}:\n",
+                            static_cast<u32>(block_idx) & 0x7FFFFFFFu)
+              : std::format("block b{}:\n", static_cast<u32>(block_idx));
+      std::map<std::pair<ValLocalIdx, u32>, Allocation> current_allocs;
+      for (const auto &entry : entries) {
+        if (entry.kind == BlockEntryKind::Edit) {
+          if (entry.edit.kind == EditKind::Reload) {
+            current_allocs[{entry.edit.val_idx, entry.edit.from.part_idx}] =
+                entry.edit.to;
+          } else if (entry.edit.kind == EditKind::Spill) {
+            current_allocs[{entry.edit.val_idx, entry.edit.from.part_idx}] =
+                entry.edit.to;
           }
-          result += entry.format(current_allocs);
         }
-        result += "\n";
-        return result;
+        result += entry.format(current_allocs);
       }
+      result += "\n";
+      return result;
+    }
   };
 
   struct EdgeInfo {
