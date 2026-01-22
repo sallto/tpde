@@ -491,6 +491,16 @@ struct VerificationIR {
     if (active_compilation) {
       return;
     }
+    emit_reg_move_impl(src, dst, size);
+  }
+
+  /// Emit call argument move (not suppressed during active_compilation)
+  void emit_call_arg_move(Reg src, Reg dst, u32 size) noexcept {
+    emit_reg_move_impl(src, dst, size);
+  }
+
+private:
+  void emit_reg_move_impl(Reg src, Reg dst, u32 size) noexcept {
     BlockIndex edit_block = get_edit_block();
     Edit edit{EditKind::RegMove, src, dst, size};
 
@@ -507,6 +517,8 @@ struct VerificationIR {
     }
     it->entries.push_back(std::move(edit));
   }
+
+public:
   
   void emit_arg(BlockIndex entry_block_idx, ValLocalIdx val_idx, u32 part_idx, Allocation alloc) noexcept {
     alloc.part_idx = part_idx;

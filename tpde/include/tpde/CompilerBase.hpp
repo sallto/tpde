@@ -534,6 +534,15 @@ private:
     final_assignments[local_idx].push_back(reg);
   }
 
+  // Record argument move destination for VIR tracking
+  void vir_record_arg_move(ValLocalIdx local_idx, u32 part_idx, Reg reg) noexcept {
+    auto &vec = final_assignments[local_idx];
+    if (vec.size() <= part_idx) {
+      vec.resize(part_idx + 1, Reg::make_invalid());
+    }
+    vec[part_idx] = reg;
+  }
+
 public:
   void vir_emit_new_use(Reg reg) {
     final_assignments[INVALID_VAL_LOCAL_IDX].push_back(reg);
@@ -1250,6 +1259,13 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
       } else {
         compiler.mov(move.dst, move.src, move.size);
       }
+#ifndef NDEBUG
+      // Emit the move for VIR tracking and record final location
+      if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
+        compiler.verification_ir.emit_call_arg_move(move.src, move.dst, move.size);
+        compiler.vir_record_arg_move(move.value_idx, move.part_idx, move.dst);
+      }
+#endif
       compiler.register_file.mark_clobbered(move.dst);
       compiler.register_file.allocatable &= ~(u64{1} << move.dst.id());
     }
@@ -3098,7 +3114,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   verification_ir.write_to_file(vir_filename);
   std::string verifier_cmd;
 #ifdef TPDE_VIR_VERIFIER_PATH
-  verifier_cmd = std::string("python3 \"") + TPDE_VIR_VERIFIER_PATH + "\" \"" + vir_filename + "\"";
+  verifier_cmd = std::string("python3 \"") + TPDE_VIR_VERIFIER_PATH + "\" \"" + vir_filename + "\" > /dev/null 2>&1";
 #else
   verifier_cmd = std::string("python3 \"tpde/test/filetest/vir/vir_verifier.py\" \"") + vir_filename + "\" ";
 #endif
@@ -3284,14 +3300,18 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
       // (allocations may have changed during compilation, e.g., values moved to
       // registers)
       for (auto &use : uses) {
-        ValueAssignment *use_assignment = val_assignment(use.val_idx);
-        if (use_assignment) {
+        // Check if we recorded a final assignment (from arg moves) - takes precedence
+        auto fa_it = final_assignments.find(use.val_idx);
+        if (fa_it != final_assignments.end() &&
+            fa_it->second.size() > use.alloc.part_idx &&
+            fa_it->second[use.alloc.part_idx].valid()) {
+          use.alloc = typename VIR<Adaptor>::Allocation(
+              fa_it->second[use.alloc.part_idx], use.alloc.part_idx);
+        } else if (ValueAssignment *use_assignment = val_assignment(use.val_idx)) {
           AssignmentPartRef ap{use_assignment, use.alloc.part_idx};
           use.alloc = get_allocation(ap);
-        } else {
-          use.alloc = typename VIR<Adaptor>::Allocation(
-              final_assignments[use.val_idx][use.alloc.part_idx]);
         }
+        // If neither, keep the original captured allocation
       }
       // constants
       for (Reg reg:final_assignments[INVALID_VAL_LOCAL_IDX]) {
