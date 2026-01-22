@@ -10,10 +10,12 @@ from typing import Dict, List, Optional, Set, Tuple
 
 @dataclass
 class Operand:
-    """Represents a virtual register and its assembly register."""
+    """Represents a virtual register and its assembly register or stack slot."""
+
     vreg: str  # e.g., "v0"
-    areg: str  # e.g., "r7"
+    areg: Optional[str]  # e.g., "r7" or None for stack operands
     part: Optional[int] = None  # e.g., 1 for %v1:1@r2, None for single-part
+    stack_offset: Optional[int] = None  # e.g., -48 for %v0@[sp+-48]
 
 
 @dataclass
@@ -25,6 +27,7 @@ class Operation:
 @dataclass
 class RegMove:
     """A register move operation."""
+
     src_reg: str  # e.g., "r7"
     dst_reg: str  # e.g., "r6"
     vreg: Optional[str] = None  # e.g., "v0" or "v1:1", optional
@@ -70,8 +73,9 @@ class Block:
     spill_ops: List[SpillOp]
     reload_ops: List[ReloadOp]
     phi_nodes: List[PhiNode]
-    instructions: List[Tuple[
-        str, object]]  # List of ('op', Operation), ('regmove', RegMove), ('spill', SpillOp), ('reload', ReloadOp) in order
+    instructions: List[
+        Tuple[str, object]
+    ]  # List of ('op', Operation), ('regmove', RegMove), ('spill', SpillOp), ('reload', ReloadOp) in order
     jmp_target: Optional[str]  # For jmp
     jcond_target: Optional[str]  # For jcond
     jcond_uses: Optional[Operand]  # For jcond
@@ -80,6 +84,7 @@ class Block:
 @dataclass
 class Edge:
     """An edge between blocks."""
+
     from_block: str
     to_block: str
 
@@ -87,6 +92,7 @@ class Edge:
 @dataclass
 class Function:
     """A function in the .vir file."""
+
     name: str
     blocks: Dict[str, Block]
     edges: List[Edge]
@@ -103,7 +109,7 @@ class VirVerifier:
     def __init__(self, input: str):
         self.input = input
         self.functions: List[Function] = []
-        
+
     def parse(self):
         """Parse the .vir file."""
         lines = self.input.splitlines()
@@ -111,8 +117,8 @@ class VirVerifier:
 
         i = 0
         while i < len(lines):
-            if lines[i].startswith('function'):
-                function_name = lines[i].split('function', 1)[1].strip()
+            if lines[i].startswith("function"):
+                function_name = lines[i].split("function", 1)[1].strip()
                 i += 1
 
                 blocks = {}
@@ -124,9 +130,9 @@ class VirVerifier:
                 occupied_offsets = {}
 
                 # Parse blocks for this function
-                while i < len(lines) and not lines[i].startswith('function'):
-                    if lines[i].startswith('block '):
-                        block_name = lines[i].split('block', 1)[1].strip().rstrip(':')
+                while i < len(lines) and not lines[i].startswith("function"):
+                    if lines[i].startswith("block "):
+                        block_name = lines[i].split("block", 1)[1].strip().rstrip(":")
                         i += 1
 
                         operations = []
@@ -139,32 +145,36 @@ class VirVerifier:
                         jcond_target = None
                         jcond_uses = None
 
-                        while i < len(lines) and not lines[i].startswith('block ') and not lines[i].startswith(
-                                'edge ') and not lines[i].startswith('function'):
+                        while (
+                            i < len(lines)
+                            and not lines[i].startswith("block ")
+                            and not lines[i].startswith("edge ")
+                            and not lines[i].startswith("function")
+                        ):
                             line = lines[i]
 
-                            if line.startswith('op '):
+                            if line.startswith("op "):
                                 op = self._parse_operation(line)
                                 operations.append(op)
-                                instructions.append(('op', op))
-                            elif line.startswith('edit regmove '):
+                                instructions.append(("op", op))
+                            elif line.startswith("edit regmove "):
                                 regmove = self._parse_regmove(line)
                                 regmoves.append(regmove)
-                                instructions.append(('regmove', regmove))
-                            elif line.startswith('edit spill '):
+                                instructions.append(("regmove", regmove))
+                            elif line.startswith("edit spill "):
                                 spill = self._parse_spill(line)
                                 spill_ops.append(spill)
-                                instructions.append(('spill', spill))
-                            elif line.startswith('edit reload '):
+                                instructions.append(("spill", spill))
+                            elif line.startswith("edit reload "):
                                 reload = self._parse_reload(line)
                                 reload_ops.append(reload)
-                                instructions.append(('reload', reload))
-                            elif line.startswith('phi '):
+                                instructions.append(("reload", reload))
+                            elif line.startswith("phi "):
                                 phi = self._parse_phi(line)
                                 phi_nodes.append(phi)
-                            elif line.startswith('jmp '):
-                                jmp_target = line.split('jmp', 1)[1].strip()
-                            elif line.startswith('jcond '):
+                            elif line.startswith("jmp "):
+                                jmp_target = line.split("jmp", 1)[1].strip()
+                            elif line.startswith("jcond "):
                                 jcond_target, jcond_uses = self._parse_jcond(line)
 
                             i += 1
@@ -179,15 +189,15 @@ class VirVerifier:
                             instructions=instructions,
                             jmp_target=jmp_target,
                             jcond_target=jcond_target,
-                            jcond_uses=jcond_uses
+                            jcond_uses=jcond_uses,
                         )
-                    elif lines[i].startswith('edge '):
+                    elif lines[i].startswith("edge "):
                         edge = self._parse_edge(lines[i])
                         if edge:
                             edges.append(edge)
                         i += 1
                         # Skip parallel move line if present
-                        if i < len(lines) and lines[i].startswith('  parallel '):
+                        if i < len(lines) and lines[i].startswith("  parallel "):
                             i += 1
                     else:
                         i += 1
@@ -200,50 +210,67 @@ class VirVerifier:
                     used_numbers=used_numbers,
                     stack_memory=stack_memory,
                     stack_memory_parts=stack_memory_parts,
-                    occupied_offsets=occupied_offsets
+                    occupied_offsets=occupied_offsets,
                 )
                 self.functions.append(func)
             else:
                 i += 1
-    
+
     def _parse_operand(self, s: str) -> Operand:
-        """Parse an operand like %v0@r7 or %v1:1@r2."""
-        # Try multi-part syntax first: %v1:1@r2
-        match = re.match(r'%v(\d+):(\d+)@r(\d+)', s)
+        """Parse an operand like %v0@r7, %v1:1@r2, or %v0@[sp+-48]."""
+        # Try stack operand syntax first: %v0@[sp+-48]
+        match = re.match(r"%v(\d+)(?::(\d+))?@\[sp\+([+-]?\d+)\]", s)
         if match:
-            return Operand(vreg=f"v{match.group(1)}", areg=f"r{match.group(3)}", part=int(match.group(2)))
+            part = int(match.group(2)) if match.group(2) else None
+            return Operand(
+                vreg=f"v{match.group(1)}",
+                areg=None,
+                part=part,
+                stack_offset=int(match.group(3)),
+            )
+
+        # Try multi-part syntax first: %v1:1@r2
+        match = re.match(r"%v(\d+):(\d+)@r(\d+)", s)
+        if match:
+            return Operand(
+                vreg=f"v{match.group(1)}",
+                areg=f"r{match.group(3)}",
+                part=int(match.group(2)),
+            )
 
         # Fall back to single-part syntax: %v0@r7
-        match = re.match(r'%v(\d+)@r(\d+)', s)
+        match = re.match(r"%v(\d+)@r(\d+)", s)
         if match:
             return Operand(vreg=f"v{match.group(1)}", areg=f"r{match.group(2)}")
         raise ValueError(f"Invalid operand: {s}")
-    
+
     def _parse_operation(self, line: str) -> Operation:
         """Parse an operation line."""
         uses = []
         defs = []
-        
+
         # Parse uses
-        uses_match = re.search(r'uses=([^ ]+)', line)
+        uses_match = re.search(r"uses=([^ ]+)", line)
         if uses_match:
             uses_str = uses_match.group(1)
-            for op_str in uses_str.split(','):
+            for op_str in uses_str.split(","):
                 uses.append(self._parse_operand(op_str.strip()))
-        
+
         # Parse defs
-        defs_match = re.search(r'defs=([^ ]+)', line)
+        defs_match = re.search(r"defs=([^ ]+)", line)
         if defs_match:
             defs_str = defs_match.group(1)
-            for op_str in defs_str.split(','):
+            for op_str in defs_str.split(","):
                 defs.append(self._parse_operand(op_str.strip()))
-        
+
         return Operation(uses=uses, defs=defs)
-    
+
     def _parse_regmove(self, line: str) -> RegMove:
         """Parse a regmove line: edit regmove r7 -> r6 %v0 4b or edit regmove r7 -> r6 %v1:1 4b"""
         # Try syntax with size: edit regmove r7 -> r6 %v0 4b
-        match = re.match(r'edit regmove r(\d+) -> r(\d+) %v(\d+)(?::(\d+))? (\d+)b', line)
+        match = re.match(
+            r"edit regmove r(\d+) -> r(\d+) %v(\d+)(?::(\d+))? (\d+)b", line
+        )
         if match:
             vreg = f"v{match.group(3)}"
             if match.group(4):
@@ -252,23 +279,21 @@ class VirVerifier:
                 src_reg=f"r{match.group(1)}",
                 dst_reg=f"r{match.group(2)}",
                 vreg=vreg,
-                size=int(match.group(5))
+                size=int(match.group(5)),
             )
 
         # Fall back to old syntax without size: edit regmove r7 -> r6 %v0 or edit regmove r7 -> r6 %v1:1
-        match = re.match(r'edit regmove r(\d+) -> r(\d+) %v(\d+)(?::(\d+))?', line)
+        match = re.match(r"edit regmove r(\d+) -> r(\d+) %v(\d+)(?::(\d+))?", line)
         if match:
             vreg = f"v{match.group(3)}"
             if match.group(4):
                 vreg += f":{match.group(4)}"
             return RegMove(
-                src_reg=f"r{match.group(1)}",
-                dst_reg=f"r{match.group(2)}",
-                vreg=vreg
+                src_reg=f"r{match.group(1)}", dst_reg=f"r{match.group(2)}", vreg=vreg
             )
 
         # Fall back to single-part syntax without vreg: edit regmove r7 -> r6
-        match = re.match(r'edit regmove r(\d+) -> r(\d+)', line)
+        match = re.match(r"edit regmove r(\d+) -> r(\d+)", line)
         if match:
             return RegMove(
                 src_reg=f"r{match.group(1)}",
@@ -279,7 +304,9 @@ class VirVerifier:
     def _parse_spill(self, line: str) -> SpillOp:
         """Parse a spill line: edit spill r7 -> [sp+-44] %v0 4b or edit spill r7 -> [sp+-44] %v1:1 4b"""
         # Handle syntax with size: edit spill r7 -> [sp+-44] %v0 4b
-        match = re.match(r'edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+)(?::(\d+))? (\d+)b', line)
+        match = re.match(
+            r"edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+)(?::(\d+))? (\d+)b", line
+        )
         if match:
             vreg = f"v{match.group(3)}"
             part = None
@@ -291,11 +318,13 @@ class VirVerifier:
                 stack_offset=int(match.group(2)),
                 vreg=vreg,
                 size=int(match.group(5)),
-                part=part
+                part=part,
             )
 
         # Fall back to old syntax without size: edit spill r7 -> [sp+-44] %v0 or edit spill r7 -> [sp+-44] %v1:1
-        match = re.match(r'edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+)(?::(\d+))?', line)
+        match = re.match(
+            r"edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+)(?::(\d+))?", line
+        )
         if match:
             vreg = f"v{match.group(3)}"
             part = None
@@ -307,14 +336,16 @@ class VirVerifier:
                 stack_offset=int(match.group(2)),
                 vreg=vreg,
                 size=4,  # Default size
-                part=part
+                part=part,
             )
         raise ValueError(f"Invalid spill: {line}")
 
     def _parse_reload(self, line: str) -> ReloadOp:
         """Parse a reload line: edit reload [sp+-44] -> r6 %v0 4b or edit reload [sp+-44] -> r6 %v1:1 4b"""
         # Handle syntax with size: edit reload [sp+-44] -> r6 %v0 4b
-        match = re.match(r'edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+)(?::(\d+))? (\d+)b', line)
+        match = re.match(
+            r"edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+)(?::(\d+))? (\d+)b", line
+        )
         if match:
             vreg = f"v{match.group(3)}"
             part = None
@@ -326,11 +357,13 @@ class VirVerifier:
                 dst_reg=f"r{match.group(2)}",
                 vreg=vreg,
                 size=int(match.group(5)),
-                part=part
+                part=part,
             )
 
         # Fall back to old syntax without size: edit reload [sp+-44] -> r6 %v0 or edit reload [sp+-44] -> r6 %v1:1
-        match = re.match(r'edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+)(?::(\d+))?', line)
+        match = re.match(
+            r"edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+)(?::(\d+))?", line
+        )
         if match:
             vreg = f"v{match.group(3)}"
             part = None
@@ -342,23 +375,23 @@ class VirVerifier:
                 dst_reg=f"r{match.group(2)}",
                 vreg=vreg,
                 size=4,  # Default size
-                part=part
+                part=part,
             )
         raise ValueError(f"Invalid reload: {line}")
 
     def _parse_phi(self, line: str) -> PhiNode:
         """Parse a phi node: phi %v2@r6 [b0, %v0@r255, b2, %v5@r255] or phi %v4:1@r3 [b0, %v1:1@r255, b1, %v5:1@r255]"""
         # Extract target - handle both single-part and multi-part syntax
-        target_match = re.match(r'phi (%v\d+(?::\d+)?@r\d+) \[', line)
+        target_match = re.match(r"phi (%v\d+(?::\d+)?@r\d+) \[", line)
         if not target_match:
             raise ValueError(f"Invalid phi: {line}")
         target = self._parse_operand(target_match.group(1))
 
         # Extract incomings
         incomings = []
-        incoming_parts = re.findall(r'\[(.*)\]', line)
+        incoming_parts = re.findall(r"\[(.*)\]", line)
         if incoming_parts:
-            parts = incoming_parts[0].split(',')
+            parts = incoming_parts[0].split(",")
             i = 0
             while i < len(parts):
                 from_block = parts[i].strip()
@@ -366,40 +399,47 @@ class VirVerifier:
                 if i < len(parts):
                     operand_str = parts[i].strip()
                     operand = self._parse_operand(operand_str)
-                    incomings.append(PhiIncoming(
-                        from_block=from_block,
-                        vreg=operand.vreg+("" if not operand.part else ":"+ str(operand.part)),
-                        areg=operand.areg
-                    ))
+                    incomings.append(
+                        PhiIncoming(
+                            from_block=from_block,
+                            vreg=operand.vreg
+                            + ("" if not operand.part else ":" + str(operand.part)),
+                            areg=operand.areg,
+                        )
+                    )
                     i += 1
 
         return PhiNode(target=target, incomings=incomings)
-    
+
     def _parse_jcond(self, line: str) -> Tuple[Optional[str], Optional[Operand]]:
         """Parse a jcond line: jcond b3 uses=%v3@r8 or jcond b3 uses=%v1:1@r8"""
-        target_match = re.search(r'jcond (\w+)', line)
-        uses_match = re.search(r'uses=(%v\d+(?::\d+)?@r\d+)', line)
-        
+        target_match = re.search(r"jcond (\w+)", line)
+        uses_match = re.search(r"uses=(%v\d+(?::\d+)?@r\d+)", line)
+
         target = target_match.group(1) if target_match else None
         uses = self._parse_operand(uses_match.group(1)) if uses_match else None
-        
+
         return target, uses
-    
+
     def _parse_edge(self, line: str) -> Optional[Edge]:
         """Parse an edge line: edge b0 -> b1:"""
-        match = re.match(r'edge (\w+) -> (\w+):', line)
+        match = re.match(r"edge (\w+) -> (\w+):", line)
         if match:
             return Edge(from_block=match.group(1), to_block=match.group(2))
         return None
 
-    def _process_spill(self, spill: SpillOp, reg_state: Dict[str, int], block_name: str, func: Function):
+    def _process_spill(
+        self, spill: SpillOp, reg_state: Dict[str, int], block_name: str, func: Function
+    ):
         """Process a spill operation."""
 
         # Check for overlaps with existing spills (but allow spills of the same vreg)
         spill_offsets = set(range(spill.stack_offset, spill.stack_offset + spill.size))
         overlapping = spill_offsets & set(func.occupied_offsets.keys())
         if overlapping and overlapping != spill_offsets:
-            overlapping_vregs = {func.occupied_offsets[offset] for offset in overlapping}
+            overlapping_vregs = {
+                func.occupied_offsets[offset] for offset in overlapping
+            }
             raise ValueError(
                 f"Spill in {block_name} of function {func.name}: spill at offset {spill.stack_offset} "
                 f"with size {spill.size} overlaps with existing spills at offsets {overlapping} "
@@ -435,7 +475,13 @@ class VirVerifier:
         for offset in spill_offsets:
             func.occupied_offsets[offset] = spill.vreg
 
-    def _process_reload(self, reload: ReloadOp, reg_state: Dict[str, int], block_name: str, func: Function):
+    def _process_reload(
+        self,
+        reload: ReloadOp,
+        reg_state: Dict[str, int],
+        block_name: str,
+        func: Function,
+    ):
         """Process a reload operation."""
 
         expected_vreg_num = func.vreg_to_number[reload.vreg]
@@ -475,14 +521,16 @@ class VirVerifier:
             return func.vreg_to_number[vreg]
 
         # Try to use the number from vreg name (v0 -> 0, v1:1 -> 1)
-        match = re.match(r'v(\d+)(?::\d+)?', vreg)
+        match = re.match(r"v(\d+)(?::\d+)?", vreg)
         if match:
             base_num = int(match.group(1))
             # For multi-part registers, use a unique number to avoid conflicts
-            if ':' in vreg:
+            if ":" in vreg:
                 # This is a multi-part register, use a unique number
                 while True:
-                    num = random.randint(10000, 99999)  # Use higher range for multi-part
+                    num = random.randint(
+                        10000, 99999
+                    )  # Use higher range for multi-part
                     if num not in func.used_numbers:
                         func.vreg_to_number[vreg] = num
                         func.used_numbers.add(num)
@@ -496,7 +544,9 @@ class VirVerifier:
 
         # Assign a random unique number
         while True:
-            num = random.randint(1000, 9999)  # Use range that won't conflict with v0, v1, etc.
+            num = random.randint(
+                1000, 9999
+            )  # Use range that won't conflict with v0, v1, etc.
             if num not in func.used_numbers:
                 func.vreg_to_number[vreg] = num
                 func.used_numbers.add(num)
@@ -527,15 +577,25 @@ class VirVerifier:
     def _verify_function(self, func: Function):
         """Verify a single function."""
         # Initialize worklist with entry block
-        worklist = deque([('b0', {}, {}, {}, {},
-                           None)])  # (block_name, register_state, stack_memory, stack_memory_parts, occupied_offsets, incoming_edge)
+        worklist = deque(
+            [("b0", {}, {}, {}, {}, None)]
+        )  # (block_name, register_state, stack_memory, stack_memory_parts, occupied_offsets, incoming_edge)
         visited_edges: Set[Tuple[str, str]] = set()
 
         while worklist:
-            block_name, reg_state, stack_memory, stack_memory_parts, occupied_offsets, incoming_edge = worklist.popleft()
+            (
+                block_name,
+                reg_state,
+                stack_memory,
+                stack_memory_parts,
+                occupied_offsets,
+                incoming_edge,
+            ) = worklist.popleft()
 
             if block_name not in func.blocks:
-                raise ValueError(f"Block {block_name} in function {func.name} not found")
+                raise ValueError(
+                    f"Block {block_name} in function {func.name} not found"
+                )
 
             block = func.blocks[block_name]
 
@@ -573,7 +633,9 @@ class VirVerifier:
                         )
                     actual_value = reg_state[phi.target.areg]
                     # special case for values without vallocalidx, we can only check that there exists a value not that its the correct one
-                    if actual_value != incoming_vreg_num and not (incoming_vreg_num >  2147483660 and actual_value >  214748366):
+                    if actual_value != incoming_vreg_num and not (
+                        incoming_vreg_num > 2147483660 and actual_value > 214748366
+                    ):
                         raise ValueError(
                             f"Phi node {phi.target.vreg}@{phi.target.areg} in {block_name} of function {func.name} from {from_block}: "
                             f"register {phi.target.areg} contains {actual_value}, "
@@ -586,11 +648,33 @@ class VirVerifier:
 
             # Process instructions in order (operations and regmoves interleaved)
             for inst_type, inst in block.instructions:
-                if inst_type == 'op':
+                if inst_type == "op":
                     op = inst
                     # Check uses
                     for use in op.uses:
                         expected_vreg_num = func.vreg_to_number[use.vreg]
+                        if use.stack_offset is not None:
+                            if use.part is not None:
+                                stack_key = (use.stack_offset, use.part)
+                                if stack_key not in func.stack_memory_parts:
+                                    raise ValueError(
+                                        f"Operation in {block_name} of function {func.name}: stack location [sp+{use.stack_offset}] "
+                                        f"part {use.part} not spilled"
+                                    )
+                                actual_vreg_num = func.stack_memory_parts[stack_key]
+                            else:
+                                if use.stack_offset not in func.stack_memory:
+                                    raise ValueError(
+                                        f"Operation in {block_name} of function {func.name}: stack location [sp+{use.stack_offset}] not spilled"
+                                    )
+                                actual_vreg_num = func.stack_memory[use.stack_offset]
+                            if actual_vreg_num != expected_vreg_num:
+                                raise ValueError(
+                                    f"Operation in {block_name} of function {func.name}: stack location [sp+{use.stack_offset}] contains "
+                                    f"vreg number {actual_vreg_num}, expected {expected_vreg_num} "
+                                    f"(for {use.vreg})"
+                                )
+                            continue
                         if use.areg not in reg_state:
                             raise ValueError(
                                 f"Operation in {block_name} of function {func.name}: register {use.areg} not in state "
@@ -609,7 +693,7 @@ class VirVerifier:
                         vreg_num = func.vreg_to_number[def_.vreg]
                         reg_state[def_.areg] = vreg_num
 
-                elif inst_type == 'regmove':
+                elif inst_type == "regmove":
                     regmove = inst
                     # Get value from source register
                     if regmove.src_reg not in reg_state:
@@ -621,11 +705,11 @@ class VirVerifier:
                     # Write to target register (overwrite) - this establishes that dst now contains the annotated vreg
                     reg_state[regmove.dst_reg] = vreg_num
 
-                elif inst_type == 'spill':
+                elif inst_type == "spill":
                     spill = inst
                     self._process_spill(spill, reg_state, block_name, func)
 
-                elif inst_type == 'reload':
+                elif inst_type == "reload":
                     reload = inst
                     self._process_reload(reload, reg_state, block_name, func)
 
@@ -639,23 +723,47 @@ class VirVerifier:
                 # Unconditional jump
                 edge = (block_name, block.jmp_target)
                 if edge not in visited_edges:
-                    worklist.append((block.jmp_target, new_reg_state, new_stack_memory, new_stack_memory_parts,
-                                     new_occupied_offsets, edge))
+                    worklist.append(
+                        (
+                            block.jmp_target,
+                            new_reg_state,
+                            new_stack_memory,
+                            new_stack_memory_parts,
+                            new_occupied_offsets,
+                            edge,
+                        )
+                    )
 
             if block.jcond_target:
                 # Conditional jump - enqueue both targets
                 # True branch (jcond target)
                 edge_true = (block_name, block.jcond_target)
                 if edge_true not in visited_edges:
-                    worklist.append((block.jcond_target, new_reg_state.copy(), new_stack_memory.copy(),
-                                     new_stack_memory_parts.copy(), new_occupied_offsets.copy(), edge_true))
+                    worklist.append(
+                        (
+                            block.jcond_target,
+                            new_reg_state.copy(),
+                            new_stack_memory.copy(),
+                            new_stack_memory_parts.copy(),
+                            new_occupied_offsets.copy(),
+                            edge_true,
+                        )
+                    )
 
                 # False branch (fall through to jmp_target or implicit exit)
                 if block.jmp_target:
                     edge_false = (block_name, block.jmp_target)
                     if edge_false not in visited_edges:
-                        worklist.append((block.jmp_target, new_reg_state.copy(), new_stack_memory.copy(),
-                                         new_stack_memory_parts.copy(), new_occupied_offsets.copy(), edge_false))
+                        worklist.append(
+                            (
+                                block.jmp_target,
+                                new_reg_state.copy(),
+                                new_stack_memory.copy(),
+                                new_stack_memory_parts.copy(),
+                                new_occupied_offsets.copy(),
+                                edge_false,
+                            )
+                        )
 
         # Verify all edges were visited
         expected_edges = set((e.from_block, e.to_block) for e in func.edges)
@@ -673,7 +781,9 @@ class VirVerifier:
 
         unvisited = expected_edges - visited_edges
         if unvisited:
-            raise ValueError(f"Not all edges were visited in function {func.name}: {unvisited}")
+            raise ValueError(
+                f"Not all edges were visited in function {func.name}: {unvisited}"
+            )
 
     def verify(self, quiet: bool = False):
         """Verify the .vir file."""
@@ -697,10 +807,11 @@ class VirVerifier:
 
 def main():
     import sys
+
     quiet = False
     args = []
     for arg in sys.argv[1:]:
-        if arg == '-q':
+        if arg == "-q":
             quiet = True
         else:
             args.append(arg)
@@ -710,7 +821,7 @@ def main():
     if len(args) == 0:
         input = sys.stdin.read()
     else:
-        with open(args[0], 'r') as f:
+        with open(args[0], "r") as f:
             input = f.read()
     verifier = VirVerifier(input)
     try:
@@ -722,5 +833,5 @@ def main():
         raise
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
