@@ -480,6 +480,9 @@ struct VerificationIR {
   
   /// Emit register-to-register move (uses get_edit_block())
   void emit_reg_move(Reg src, Reg dst, u32 size) noexcept {
+    if (active_compilation) {
+      return;
+    }
     BlockIndex edit_block = get_edit_block();
     Edit edit{EditKind::RegMove, src, dst, size};
 
