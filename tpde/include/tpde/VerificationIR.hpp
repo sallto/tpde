@@ -586,7 +586,7 @@ public:
     // Set up split block for edits
     BlockIndex current_block= current_split_block !=  static_cast<BlockIndex>(~0u)?current_split_block:current_block_idx;
     BlockIndex edit_block =
-        begin_branch(current_block_idx, target_block, is_split);
+        begin_branch(current_block, target_block, is_split);
 
     // Get condition uses if available
     util::SmallVector<Operand, 4> uses;

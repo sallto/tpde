@@ -582,6 +582,59 @@ class VirVerifier:
         )  # (block_name, register_state, stack_memory, stack_memory_parts, occupied_offsets, incoming_edge)
         visited_edges: Set[Tuple[str, str]] = set()
 
+        predecessors: Dict[str, Set[str]] = {name: set() for name in func.blocks}
+        for edge in func.edges:
+            if edge.to_block in predecessors:
+                predecessors[edge.to_block].add(edge.from_block)
+        for block in func.blocks.values():
+            if block.jcond_target:
+                if block.jcond_target in predecessors:
+                    predecessors[block.jcond_target].add(block.name)
+                if block.jmp_target and block.jmp_target in predecessors:
+                    predecessors[block.jmp_target].add(block.name)
+            elif block.jmp_target and block.jmp_target in predecessors:
+                predecessors[block.jmp_target].add(block.name)
+
+        def _adjust_edge_for_split(
+            block: Block,
+            successor: str,
+            incoming_edge: Optional[Tuple[str, str]],
+        ) -> Tuple[str, str]:
+            if not block.name.startswith("split_"):
+                return (block.name, successor)
+            if not incoming_edge:
+                raise ValueError(
+                    f"Split block {block.name} in function {func.name}: missing incoming edge"
+                )
+
+            split_preds = predecessors.get(block.name, set())
+            if len(split_preds) != 1:
+                raise ValueError(
+                    f"Split block {block.name} in function {func.name}: expected 1 predecessor, "
+                    f"found {len(split_preds)}"
+                )
+            original_pred = next(iter(split_preds))
+            if original_pred != incoming_edge[0]:
+                raise ValueError(
+                    f"Split block {block.name} in function {func.name}: predecessor {original_pred} "
+                    f"does not match incoming edge from {incoming_edge[0]}"
+                )
+
+            if successor not in func.blocks:
+                raise ValueError(
+                    f"Split block {block.name} in function {func.name}: successor {successor} not found"
+                )
+            successor_block = func.blocks[successor]
+            for phi in successor_block.phi_nodes:
+                incoming_blocks = {inc.from_block for inc in phi.incomings}
+                if original_pred not in incoming_blocks:
+                    raise ValueError(
+                        f"Split block {block.name} in function {func.name}: predecessor {original_pred} "
+                        f"not listed in phi for block {successor}"
+                    )
+
+            return (original_pred, successor)
+
         while worklist:
             (
                 block_name,
@@ -721,7 +774,7 @@ class VirVerifier:
 
             if block.jmp_target:
                 # Unconditional jump
-                edge = (block_name, block.jmp_target)
+                edge = _adjust_edge_for_split(block, block.jmp_target, incoming_edge)
                 if edge not in visited_edges:
                     worklist.append(
                         (
@@ -737,7 +790,9 @@ class VirVerifier:
             if block.jcond_target:
                 # Conditional jump - enqueue both targets
                 # True branch (jcond target)
-                edge_true = (block_name, block.jcond_target)
+                edge_true = _adjust_edge_for_split(
+                    block, block.jcond_target, incoming_edge
+                )
                 if edge_true not in visited_edges:
                     worklist.append(
                         (
@@ -752,7 +807,9 @@ class VirVerifier:
 
                 # False branch (fall through to jmp_target or implicit exit)
                 if block.jmp_target:
-                    edge_false = (block_name, block.jmp_target)
+                    edge_false = _adjust_edge_for_split(
+                        block, block.jmp_target, incoming_edge
+                    )
                     if edge_false not in visited_edges:
                         worklist.append(
                             (
@@ -779,7 +836,22 @@ class VirVerifier:
                 # Unconditional jump
                 expected_edges.add((block.name, block.jmp_target))
 
-        unvisited = expected_edges - visited_edges
+        # Treat split blocks as transparent for edge expectations
+        adjusted_expected_edges: Set[Tuple[str, str]] = set()
+        for from_block, to_block in expected_edges:
+            if from_block.startswith("split_"):
+                split_preds = predecessors.get(from_block, set())
+                if len(split_preds) != 1:
+                    raise ValueError(
+                        f"Split block {from_block} in function {func.name}: expected 1 predecessor, "
+                        f"found {len(split_preds)}"
+                    )
+                original_pred = next(iter(split_preds))
+                adjusted_expected_edges.add((original_pred, to_block))
+            else:
+                adjusted_expected_edges.add((from_block, to_block))
+
+        unvisited = adjusted_expected_edges - visited_edges
         if unvisited:
             raise ValueError(
                 f"Not all edges were visited in function {func.name}: {unvisited}"

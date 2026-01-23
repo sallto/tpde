@@ -1695,8 +1695,13 @@ void CompilerA64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
   bool is_split = (needs_split || critical) && jmp.kind != Jump::jmp;
 
   if (!needs_split || jmp.kind == Jump::jmp) {
+#ifndef NDEBUG
+    const bool was_active = this->verification_ir.active_compilation;
+    this->verification_ir.active_compilation = false;
+#endif
     this->derived()->move_values_to_match(target_idx);
 #ifndef NDEBUG
+    this->verification_ir.active_compilation = was_active;
     const char *jump_str = (jmp.kind == Jump::jmp) ? "jmp" : "jcond";
     this->verification_ir.capture_branch(jump_str, target_idx, is_split);
 
@@ -1719,7 +1724,14 @@ void CompilerA64<Adaptor, Derived, BaseTy, Config>::generate_branch_to_block(
 #endif
 
     // For split blocks, move values to match AFTER establishing split context
+#ifndef NDEBUG
+    const bool was_active = this->verification_ir.active_compilation;
+    this->verification_ir.active_compilation = false;
+#endif
     this->derived()->move_values_to_match(target_idx);
+#ifndef NDEBUG
+    this->verification_ir.active_compilation = was_active;
+#endif
 
 #ifndef NDEBUG
     // Capture the jmp to final target in split block context
