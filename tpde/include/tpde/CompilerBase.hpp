@@ -2173,7 +2173,7 @@ void CompilerBase<Adaptor, Derived, Config>::reload_to_reg(
     }
   }
 
-  if (ap.is_stack_variable()) {
+  if (ap.is_stack_variable() || ap.variable_ref()) {
     if (val_idx != INVALID_VAL_LOCAL_IDX) {
       util::SmallVector<typename VIR<Adaptor>::Operand, 1> defs;
       typename VIR<Adaptor>::Operand def;
