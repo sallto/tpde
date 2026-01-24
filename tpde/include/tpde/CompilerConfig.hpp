@@ -33,8 +33,10 @@ concept CompilerConfig = requires {
 
 struct CompilerConfigDefault {
   constexpr static bool DEFAULT_VAR_REF_HANDLING = true;
-  constexpr static u32 SPILL_NUM_REGS = 0;
-  constexpr static u32 CALLER_SAVED_NUM_REGS = 0;
+  constexpr static u32 SPILL_NUM_GP_REGS = 0;
+  constexpr static u32 SPILL_NUM_FP_REGS = 0;
+  constexpr static u32 CALLER_SAVED_GP_REGS = 0;
+  constexpr static u32 CALLER_SAVED_FP_REGS = 0;
 };
 
 } // namespace tpde

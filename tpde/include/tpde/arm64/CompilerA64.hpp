@@ -298,8 +298,10 @@ struct PlatformConfig : CompilerConfigDefault {
   static constexpr bool FRAME_INDEXING_NEGATIVE = false;
   static constexpr u32 PLATFORM_POINTER_SIZE = 8;
   static constexpr u32 NUM_BANKS = 2;
-  static constexpr u32 SPILL_NUM_REGS = 28;
-  static constexpr u32 CALLER_SAVED_NUM_REGS = 16;
+  static constexpr u32 SPILL_NUM_GP_REGS = 28;
+  static constexpr u32 SPILL_NUM_FP_REGS = 32;
+  static constexpr u32 CALLER_SAVED_GP_REGS = 16;
+  static constexpr u32 CALLER_SAVED_FP_REGS = 24;
 };
 
 namespace concepts {

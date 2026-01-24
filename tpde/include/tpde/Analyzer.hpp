@@ -4,6 +4,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <limits>
 #include <llvm/ADT/SetVector.h>
@@ -34,13 +35,15 @@ namespace tpde {
     private:
         using IRValueRef = typename Adaptor::IRValueRef;
         std::unordered_set<ValLocalIdx> values_;
-        u32 used_regs_ = 0;
-        std::unordered_map<ValLocalIdx, u32> &val_parts_map_;
+        u32 used_gp_regs_ = 0;
+        u32 used_fp_regs_ = 0;
+        std::unordered_map<ValLocalIdx, std::array<u8, 2> > &val_parts_map_;
         Adaptor *adaptor_;
 
     public:
-        explicit WorkingSetTracker(std::unordered_map<ValLocalIdx, u32> &val_parts_map,
-                                   Adaptor *adaptor)
+        explicit WorkingSetTracker(
+            std::unordered_map<ValLocalIdx, std::array<u8, 2> > &val_parts_map,
+            Adaptor *adaptor)
             : val_parts_map_(val_parts_map), adaptor_(adaptor) {
         }
 
@@ -52,7 +55,8 @@ namespace tpde {
                 const auto parts_it = val_parts_map_.find(val_idx);
                 assert(parts_it != val_parts_map_.end() &&
                     "Value not found in parts map");
-                used_regs_ += parts_it->second;
+                used_gp_regs_ += parts_it->second[0];
+                used_fp_regs_ += parts_it->second[1];
             }
             return inserted;
         }
@@ -65,7 +69,8 @@ namespace tpde {
                 const auto parts_it = val_parts_map_.find(val_idx);
                 assert(parts_it != val_parts_map_.end() &&
                     "Value not found in parts map");
-                used_regs_ -= parts_it->second;
+                used_gp_regs_ -= parts_it->second[0];
+                used_fp_regs_ -= parts_it->second[1];
                 values_.erase(it);
                 return true;
             }
@@ -80,7 +85,8 @@ namespace tpde {
         /// Clear all values from the working set.
         void clear() {
             values_.clear();
-            used_regs_ = 0;
+            used_gp_regs_ = 0;
+            used_fp_regs_ = 0;
         }
 
         /// Replace the working set with a new set of values.
@@ -97,24 +103,32 @@ namespace tpde {
         }
 
         /// Get the current register usage.
-        u32 used_regs() const { return used_regs_; }
+        u32 used_gp_regs() const { return used_gp_regs_; }
+        u32 used_fp_regs() const { return used_fp_regs_; }
 
         /// Check if there's capacity for additional registers.
-        bool has_capacity_for(u32 additional_regs, u32 total_capacity) const {
-            return used_regs_ + additional_regs <= total_capacity;
+        bool has_capacity_for(u32 additional_gp_regs,
+                              u32 additional_fp_regs,
+                              u32 total_gp_capacity,
+                              u32 total_fp_capacity) const {
+            return used_gp_regs_ + additional_gp_regs <= total_gp_capacity &&
+                   used_fp_regs_ + additional_fp_regs <= total_fp_capacity;
         }
 
         /// Check if a specific value can fit.
-        bool can_fit(ValLocalIdx val_idx, u32 total_capacity) const {
+        bool can_fit(ValLocalIdx val_idx,
+                     u32 total_gp_capacity,
+                     u32 total_fp_capacity) const {
             const auto parts_it = val_parts_map_.find(val_idx);
             if (parts_it == val_parts_map_.end()) {
                 return false;
             }
-            return used_regs_ + parts_it->second <= total_capacity;
+            return used_gp_regs_ + parts_it->second[0] <= total_gp_capacity &&
+                   used_fp_regs_ + parts_it->second[1] <= total_fp_capacity;
         }
 
         /// Get number of parts for a value (asserts if not cached).
-        u32 num_parts(ValLocalIdx val_idx) const {
+        std::array<u8, 2> num_parts(ValLocalIdx val_idx) const {
             const auto parts_it = val_parts_map_.find(val_idx);
             assert(parts_it != val_parts_map_.end() &&
                 "Value not found in parts map");
@@ -127,15 +141,16 @@ namespace tpde {
         }
 
         /// Get number of parts for a value, returning 0 if not cached.
-        u32 num_parts_or_zero(ValLocalIdx val_idx) const {
+        std::array<u8, 2> num_parts_or_zero(ValLocalIdx val_idx) const {
             const auto parts_it = val_parts_map_.find(val_idx);
-            return parts_it != val_parts_map_.end() ? parts_it->second : 0;
+            return parts_it != val_parts_map_.end() ? parts_it->second
+                                                     : std::array<u8, 2>{0u, 0u};
         }
 
         /// Cache the parts count for a value if not already cached.
-        void ensure_parts_cached(ValLocalIdx val_idx, u32 num_parts) {
+        void ensure_parts_cached(ValLocalIdx val_idx, std::array<u8, 2> parts) {
             if (!val_parts_map_.contains(val_idx)) {
-                val_parts_map_[val_idx] = num_parts;
+                val_parts_map_[val_idx] = parts;
             }
         }
 
@@ -144,8 +159,15 @@ namespace tpde {
         bool insert_value(IRValueRef value) {
             ValLocalIdx val_idx = adaptor_->val_local_idx(value);
             if (!has_parts_cached(val_idx)) {
-                u32 num_parts = adaptor_->val_parts(value).count();
-                ensure_parts_cached(val_idx, num_parts);
+                std::array<u8, 2> parts = {0u, 0u};
+                const auto value_parts = adaptor_->val_parts(value);
+                for (u32 i = 0; i < value_parts.count(); ++i) {
+                    const u8 bank_id = value_parts.reg_bank(i).id();
+                    if (bank_id < parts.size()) {
+                        ++parts[bank_id];
+                    }
+                }
+                ensure_parts_cached(val_idx, parts);
             }
             return insert(val_idx);
         }
@@ -159,14 +181,16 @@ namespace tpde {
         auto end() { return values_.end(); }
 
     private:
-        /// Recalculate used_regs from scratch based on current values.
+        /// Recalculate used registers from scratch based on current values.
         void recalculate_used_regs() {
-            used_regs_ = 0;
+            used_gp_regs_ = 0;
+            used_fp_regs_ = 0;
             for (const auto val_idx: values_) {
                 const auto parts_it = val_parts_map_.find(val_idx);
                 assert(parts_it != val_parts_map_.end() &&
                     "Value not found in parts map");
-                used_regs_ += parts_it->second;
+                used_gp_regs_ += parts_it->second[0];
+                used_fp_regs_ += parts_it->second[1];
             }
         }
     };
@@ -406,13 +430,16 @@ namespace tpde {
 
         void compute_spills() noexcept;
 
-        void limit(tpde::util::SmallVector<
-                       std::tuple<tpde::ValLocalIdx, tpde::u32, tpde::u32, tpde::u32>,
-                       16UL> &W_next_uses,
-                   const tpde::u32 NUM_REGS,
-                   tpde::u32 &idx,
-                   WorkingSetTracker<Adaptor> &working_set,
-                   bool after_instr = false);
+        void limit(
+        tpde::util::SmallVector<
+            std::tuple<tpde::ValLocalIdx, tpde::u32, tpde::u32, std::array<u8, 2> >,
+            16UL> &W_next_uses,
+
+            const tpde::u32 NUM_GP_REGS,
+            const tpde::u32 NUM_FP_REGS,
+            tpde::u32 &idx,
+            WorkingSetTracker<Adaptor> &working_set,
+            bool after_instr = false);
     };
 
     template<IRAdaptor Adaptor, typename CompilerType>
@@ -1760,16 +1787,22 @@ namespace tpde {
         // Simplified since we don't store reload or spill positions.
         TPDE_LOG_TRACE("Starting Spill Analysis");
 
+        //todo(salto): realistically basically no values will have parts from  2 different banks.
+        // so optimize for this case.
+
         // Ensure spilled_values is sized appropriately
         // todo(salto): fix
         spilled_values.resize(liveness_max_value + 1);
         spilled_values.zero();
 
-        // todo(salto): fp und gp registers - currently using combined count
         // todo(salto): multi-part values?
         // todo(salto): ordered set for W
-        constexpr u32 NUM_REGS = CompilerType::ConfigType::SPILL_NUM_REGS;
-        constexpr u32 NUM_CALLER_SAVED = CompilerType::ConfigType::CALLER_SAVED_NUM_REGS;
+        constexpr u32 NUM_GP_REGS = CompilerType::ConfigType::SPILL_NUM_GP_REGS;
+        constexpr u32 NUM_FP_REGS = CompilerType::ConfigType::SPILL_NUM_FP_REGS;
+        constexpr u32 NUM_CALLER_SAVED_GP =
+            CompilerType::ConfigType::CALLER_SAVED_GP_REGS;
+        constexpr u32 NUM_CALLER_SAVED_FP =
+            CompilerType::ConfigType::CALLER_SAVED_FP_REGS;
 
         // The set of values in registers at the end of a block
         // compared to the original algorithm, we can avoid the set S (spilled
@@ -1780,7 +1813,7 @@ namespace tpde {
         // but register arguments need to be in W at the start.
 
         // todo(salto): cache val_idx to num parts, regbank
-        std::unordered_map<ValLocalIdx, u32> val_idx_to_num_parts;
+        std::unordered_map<ValLocalIdx, std::array<u8, 2> > val_idx_to_num_parts;
         val_idx_to_num_parts.reserve(liveness_max_value + 1);
         // todo(salto): values with multiple regbanks
         // todo(salto): ignore liveness?
@@ -1819,8 +1852,16 @@ namespace tpde {
                     for (const IRValueRef arg: adaptor->cur_args()) {
                         //todo(salto): is this correct
                         auto local_idx = adaptor->val_local_idx(arg);
-                        const u32 num_parts = adaptor->val_parts(arg).count();
-                        working_set.ensure_parts_cached(local_idx, num_parts);
+                        std::array<u8, 2> parts = {0u, 0u};
+                        const auto value_parts = adaptor->val_parts(arg);
+                        for (u32 part_idx = 0; part_idx < value_parts.count(); ++part_idx) {
+                            const u8 bank_id = value_parts.reg_bank(part_idx).id();
+                            if (bank_id < parts.size()) {
+                                ++parts[bank_id];
+                            }
+                        }
+                        const u32 num_parts = static_cast<u32>(parts[0] + parts[1]);
+                        working_set.ensure_parts_cached(local_idx, parts);
                         if (free_regs < num_parts) {
                             // rest of args must be on stack
                             break;
@@ -1838,7 +1879,7 @@ namespace tpde {
             util::SmallVector<ValLocalIdx, 16> incoming_from_some;
             // todo(salto): maybe just store max_seen_freq alongside W_entry_freq?
             u32 max_seen_freq = 0;
-            u32 from_all_registers = 0;
+            std::array<u32, 2> from_all_registers = {0u, 0u};
             for (const auto [val_idx, freq]: W_entry_freq[block_idx(block)]) {
                 // todo(salto): loop headers
                 if (freq > max_seen_freq) {
@@ -1846,17 +1887,21 @@ namespace tpde {
                     for (const auto old_val_idx: incoming_from_all) {
                         incoming_from_some.push_back(old_val_idx);
                     }
-                    from_all_registers = working_set.num_parts(val_idx);
+                    const auto parts = working_set.num_parts(val_idx);
+                    from_all_registers = {parts[0], parts[1]};
                     incoming_from_all.clear();
                     incoming_from_all.push_back(val_idx);
                 } else if (freq == max_seen_freq) {
                     incoming_from_all.push_back(val_idx);
-                    from_all_registers += working_set.num_parts(val_idx);
+                    const auto parts = working_set.num_parts(val_idx);
+                    from_all_registers[0] += parts[0];
+                    from_all_registers[1] += parts[1];
                 } else {
                     incoming_from_some.push_back(val_idx);
                 }
             }
-            if (from_all_registers > NUM_REGS) [[unlikely]] {
+            if (from_all_registers[0] > NUM_GP_REGS ||
+                from_all_registers[1] > NUM_FP_REGS) [[unlikely]] {
                 // prefer values that are used soon.
                 std::sort(
                     incoming_from_all.begin(),
@@ -1875,7 +1920,7 @@ namespace tpde {
                     });
                 working_set.clear();
                 for (const auto val_idx: incoming_from_all) {
-                    if (!working_set.can_fit(val_idx, NUM_REGS)) {
+                    if (!working_set.can_fit(val_idx, NUM_GP_REGS, NUM_FP_REGS)) {
                         break;
                     }
                     working_set.insert(val_idx);
@@ -1900,7 +1945,7 @@ namespace tpde {
                                .first;
                     });
                 for (const auto val_idx: incoming_from_some) {
-                    if (!working_set.can_fit(val_idx, NUM_REGS)) {
+                    if (!working_set.can_fit(val_idx, NUM_GP_REGS, NUM_FP_REGS)) {
                         break;
                     }
                     working_set.insert(val_idx);
@@ -1929,10 +1974,10 @@ namespace tpde {
                 // algorithm seperates them, as it effects the optimal spill position.
                 // since we don't need to know the spill position, we can process operands
                 // + results together. we still need to ensure that there are free
-                // registers for the results. instead of limit(W, NUM_REGS) and then
-                // limit(W+results, NUM_REGS-NUM_RESULT_REGs), we can avoid one of the
+                // registers for the results. instead of limit(W, NUM_*_REGS) and then
+                // limit(W+results, NUM_*_REGS-NUM_RESULT_REGs), we can avoid one of the
                 // limits in most cases.
-                u32 num_result_regs = 0;
+                std::array<u32, 2> num_result_regs = {0u, 0u};
                 for (const auto result: adaptor->inst_results(inst)) {
                     if (adaptor->val_ignore_in_liveness_analysis(result)) {
                         // what can we do here?
@@ -1945,20 +1990,30 @@ namespace tpde {
                     working_set.insert_value(result);
 
                     const auto val_idx = adaptor->val_local_idx(result);
-                    const u32 num_parts = working_set.num_parts(val_idx);
-                    num_result_regs += num_parts;
+                    const auto parts = working_set.num_parts(val_idx);
+                    num_result_regs[0] += parts[0];
+                    num_result_regs[1] += parts[1];
                 }
                 //todo(salto): check wether if with [[unlikely]] has better performance
-                const u32 current_capacity = NUM_REGS - adaptor->inst_has_call(inst) * NUM_CALLER_SAVED;
+                const bool has_call = adaptor->inst_has_call(inst);
+                const u32 current_capacity_gp =
+                    NUM_GP_REGS - static_cast<u32>(has_call) * NUM_CALLER_SAVED_GP;
+                const u32 current_capacity_fp =
+                    NUM_FP_REGS - static_cast<u32>(has_call) * NUM_CALLER_SAVED_FP;
                 // we still have enough registers, no spills needed
-                if (working_set.has_capacity_for(num_result_regs, current_capacity)) {
+                if (working_set.has_capacity_for(num_result_regs[0],
+                                                 num_result_regs[1],
+                                                 current_capacity_gp,
+                                                 current_capacity_fp)) {
                     ++idx;
                     continue;
                 }
                 // todo(salto): we could store dead after instr during the initial loop,
                 // then maybe we can avoid some sorts We spill the furthest next-use
-                // value. (val_idx, ,current_use,next_use, num_parts)
-                util::SmallVector<std::tuple<ValLocalIdx, u32, u32, u32>, 16> W_next_uses;
+                // value. (val_idx, ,current_use,next_use, parts)
+                util::SmallVector<std::tuple<ValLocalIdx, u32, u32, std::array<u8, 2> >,
+                                      16>
+                    W_next_uses;
                 util::SmallVector<ValLocalIdx, 16> dead_values;
                 for (const auto val_idx: working_set) {
                     const auto [current_use, next_use] = get_current_and_next_use(
@@ -1982,13 +2037,17 @@ namespace tpde {
                 }
                 // Evicting dead values was enough to free up registers, avoid more
                 // expensive spill calculation.
-                if (working_set.has_capacity_for(num_result_regs, current_capacity)) {
+                if (working_set.has_capacity_for(num_result_regs[0],
+                                                 num_result_regs[1],
+                                                 current_capacity_gp,
+                                                 current_capacity_fp)) {
                     ++idx;
                     continue;
                 }
 
                 // we are limited by the results.
-                if (working_set.used_regs() <= current_capacity) {
+                if (working_set.used_gp_regs() <= current_capacity_gp &&
+                    working_set.used_fp_regs() <= current_capacity_fp) {
                     // sort by next use instead of current use since we have enough space
                     // for all the operands and we might be able to evict a operand for a
                     // result.
@@ -2000,7 +2059,13 @@ namespace tpde {
                                   // parts?
                                   return std::get < 2 > (a) > std::get < 2 > (b);
                               });
-                    limit(W_next_uses, current_capacity, idx, working_set, true);
+                    limit(W_next_uses,
+                          current_capacity_gp,
+                          current_capacity_fp,
+                          idx,
+                          working_set,
+                          true);
+
                 } else {
                     // sort by current use since we need space for operands
                     std::sort(W_next_uses.begin(),
@@ -2013,10 +2078,18 @@ namespace tpde {
                                              ? (std::get < 2 > (a) > std::get < 2 > (b))
                                              : std::get < 1 > (a) > std::get < 1 > (b);
                               });
-                    limit(W_next_uses, current_capacity, idx, working_set, false);
+                    limit(W_next_uses,
+                          current_capacity_gp,
+                          current_capacity_fp,
+                          idx,
+                          working_set,
+                          false);
                     // in the same instruction we are limited both by the results and the
                     // operands todo(salto): check how often this happens.
-                    if (!working_set.has_capacity_for(num_result_regs, current_capacity)) {
+                    if (!working_set.has_capacity_for(num_result_regs[0],
+                                                      num_result_regs[1],
+                                                      current_capacity_gp,
+                                                      current_capacity_fp)) {
                         TPDE_LOG_TRACE("Second limit pass for instruction {}", idx);
 
                         // todo(salto): we could check if we can evict the next values of
@@ -2029,7 +2102,12 @@ namespace tpde {
                                       // parts?
                                       return std::get < 2 > (a) > std::get < 2 > (b);
                                   });
-                        limit(W_next_uses, current_capacity, idx, working_set, true);
+                        limit(W_next_uses,
+                              current_capacity_gp,
+                              current_capacity_fp,
+                              idx,
+                              working_set,
+                              true);
                     }
                 }
                 ++idx;
@@ -2056,79 +2134,126 @@ namespace tpde {
     template<IRAdaptor Adaptor, typename CompilerType>
     void Analyzer<Adaptor, CompilerType>::limit(
         tpde::util::SmallVector<
-            std::tuple<tpde::ValLocalIdx, tpde::u32, tpde::u32, tpde::u32>,
+            std::tuple<tpde::ValLocalIdx, tpde::u32, tpde::u32, std::array<u8, 2> >,
             16UL> &W_next_uses,
-        const tpde::u32 NUM_REGS,
+        const tpde::u32 NUM_GP_REGS,
+        const tpde::u32 NUM_FP_REGS,
         tpde::u32 &idx,
         WorkingSetTracker<Adaptor> &working_set,
         bool after_instr) {
         // Calculate how many registers need to be freed
-        u32 regs_to_free = working_set.used_regs() > NUM_REGS
-                               ? (working_set.used_regs() - NUM_REGS)
-                               : 0;
+        u32 gp_to_free = working_set.used_gp_regs() > NUM_GP_REGS
+                             ? (working_set.used_gp_regs() - NUM_GP_REGS)
+                             : 0;
+        u32 fp_to_free = working_set.used_fp_regs() > NUM_FP_REGS
+                             ? (working_set.used_fp_regs() - NUM_FP_REGS)
+                             : 0;
 
-        if (regs_to_free == 0) {
+        if (gp_to_free == 0 && fp_to_free == 0) {
             return; // Already within capacity
         }
 
+        const bool gp_limited = gp_to_free > 0 && fp_to_free == 0;
+        const bool fp_limited = fp_to_free > 0 && gp_to_free == 0;
+
         // Phase 1: Collect candidate values that could be spilled
         // These are selected in priority order (respecting the caller's sort)
-        util::SmallVector<std::tuple<ValLocalIdx, u32, u32, u32>, 16> candidates;
-        u32 total_regs_in_candidates = 0;
+        util::SmallVector<std::tuple<ValLocalIdx, u32, u32, std::array<u8, 2> >, 16>
+            candidates;
+        u32 total_gp_in_candidates = 0;
+        u32 total_fp_in_candidates = 0;
 
         for (const auto &entry: W_next_uses) {
-            u32 current_use = std::get<1>(entry);
-            u32 num_parts = std::get<3>(entry);
+            const u32 current_use = std::get<1>(entry);
+            const auto parts = std::get<3>(entry);
 
             // we should have already evicted all dead values.
             assert(current_use != INF);
 
             candidates.push_back(entry);
-            total_regs_in_candidates += num_parts;
+            total_gp_in_candidates += parts[0];
+            total_fp_in_candidates += parts[1];
 
-            // Stop when we have enough registers to potentially free
-            if (total_regs_in_candidates >= regs_to_free) {
+            const bool enough_gp = total_gp_in_candidates >= gp_to_free;
+            const bool enough_fp = total_fp_in_candidates >= fp_to_free;
+            if ((gp_limited && enough_gp) || (fp_limited && enough_fp) ||
+                (enough_gp && enough_fp)) {
                 break;
             }
         }
 
         // Phase 2: Optimize selection if we have excess capacity
         // mainly happens with large vectors, since we can only spill whole vector atm.
-        u32 excess_regs = total_regs_in_candidates - regs_to_free;
+        const u32 excess_gp = total_gp_in_candidates > gp_to_free
+                                  ? total_gp_in_candidates - gp_to_free
+                                  : 0;
+        const u32 excess_fp = total_fp_in_candidates > fp_to_free
+                                  ? total_fp_in_candidates - fp_to_free
+                                  : 0;
 
         // If we have excess and multiple candidates, reorder by size
         // This can reduce the number of values spilled
-        if (excess_regs > 0 && candidates.size() > 1)[[unlikely]] {
+        if ((excess_gp > 0 || excess_fp > 0) && candidates.size() > 1) [[unlikely]] {
             std::sort(candidates.begin(), candidates.end(),
-                      [](const auto &a, const auto &b) {
+                      [&](const auto &a, const auto &b) {
+                          const auto parts_a = std::get<3>(a);
+                          const auto parts_b = std::get<3>(b);
+                          const u32 total_a = parts_a[0] + parts_a[1];
+                          const u32 total_b = parts_b[0] + parts_b[1];
                           // Sort by num_parts (descending) - prefer spilling larger values
-                          return std::get<3>(a) > std::get<3>(b);
+                          return total_a > total_b;
                       });
         }
 
-        // Perform the actual spills
-        u32 regs_freed = 0;
-        for (const auto &[val_idx, current_use, next_use, num_parts]: candidates) {
-            if (regs_freed >= regs_to_free) {
-                break; // Freed enough registers
+        auto spill_pass = [&](u32 &gp_needed, u32 &fp_needed, bool single_bank) {
+            u32 gp_freed = 0;
+            u32 fp_freed = 0;
+            for (const auto &[val_idx, current_use, next_use, parts]: candidates) {
+                if (gp_freed >= gp_needed && fp_freed >= fp_needed) {
+                    break; // Freed enough registers
+                }
+                if (single_bank) {
+                    if (gp_needed > 0 && gp_freed >= gp_needed) {
+                        break;
+                    }
+                    if (fp_needed > 0 && fp_freed >= fp_needed) {
+                        break;
+                    }
+                }
+
+                TPDE_LOG_TRACE("Spilling value {} with current use {} and {} parts at "
+                               "instruction idx {}",
+                               static_cast<u32>(val_idx),
+                               current_use,
+                               static_cast<u32>(parts[0] + parts[1]),
+                               idx);
+
+                // don't spill if the value is dead after the instruction
+                if (!(after_instr && (next_use == INF))) {
+                    // todo(salto): check if already set?
+                    spilled_values.mark_set(static_cast<u32>(val_idx));
+                }
+
+                working_set.erase(val_idx);
+                gp_freed += parts[0];
+                fp_freed += parts[1];
             }
 
-            TPDE_LOG_TRACE("Spilling value {} with current use {} and {} parts at "
-                           "instruction idx {}",
-                           static_cast<u32>(val_idx),
-                           current_use,
-                           num_parts,
-                           idx);
+            gp_needed = gp_freed >= gp_needed ? 0 : gp_needed - gp_freed;
+            fp_needed = fp_freed >= fp_needed ? 0 : fp_needed - fp_freed;
+        };
 
-            // don't spill if the value is dead after the instruction
-            if (!(after_instr && (next_use == INF))) {
-                // todo(salto): check if already set?
-                spilled_values.mark_set(static_cast<u32>(val_idx));
+        if (gp_limited || fp_limited) {
+            spill_pass(gp_to_free, fp_to_free, true);
+            if ((gp_to_free > 0 || fp_to_free > 0) &&
+                (working_set.used_gp_regs() > NUM_GP_REGS ||
+                 working_set.used_fp_regs() > NUM_FP_REGS)) [[unlikely]] {
+                spill_pass(gp_to_free, fp_to_free, false);
             }
-
-            working_set.erase(val_idx);
-            regs_freed += num_parts;
+            return;
         }
+
+        spill_pass(gp_to_free, fp_to_free, false);
     }
 
 
