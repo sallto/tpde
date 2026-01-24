@@ -719,6 +719,9 @@ public:
   /// Free the register. Requires that the contained value is already spilled.
   void free_reg(Reg reg) noexcept;
 
+  /// Spill all caller-saved registers before a call that may branch. (ex. LLVMIR invoke)
+  typename RegisterFile::RegBitSet spill_caller_saved_before_call() noexcept;
+
   // TODO(ts): switch to a branch_spill_before naming style?
   typename RegisterFile::RegBitSet
       spill_before_branch(bool force_spill = false) noexcept;
@@ -2290,7 +2293,49 @@ void CompilerBase<Adaptor, Derived, Config>::free_reg(Reg reg) noexcept {
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
-    CompilerBase<Adaptor, Derived, Config>::spill_before_branch(
+CompilerBase<Adaptor, Derived, Config>::spill_caller_saved_before_call()
+  noexcept {
+  using RegBitSet = typename RegisterFile::RegBitSet;
+
+  assert(may_change_value_state());
+
+  const RegBitSet caller_saved = ~register_file.callee_saved;
+  const RegBitSet spillable = register_file.used & caller_saved;
+  RegBitSet spilled = {};
+
+  for (auto reg_id: util::BitSetIterator<>{spillable}) {
+    const Reg reg{reg_id};
+    if (register_file.is_fixed(reg)) {
+      continue;
+    }
+    if (register_file.reg_local_idx(reg) == INVALID_VAL_LOCAL_IDX) {
+      register_file.unmark_used(reg);
+      spilled |= (1ull << reg_id);
+      continue;
+    }
+
+    AssignmentPartRef ap{
+      val_assignment(register_file.reg_local_idx(reg)),
+      register_file.reg_part(reg)
+    };
+    if (!ap.register_valid()) {
+      register_file.unmark_used(reg);
+      spilled |= (1ull << reg_id);
+      continue;
+    }
+
+    derived()->spill(ap);
+    ap.set_register_valid(false);
+    register_file.unmark_used(reg);
+    spilled |= (1ull << reg_id);
+  }
+
+  return spilled;
+}
+
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
+CompilerBase<Adaptor, Derived, Config>::spill_before_branch(
         bool force_spill) noexcept {
   // since we do not explicitly keep track of register assignments per block,
   // whenever we might branch off to a block that we do not directly compile
@@ -2302,7 +2347,7 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
   // store/manage the register assignment for each block (256 bytes/block for
   // x64) and possible compile-time as there might be additional logic to move
   // values around
-
+  //
   // First, we consider the case that the current block only has one successor
   // which is compiled directly after the current one, in which case we do not
   // have to spill anything.
@@ -2314,43 +2359,14 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
   //
   // Values which are only read from PHI-Nodes and have no extended lifetimes,
   // do not need to be spilled as they die at the edge.
-
+  //
+  // ...
+  //
+  //   if (succ_count == 1 && !must_spill) {
+  //     return RegBitSet{};
+  //   }
+  // }
   using RegBitSet = typename RegisterFile::RegBitSet;
-
-  assert(may_change_value_state());
-
-  const IRBlockRef cur_block_ref = analyzer.block_ref(cur_block_idx);
-  // Earliest succeeding block after the current block that is not the
-  // immediately succeeding block. Used to determine whether a value needs to
-  // be spilled.
-  BlockIndex earliest_next_succ = INVALID_BLOCK_IDX;
-
-  bool must_spill = force_spill;
-  if (!must_spill) {
-    // We must always spill if no block is immediately succeeding or that block
-    // has multiple incoming edges.
-    auto next_block_is_succ = false;
-    auto next_block_has_multiple_incoming = false;
-    u32 succ_count = 0;
-    for (const IRBlockRef succ : adaptor->block_succs(cur_block_ref)) {
-      ++succ_count;
-      BlockIndex succ_idx = analyzer.block_idx(succ);
-      if (u32(succ_idx) == u32(cur_block_idx) + 1) {
-        next_block_is_succ = true;
-        if (analyzer.block_has_multiple_incoming(succ)) {
-          next_block_has_multiple_incoming = true;
-        }
-      } else if (succ_idx > cur_block_idx && succ_idx < earliest_next_succ) {
-        earliest_next_succ = succ_idx;
-      }
-    }
-
-    must_spill = !next_block_is_succ || next_block_has_multiple_incoming;
-
-    if (succ_count == 1 && !must_spill) {
-      return RegBitSet{};
-    }
-  }
   return RegBitSet{};
 }
 

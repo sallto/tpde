@@ -17,7 +17,8 @@ class CompilerBase<Adaptor, Derived, Config>::ValuePart {
 private:
   struct ConstantData {
     AsmReg reg = AsmReg::make_invalid();
-    AsmReg global_reg = AsmReg::make_invalid(); // consts never have a valid global reg
+    AsmReg global_reg =
+        AsmReg::make_invalid(); // consts never have a valid global reg
     bool has_assignment = false;
     bool owned;
     bool is_const : 1;
@@ -71,8 +72,8 @@ public:
     assert(this->assignment().variable_ref() ||
            state.v.assignment->references_left);
     assert(!owned || state.v.assignment->references_left == 1);
-// todo salto    if ()
-  }
+    // todo salto    if ()
+    }
 
   ValuePart(const u64 *data, u32 size, RegBank bank) noexcept
       : state{
@@ -192,11 +193,10 @@ private:
                              AsmReg reg,
                              bool reload) noexcept;
 
-  bool
-  repair_argument(CompilerBase *compiler,
-                  typename RegisterFile::RegBitSet constraints,
-                  typename RegisterFile::RegBitSet available,
-                  typename RegisterFile::RegBitSet forbidden = 0);
+  bool repair_argument(CompilerBase *compiler,
+                       typename RegisterFile::RegBitSet constraints,
+                       typename RegisterFile::RegBitSet available,
+                       typename RegisterFile::RegBitSet forbidden = 0);
 
   void execute_moves(CompilerBase *compiler, AsmReg old_reg);
 
@@ -294,11 +294,9 @@ public:
     alloc_specific_impl(compiler, reg, true);
   }
 
-  ScratchReg
-  into_scratch_specific(CompilerBase *compiler,
-                        AsmReg reg) {
+  ScratchReg into_scratch_specific(CompilerBase *compiler, AsmReg reg) {
     ScratchReg res{compiler};
-    //todo(salto): make codegen better if this->isinreg(reg)
+    // todo(salto): make codegen better if this->isinreg(reg)
     res.alloc_specific(reg);
 
     AsmReg src_reg = AsmReg::make_invalid();
@@ -491,29 +489,30 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
   RegBank bank;
   if (has_assignment()) {
     auto ap = assignment();
-        if (ap.register_valid()) {
+    if (ap.register_valid()) {
       lock(compiler);
-      //assert(!(compiler->tree_ra_ctx->used_global_regs&(1ull<<state.v.reg.id()))||compiler.);
+      // assert(!(compiler->tree_ra_ctx->used_global_regs&(1ull<<state.v.reg.id()))||compiler.);
       state.v.global_reg = state.v.reg;
-       compiler->global_assign(local_idx(), state.v.reg);
+      compiler->global_assign(local_idx(), state.v.reg);
       // TODO: implement this if needed
       assert((exclusion_mask & (1ull << state.v.reg.id())) == 0 &&
              "moving registers in alloc_reg is unsupported");
       return state.v.reg;
-        }
+    }
 
-        bank = ap.bank();
+    bank = ap.bank();
   } else {
-        bank = state.c.bank;
+    bank = state.c.bank;
   }
 
   auto [reg, global_reg] = compiler->select_reg(bank, exclusion_mask);
-   if (!is_const() && has_assignment()) {
-     if (!global_reg.valid()) {
-       compiler->global_assign(local_idx(), reg);
-     } else
-       compiler->global_assign(local_idx(), global_reg);
-   }
+  if (!is_const() && has_assignment()) {
+    if (!global_reg.valid()) {
+      compiler->global_assign(local_idx(), reg);
+    } else {
+      compiler->global_assign(local_idx(), global_reg);
+    }
+  }
   auto &reg_file = compiler->register_file;
   reg_file.mark_clobbered(reg);
   if (has_assignment()) {
@@ -536,9 +535,9 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
     reg_file.mark_fixed(reg);
     state.c.reg = reg;
     state.c.owned = true;
-    #ifndef NDEBUG
+#ifndef NDEBUG
     compiler->vir_emit_new_use(reg);
-    #endif
+#endif
     if (reload) {
       assert(is_const() && "cannot reload temporary value");
       compiler->derived()->materialize_constant(
@@ -550,43 +549,53 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
 }
 
 template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
-bool
-CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase *compiler,
-                                                                   typename RegisterFile::RegBitSet constraints,
-                                                                   typename RegisterFile::RegBitSet available,
-                                                                   typename RegisterFile::RegBitSet forbidden) {
+bool CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(
+  CompilerBase *compiler,
+  typename RegisterFile::RegBitSet constraints,
+  typename RegisterFile::RegBitSet available,
+  typename RegisterFile::RegBitSet forbidden) {
   auto &reg_file = compiler->register_file;
   Reg reg = Reg::make_invalid();
-   std::unordered_set<ValLocalIdx> operands;
-   // commented out current_instr usage
-   // for (auto operand: compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
-   //   operands.insert(compiler->adaptor->val_local_idx(operand));
-   // }
+  std::unordered_set<ValLocalIdx> operands;
+  // commented out current_instr usage
+  // for (auto operand:
+  // compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
+  //   operands.insert(compiler->adaptor->val_local_idx(operand));
+  // }
   bool success = false;
-  typename RegisterFile::RegBitSet allowed = constraints & (~forbidden); // todo(salto): constraints
+  typename RegisterFile::RegBitSet allowed =
+      constraints & (~forbidden); // todo(salto): constraints
   while (reg == Reg::make_invalid() && allowed != 0) {
     for (u64 candidate: util::BitSetIterator<>(allowed)) {
-      if (reg_file.is_used(Reg{candidate}) && (!operands.contains(reg_file.reg_local_idx(Reg{candidate})) && !reg_file.
-                                               is_fixed(Reg{candidate}))) {
+      if (reg_file.is_used(Reg{candidate}) &&
+          (!operands.contains(reg_file.reg_local_idx(Reg{candidate})) &&
+           !reg_file.is_fixed(Reg{candidate}))) {
         reg = Reg{candidate};
         break;
       }
     }
     if (reg == Reg::make_invalid()) {
-      //todo(salto): choose color from allowed
+      // todo(salto): choose color from allowed
       reg = Reg{*util::BitSetIterator<>(allowed).begin()};
     }
     ValLocalIdx pawn = reg_file.reg_local_idx(reg);
     // todo(salto): constraints of pawn?
     typename RegisterFile::RegBitSet pawnAllowed =
-        (available | (this->has_reg() ? (1ull << this->cur_reg().id()) : 0ull)) & (~forbidden);
+        (available |
+         (this->has_reg() ? (1ull << this->cur_reg().id()) : 0ull)) &
+        (~forbidden);
     if (pawnAllowed != 0) {
-      compiler->parallel_copies.emplace_back(Reg{*util::BitSetIterator<>(pawnAllowed).begin()}, reg, 8,
-                                             pawn,
-                                             this->part());
+      compiler->parallel_copies.emplace_back(
+        Reg{*util::BitSetIterator<>(pawnAllowed).begin()},
+        reg,
+        8,
+        pawn,
+        this->part());
       success = true;
     } else {
-      success = repair_argument(compiler, available | (1ull << this->cur_reg().id()), forbidden | (1ull << reg.id()));
+      success = repair_argument(compiler,
+                                available | (1ull << this->cur_reg().id()),
+                                forbidden | (1ull << reg.id()));
     }
     if (!success) {
       allowed &= ~(1ull << reg.id());
@@ -594,9 +603,12 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase 
     }
   }
   if (reg != Reg::make_invalid()) {
-    assert(has_assignment()&&assignment().register_valid());
+    assert(has_assignment() && assignment().register_valid());
     auto ap = assignment();
-    compiler->parallel_copies.emplace_back(Reg{reg}, ap.get_reg(), this->part_size(), this->local_idx(),
+    compiler->parallel_copies.emplace_back(Reg{reg},
+                                           ap.get_reg(),
+                                           this->part_size(),
+                                           this->local_idx(),
                                            this->part());
     return true;
   }
@@ -604,8 +616,8 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(CompilerBase 
 }
 
 template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
-void CompilerBase<Adaptor, Derived, Config>::ValuePart::execute_moves(CompilerBase *compiler,
-                                                                      AsmReg old_reg) {
+void CompilerBase<Adaptor, Derived, Config>::ValuePart::execute_moves(
+  CompilerBase *compiler, AsmReg old_reg) {
   auto moves = compiler->sequentialize(compiler->parallel_copies);
   auto &reg_file = compiler->register_file;
   for (auto move: moves) {
@@ -618,25 +630,28 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::execute_moves(CompilerBa
     }
 #endif
     if (!reg_file.is_used(Reg{move.dst})) {
-      AssignmentPartRef ap{compiler->val_assignment(move.value_idx), move.part_idx};
+      AssignmentPartRef ap{
+        compiler->val_assignment(move.value_idx),
+        move.part_idx
+      };
       ap.set_reg(move.dst);
       ap.set_register_valid(true);
-      if (move.src != old_reg)
+      if (move.src != old_reg) {
         reg_file.unmark_used(move.src);
+      }
       reg_file.mark_used(move.dst, move.value_idx, move.part_idx);
     } else {
-      reg_file.update_reg_assignment(Reg{move.dst}, move.value_idx, move.part_idx);
+      reg_file.update_reg_assignment(
+        Reg{move.dst}, move.value_idx, move.part_idx);
     }
   }
   compiler->parallel_copies.clear();
 }
 
-template
-<
-  IRAdaptor Adaptor,
+template<IRAdaptor Adaptor,
 
-  typename Derived, CompilerConfig
-  Config>
+  typename Derived,
+  CompilerConfig Config>
 typename CompilerBase<Adaptor, Derived, Config>::AsmReg
 CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_specific_impl(
   CompilerBase *compiler, AsmReg reg, const bool reload) noexcept {
@@ -663,15 +678,16 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_specific_impl(
         if (ap.register_valid()) {
           lock(compiler);
         } else {
-          //todo
+          // todo
         }
       }
     }
     bool success = repair_argument(compiler,
-                                   (1ull << reg.id()), (reg_file.allocatable & ~reg_file.used) & reg_file.bank_regs(
-                                                         this->bank()));
+                                   (1ull << reg.id()),
+                                   (reg_file.allocatable & ~reg_file.used) &
+                                   reg_file.bank_regs(this->bank()));
     auto old_reg = this->cur_reg();
-    if (success)[[likely]]{
+    if (success) [[likely]] {
       execute_moves(compiler, old_reg);
 
       reg_file.mark_clobbered(reg);
@@ -863,11 +879,12 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value(
   reg_file.update_reg_assignment(new_reg, local_idx(), part());
   if (compiler->global_register_file.used & (1ull << new_reg.id())) {
     // find new global register for result
-    auto [_,global] = compiler->select_reg(reg_file.reg_bank(new_reg), compiler->global_register_file.used);
+    /*auto [_, global] = compiler->select_reg(
+      reg_file.reg_bank(new_reg), compiler->global_register_file.used);
     if (global == AsmReg::make_invalid()) {
-      assert(false); //todo
+      assert(false); // todo
     }
-    compiler->global_assign(local_idx(), global);
+    compiler->global_assign(local_idx(), global);*/
   } else {
     // use the same local and global register
     if (!compiler->global_reg_for(local_idx()).valid()) {
@@ -932,7 +949,7 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value(
   reg_file.update_reg_assignment(value_reg, local_idx(), part());
   if (compiler->global_register_file.used & (1ull << value_reg.id())) {
     // find new global register for result
-    auto [_,global] = compiler->select_reg(reg_file.reg_bank(value_reg), 0);
+    auto [_, global] = compiler->select_reg(reg_file.reg_bank(value_reg), 0);
     if (global != AsmReg::make_invalid()) {
       compiler->global_assign(local_idx(), global);
     }
@@ -1016,7 +1033,7 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::mov(
   auto ap = assignment();
   assert(!ap.variable_ref() && "cannot update variable ref");
 
-  assert(!ap.fixed_assignment()&&"can't move fixed assignments");
+  assert(!ap.fixed_assignment() && "can't move fixed assignments");
 
   if (ap.register_valid()) {
     compiler->derived()->mov(value_reg, ap.get_reg(), ap.part_size());
@@ -1201,12 +1218,10 @@ struct CompilerBase<Adaptor, Derived, Config>::ValuePartRef : ValuePart {
     ValuePart::set_value_reg(compiler, value_reg);
   }
 
-  void mov(AsmReg dst) noexcept {
-    ValuePart::mov(compiler, dst);
-  }
+  void mov(AsmReg dst) noexcept { ValuePart::mov(compiler, dst); }
 
   void set_recommended_reg(u8 reg) noexcept {
-    ValuePart::set_recommended_reg( reg);
+    ValuePart::set_recommended_reg(reg);
   }
 
   AsmReg salvage() noexcept { return ValuePart::salvage(compiler); }

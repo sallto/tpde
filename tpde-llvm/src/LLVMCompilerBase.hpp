@@ -4173,7 +4173,7 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_invoke(
   // TODO: this will also spill the call arguments even if the call kills them
   // however, spillBeforeCall already does this anyways so probably something
   // for later
-  auto spilled = this->spill_before_branch();
+  auto spilled = this->spill_caller_saved_before_call();
 
   const auto off_before_call = this->text_writer.offset();
   // compile the call
@@ -4248,7 +4248,11 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_invoke(
                                         normal_block_ref,
                                         /* split */ false,
                                         /* last_inst */ true);
-
+    for (auto reg: Derived::LANDING_PAD_RES_REGS) {
+      if (this->register_file.is_used(reg)) {
+        this->evict_reg(reg);
+      }
+    }
     this->release_spilled_regs(spilled);
   }
 

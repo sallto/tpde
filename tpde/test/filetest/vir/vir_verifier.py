@@ -14,7 +14,7 @@ class Operand:
 
     vreg: str  # e.g., "v0"
     areg: Optional[str]  # e.g., "r7" or None for stack operands
-    part: Optional[int] = None  # e.g., 1 for %v1:1@r2, None for single-part
+    part: Optional[int] = None  # e.g., 1 for %v1@r2:1, None for single-part
     stack_offset: Optional[int] = None  # e.g., -48 for %v0@[sp+-48]
 
 
@@ -217,31 +217,36 @@ class VirVerifier:
                 i += 1
 
     def _parse_operand(self, s: str) -> Operand:
-        """Parse an operand like %v0@r7, %v1:1@r2, or %v0@[sp+-48]."""
-        # Try stack operand syntax first: %v0@[sp+-48]
-        match = re.match(r"%v(\d+)(?::(\d+))?@\[sp\+([+-]?\d+)\]", s)
+        """Parse an operand like %v0@r7, %v1@r2:1, or %v0@[sp+-48]."""
+        # Try stack operand syntax first: %v0@[sp+-48] or %v0@[sp+-48]:1
+        match = re.match(r"%v(\d+)@\[sp\+([+-]?\d+)\](?::(\d+))?", s)
         if match:
-            part = int(match.group(2)) if match.group(2) else None
+            part = int(match.group(3)) if match.group(3) else None
             return Operand(
                 vreg=f"v{match.group(1)}",
                 areg=None,
                 part=part,
-                stack_offset=int(match.group(3)),
+                stack_offset=int(match.group(2)),
             )
 
-        # Try multi-part syntax first: %v1:1@r2
-        match = re.match(r"%v(\d+):(\d+)@r(\d+)", s)
+        # Canonical syntax: %v1@r2:1 (part optional)
+        match = re.match(r"%v(\d+)@r(\d+)(?::(\d+))?$", s)
+        if match:
+            part = int(match.group(3)) if match.group(3) is not None else None
+            return Operand(
+                vreg=f"v{match.group(1)}",
+                areg=f"r{match.group(2)}",
+                part=part,
+            )
+
+        # Legacy syntax: %v1:1@r2
+        match = re.match(r"%v(\d+):(\d+)@r(\d+)$", s)
         if match:
             return Operand(
                 vreg=f"v{match.group(1)}",
                 areg=f"r{match.group(3)}",
                 part=int(match.group(2)),
             )
-
-        # Fall back to single-part syntax: %v0@r7
-        match = re.match(r"%v(\d+)@r(\d+)", s)
-        if match:
-            return Operand(vreg=f"v{match.group(1)}", areg=f"r{match.group(2)}")
         raise ValueError(f"Invalid operand: {s}")
 
     def _parse_operation(self, line: str) -> Operation:
@@ -267,29 +272,36 @@ class VirVerifier:
 
     def _parse_regmove(self, line: str) -> RegMove:
         """Parse a regmove line: edit regmove r7 -> r6 %v0 4b or edit regmove r7 -> r6 %v1:1 4b"""
-        # Try syntax with size: edit regmove r7 -> r6 %v0 4b
-        match = re.match(
-            r"edit regmove r(\d+) -> r(\d+) %v(\d+)(?::(\d+))? (\d+)b", line
-        )
+
+        def _parse_vreg_token(token: str) -> str:
+            match = re.match(r"%v(\d+)(?:@r\d+)?(?::(\d+))?$", token)
+            if match:
+                vreg = f"v{match.group(1)}"
+                if match.group(2):
+                    vreg += f":{match.group(2)}"
+                return vreg
+            match = re.match(r"%v(\d+):(\d+)@r\d+$", token)
+            if match:
+                return f"v{match.group(1)}:{match.group(2)}"
+            raise ValueError(f"Invalid regmove vreg: {token}")
+
+        # Try syntax with size: edit regmove r7 -> r6 %v0 4b or edit regmove r7 -> r6 %v1:1 4b
+        match = re.match(r"edit regmove r(\d+) -> r(\d+) (%v[^ ]+) (\d+)b", line)
         if match:
-            vreg = f"v{match.group(3)}"
-            if match.group(4):
-                vreg += f":{match.group(4)}"
             return RegMove(
                 src_reg=f"r{match.group(1)}",
                 dst_reg=f"r{match.group(2)}",
-                vreg=vreg,
-                size=int(match.group(5)),
+                vreg=_parse_vreg_token(match.group(3)),
+                size=int(match.group(4)),
             )
 
         # Fall back to old syntax without size: edit regmove r7 -> r6 %v0 or edit regmove r7 -> r6 %v1:1
-        match = re.match(r"edit regmove r(\d+) -> r(\d+) %v(\d+)(?::(\d+))?", line)
+        match = re.match(r"edit regmove r(\d+) -> r(\d+) (%v[^ ]+)", line)
         if match:
-            vreg = f"v{match.group(3)}"
-            if match.group(4):
-                vreg += f":{match.group(4)}"
             return RegMove(
-                src_reg=f"r{match.group(1)}", dst_reg=f"r{match.group(2)}", vreg=vreg
+                src_reg=f"r{match.group(1)}",
+                dst_reg=f"r{match.group(2)}",
+                vreg=_parse_vreg_token(match.group(3)),
             )
 
         # Fall back to single-part syntax without vreg: edit regmove r7 -> r6
@@ -302,35 +314,39 @@ class VirVerifier:
         raise ValueError(f"Invalid regmove: {line}")
 
     def _parse_spill(self, line: str) -> SpillOp:
-        """Parse a spill line: edit spill r7 -> [sp+-44] %v0 4b or edit spill r7 -> [sp+-44] %v1:1 4b"""
+        """Parse a spill line: edit spill r7 -> [sp+-44] %v0 4b or edit spill r7 -> [sp+-44] %v1@r2:1 4b"""
+
+        def _parse_vreg_token(token: str) -> Tuple[str, Optional[int]]:
+            match = re.match(r"%v(\d+)(?:@r\d+)?(?::(\d+))?$", token)
+            if match:
+                vreg = f"v{match.group(1)}"
+                part = int(match.group(2)) if match.group(2) else None
+                if part is not None:
+                    vreg += f":{part}"
+                return vreg, part
+            match = re.match(r"%v(\d+):(\d+)@r\d+$", token)
+            if match:
+                return f"v{match.group(1)}:{match.group(2)}", int(match.group(2))
+            raise ValueError(f"Invalid spill vreg: {token}")
+
         # Handle syntax with size: edit spill r7 -> [sp+-44] %v0 4b
         match = re.match(
-            r"edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+)(?::(\d+))? (\d+)b", line
+            r"edit spill r(\d+) -> \[sp\+([+-]?\d+)\] (%v[^ ]+) (\d+)b", line
         )
         if match:
-            vreg = f"v{match.group(3)}"
-            part = None
-            if match.group(4):
-                vreg += f":{match.group(4)}"
-                part = int(match.group(4))
+            vreg, part = _parse_vreg_token(match.group(3))
             return SpillOp(
                 src_reg=f"r{match.group(1)}",
                 stack_offset=int(match.group(2)),
                 vreg=vreg,
-                size=int(match.group(5)),
+                size=int(match.group(4)),
                 part=part,
             )
 
         # Fall back to old syntax without size: edit spill r7 -> [sp+-44] %v0 or edit spill r7 -> [sp+-44] %v1:1
-        match = re.match(
-            r"edit spill r(\d+) -> \[sp\+([+-]?\d+)\] %v(\d+)(?::(\d+))?", line
-        )
+        match = re.match(r"edit spill r(\d+) -> \[sp\+([+-]?\d+)\] (%v[^ ]+)", line)
         if match:
-            vreg = f"v{match.group(3)}"
-            part = None
-            if match.group(4):
-                vreg += f":{match.group(4)}"
-                part = int(match.group(4))
+            vreg, part = _parse_vreg_token(match.group(3))
             return SpillOp(
                 src_reg=f"r{match.group(1)}",
                 stack_offset=int(match.group(2)),
@@ -341,35 +357,40 @@ class VirVerifier:
         raise ValueError(f"Invalid spill: {line}")
 
     def _parse_reload(self, line: str) -> ReloadOp:
-        """Parse a reload line: edit reload [sp+-44] -> r6 %v0 4b or edit reload [sp+-44] -> r6 %v1:1 4b"""
+        """Parse a reload line: edit reload [sp+-44] -> r6 %v0 4b or edit reload [sp+-44] -> r6 %v1@r2:1 4b"""
+
+        def _parse_vreg_token(token: str) -> Tuple[str, Optional[int]]:
+            match = re.match(r"%v(\d+)(?:@r\d+)?(?::(\d+))?$", token)
+            if match:
+                vreg = f"v{match.group(1)}"
+                part = int(match.group(2)) if match.group(2) else None
+                if part is not None:
+                    vreg += f":{part}"
+                return vreg, part
+            match = re.match(r"%v(\d+):(\d+)@r\d+$", token)
+            if match:
+                return f"v{match.group(1)}:{match.group(2)}", int(match.group(2))
+            raise ValueError(f"Invalid reload vreg: {token}")
+
         # Handle syntax with size: edit reload [sp+-44] -> r6 %v0 4b
         match = re.match(
-            r"edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+)(?::(\d+))? (\d+)b", line
+            r"edit reload \[sp\+([+-]?\d+)\] -> r(\d+) (%v[^ ]+) (\d+)b",
+            line,
         )
         if match:
-            vreg = f"v{match.group(3)}"
-            part = None
-            if match.group(4):
-                vreg += f":{match.group(4)}"
-                part = int(match.group(4))
+            vreg, part = _parse_vreg_token(match.group(3))
             return ReloadOp(
                 stack_offset=int(match.group(1)),
                 dst_reg=f"r{match.group(2)}",
                 vreg=vreg,
-                size=int(match.group(5)),
+                size=int(match.group(4)),
                 part=part,
             )
 
         # Fall back to old syntax without size: edit reload [sp+-44] -> r6 %v0 or edit reload [sp+-44] -> r6 %v1:1
-        match = re.match(
-            r"edit reload \[sp\+([+-]?\d+)\] -> r(\d+) %v(\d+)(?::(\d+))?", line
-        )
+        match = re.match(r"edit reload \[sp\+([+-]?\d+)\] -> r(\d+) (%v[^ ]+)", line)
         if match:
-            vreg = f"v{match.group(3)}"
-            part = None
-            if match.group(4):
-                vreg += f":{match.group(4)}"
-                part = int(match.group(4))
+            vreg, part = _parse_vreg_token(match.group(3))
             return ReloadOp(
                 stack_offset=int(match.group(1)),
                 dst_reg=f"r{match.group(2)}",
@@ -380,9 +401,9 @@ class VirVerifier:
         raise ValueError(f"Invalid reload: {line}")
 
     def _parse_phi(self, line: str) -> PhiNode:
-        """Parse a phi node: phi %v2@r6 [b0, %v0@r255, b2, %v5@r255] or phi %v4:1@r3 [b0, %v1:1@r255, b1, %v5:1@r255]"""
+        """Parse a phi node: phi %v2@r6 [b0, %v0@r255, b2, %v5@r255] or phi %v4@r3:1 [b0, %v1@r255:1, b1, %v5@r255:1]"""
         # Extract target - handle both single-part and multi-part syntax
-        target_match = re.match(r"phi (%v\d+(?::\d+)?@r\d+) \[", line)
+        target_match = re.match(r"phi (%v\d+(?:@r\d+(?::\d+)?|:\d+@r\d+)) \[", line)
         if not target_match:
             raise ValueError(f"Invalid phi: {line}")
         target = self._parse_operand(target_match.group(1))
@@ -412,9 +433,9 @@ class VirVerifier:
         return PhiNode(target=target, incomings=incomings)
 
     def _parse_jcond(self, line: str) -> Tuple[Optional[str], Optional[Operand]]:
-        """Parse a jcond line: jcond b3 uses=%v3@r8 or jcond b3 uses=%v1:1@r8"""
+        """Parse a jcond line: jcond b3 uses=%v3@r8 or jcond b3 uses=%v1@r8:1"""
         target_match = re.search(r"jcond (\w+)", line)
-        uses_match = re.search(r"uses=(%v\d+(?::\d+)?@r\d+)", line)
+        uses_match = re.search(r"uses=(%v\d+(?:@r\d+(?::\d+)?|:\d+@r\d+))", line)
 
         target = target_match.group(1) if target_match else None
         uses = self._parse_operand(uses_match.group(1)) if uses_match else None
@@ -526,6 +547,18 @@ class VirVerifier:
             base_num = int(match.group(1))
             # For multi-part registers, use a unique number to avoid conflicts
             if ":" in vreg:
+                # Allow large constants to keep their high range numbering
+                if base_num > 2147483660:
+                    if base_num not in func.used_numbers:
+                        func.vreg_to_number[vreg] = base_num
+                        func.used_numbers.add(base_num)
+                        return base_num
+                    while True:
+                        num = random.randint(2147483661, 4294967295)
+                        if num not in func.used_numbers:
+                            func.vreg_to_number[vreg] = num
+                            func.used_numbers.add(num)
+                            return num
                 # This is a multi-part register, use a unique number
                 while True:
                     num = random.randint(
