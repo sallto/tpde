@@ -1026,24 +1026,8 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
   arg.bank = cca.bank;
 
   if (cca.byval) {
-    // Record byval for later execution
-    arg.kind = PendingArg::Kind::BYVAL;
-    arg.stack_off = cca.stack_off;
-    arg.byval_size = cca.size;
-
-    // Capture source location
-    if (vp.has_assignment()) {
-      auto ap = vp.assignment();
-      arg.local_idx = vp.local_idx();
-      arg.part_idx = vp.part();
-      if (ap.register_valid()) {
-        arg.source_reg = ap.get_reg();
-        source_regs |= (1ull << ap.get_reg().id());
-      } else if (ap.stack_valid()) {
-        arg.frame_off = ap.frame_off();
-      }
-    }
-    pending_args.push_back(arg);
+    // can't really do this better
+    derived()->add_arg_byval(vp, cca);
     vp.reset(&compiler);
     return;
   }
