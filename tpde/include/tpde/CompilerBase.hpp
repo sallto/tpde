@@ -125,6 +125,7 @@ struct CompilerBase {
   // BlockIndex is now defined at namespace scope in Analyzer.hpp
   using BlockIndex = tpde::BlockIndex;
 
+  using ConfigType = Config;
   using Assembler = typename Config::Assembler;
   using AsmReg = typename Config::AsmReg;
 

@@ -250,6 +250,8 @@ struct PlatformConfig : CompilerConfigDefault {
   static constexpr bool FRAME_INDEXING_NEGATIVE = true;
   static constexpr u32 PLATFORM_POINTER_SIZE = 8;
   static constexpr u32 NUM_BANKS = 2;
+  static constexpr u32 SPILL_NUM_REGS = 16 - 2; // can't use rbp and rsp
+  static constexpr u32 CALLER_SAVED_NUM_REGS = 7;
 };
 
 namespace concepts {

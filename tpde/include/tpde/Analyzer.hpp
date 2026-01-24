@@ -1768,8 +1768,8 @@ namespace tpde {
         // todo(salto): fp und gp registers - currently using combined count
         // todo(salto): multi-part values?
         // todo(salto): ordered set for W
-        constexpr u32 NUM_REGS = 16 - 2; //can't use rbp and rsp
-        constexpr u32 NUM_CALLER_SAVED = 7;
+        constexpr u32 NUM_REGS = CompilerType::ConfigType::SPILL_NUM_REGS;
+        constexpr u32 NUM_CALLER_SAVED = CompilerType::ConfigType::CALLER_SAVED_NUM_REGS;
 
         // The set of values in registers at the end of a block
         // compared to the original algorithm, we can avoid the set S (spilled
