@@ -171,7 +171,18 @@ namespace tpde {
             //auto local_idx = compiler->register_file.reg_local_idx(reg);
             //const auto &pli = compiler->analyzer.precise_liveness[static_cast<u32>(compiler->cur_block_idx)];
             //auto [c,n] = compiler->analyzer.get_current_and_next_use(pli, local_idx, compiler->cur_instr_idx);
-
+            //todo(salto):fix in valuepart as well
+            if (compiler->register_file.reg_local_idx(reg) != INVALID_VAL_LOCAL_IDX) {
+                ValueAssignment *assignment = compiler->val_assignment(compiler->register_file.reg_local_idx(reg));
+                if (assignment && assignment->variable_ref) {
+                    compiler->evict_reg(reg);
+                    compiler->register_file.mark_used(reg, INVALID_VAL_LOCAL_IDX, 0);
+                    compiler->register_file.mark_clobbered(reg);
+                    compiler->register_file.mark_fixed(reg);
+                    this->reg = reg;
+                    return reg;
+                }
+            }
             // we are an empty scratch reg so we just shuffle the target register away.
             auto &reg_file = compiler->register_file;
             bool success =
