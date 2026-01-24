@@ -1229,7 +1229,11 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
         compiler.generate_raw_intext(
             arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
       }
+
       // Already in place - just mark clobbered
+      if (compiler.register_file.is_used(arg.target_reg)) {
+        compiler.evict_reg(arg.target_reg);
+      }
       compiler.register_file.mark_clobbered(arg.target_reg);
       compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
       continue;
