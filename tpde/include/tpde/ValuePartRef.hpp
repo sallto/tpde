@@ -610,6 +610,13 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::execute_moves(CompilerBa
   auto &reg_file = compiler->register_file;
   for (auto move: moves) {
     compiler->derived()->mov(move.dst, move.src, move.size);
+#ifndef NDEBUG
+    if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
+      compiler->verification_ir.emit_active_reg_move(
+          move.src, move.dst, move.size);
+      compiler->vir_record_arg_move(move.value_idx, move.part_idx, move.dst);
+    }
+#endif
     if (!reg_file.is_used(Reg{move.dst})) {
       AssignmentPartRef ap{compiler->val_assignment(move.value_idx), move.part_idx};
       ap.set_reg(move.dst);

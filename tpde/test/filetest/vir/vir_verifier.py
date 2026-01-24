@@ -900,7 +900,9 @@ def main():
         all_passed = verifier.verify(quiet=quiet)
         if all_passed:
             return 0
-        exit(1)
+        # don't exit one normally as FileCheck expect return code 0
+        if quiet:
+            exit(1)
     except Exception as e:
         raise
 

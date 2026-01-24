@@ -198,6 +198,12 @@ namespace tpde {
                         ValueRef vr{compiler, move.value_idx};
                         vr.disown();
                         vr.part_unowned(move.part_idx).mov(move.dst);
+#ifndef NDEBUG
+
+                        compiler->verification_ir.emit_active_reg_move(
+                            move.src, move.dst, move.size);
+
+#endif
                     } else {
                         compiler->derived()->mov(move.dst, move.src, 8);
                         reg_file.mark_used(
