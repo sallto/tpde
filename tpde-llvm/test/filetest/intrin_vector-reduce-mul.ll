@@ -36,25 +36,23 @@ define i8 @vr_mul_v5i8(ptr %p) {
 ; X64-LABEL: <vr_mul_v5i8>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
-; X64-NEXT:    movzx ebx, byte ptr [rdi + 0x3]
-; X64-NEXT:    movzx esi, byte ptr [rdi + 0x4]
+; X64-NEXT:    movzx esi, byte ptr [rdi + 0x3]
+; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x4]
 ; X64-NEXT:    mov edi, eax
-; X64-NEXT:    mov r8d, ecx
-; X64-NEXT:    imul edi, r8d
-; X64-NEXT:    mov r8d, edx
-; X64-NEXT:    imul edi, r8d
-; X64-NEXT:    mov r8d, ebx
-; X64-NEXT:    imul edi, r8d
-; X64-NEXT:    mov r8d, esi
-; X64-NEXT:    imul edi, r8d
+; X64-NEXT:    mov r9d, ecx
+; X64-NEXT:    imul edi, r9d
+; X64-NEXT:    mov r9d, edx
+; X64-NEXT:    imul edi, r9d
+; X64-NEXT:    mov r9d, esi
+; X64-NEXT:    imul edi, r9d
+; X64-NEXT:    mov r9d, r8d
+; X64-NEXT:    imul edi, r9d
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -415,25 +413,23 @@ define i16 @vr_mul_v5i16(ptr %p) {
 ; X64-LABEL: <vr_mul_v5i16>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    movzx eax, word ptr [rdi]
 ; X64-NEXT:    movzx ecx, word ptr [rdi + 0x2]
 ; X64-NEXT:    movzx edx, word ptr [rdi + 0x4]
-; X64-NEXT:    movzx ebx, word ptr [rdi + 0x6]
-; X64-NEXT:    movzx esi, word ptr [rdi + 0x8]
+; X64-NEXT:    movzx esi, word ptr [rdi + 0x6]
+; X64-NEXT:    movzx r8d, word ptr [rdi + 0x8]
 ; X64-NEXT:    mov edi, eax
-; X64-NEXT:    mov r8d, ecx
-; X64-NEXT:    imul edi, r8d
-; X64-NEXT:    mov r8d, edx
-; X64-NEXT:    imul edi, r8d
-; X64-NEXT:    mov r8d, ebx
-; X64-NEXT:    imul edi, r8d
-; X64-NEXT:    mov r8d, esi
-; X64-NEXT:    imul edi, r8d
+; X64-NEXT:    mov r9d, ecx
+; X64-NEXT:    imul edi, r9d
+; X64-NEXT:    mov r9d, edx
+; X64-NEXT:    imul edi, r9d
+; X64-NEXT:    mov r9d, esi
+; X64-NEXT:    imul edi, r9d
+; X64-NEXT:    mov r9d, r8d
+; X64-NEXT:    imul edi, r9d
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -682,25 +678,23 @@ define i32 @vr_mul_v5i32(ptr %p) {
 ; X64-LABEL: <vr_mul_v5i32>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
-; X64-NEXT:    mov ebx, dword ptr [rdi + 0xc]
-; X64-NEXT:    mov esi, dword ptr [rdi + 0x10]
+; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
+; X64-NEXT:    mov r8d, dword ptr [rdi + 0x10]
 ; X64-NEXT:    mov edi, eax
-; X64-NEXT:    mov r8d, ecx
-; X64-NEXT:    imul edi, r8d
-; X64-NEXT:    mov r8d, edx
-; X64-NEXT:    imul edi, r8d
-; X64-NEXT:    mov r8d, ebx
-; X64-NEXT:    imul edi, r8d
-; X64-NEXT:    mov r8d, esi
-; X64-NEXT:    imul edi, r8d
+; X64-NEXT:    mov r9d, ecx
+; X64-NEXT:    imul edi, r9d
+; X64-NEXT:    mov r9d, edx
+; X64-NEXT:    imul edi, r9d
+; X64-NEXT:    mov r9d, esi
+; X64-NEXT:    imul edi, r9d
+; X64-NEXT:    mov r9d, r8d
+; X64-NEXT:    imul edi, r9d
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -853,25 +847,23 @@ define i64 @vr_mul_v5i64(ptr %p) {
 ; X64-LABEL: <vr_mul_v5i64>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
 ; X64-NEXT:    mov rdx, qword ptr [rdi + 0x10]
-; X64-NEXT:    mov rbx, qword ptr [rdi + 0x18]
-; X64-NEXT:    mov rsi, qword ptr [rdi + 0x20]
+; X64-NEXT:    mov rsi, qword ptr [rdi + 0x18]
+; X64-NEXT:    mov r8, qword ptr [rdi + 0x20]
 ; X64-NEXT:    mov rdi, rax
-; X64-NEXT:    mov r8, rcx
-; X64-NEXT:    imul rdi, r8
-; X64-NEXT:    mov r8, rdx
-; X64-NEXT:    imul rdi, r8
-; X64-NEXT:    mov r8, rbx
-; X64-NEXT:    imul rdi, r8
-; X64-NEXT:    mov r8, rsi
-; X64-NEXT:    imul rdi, r8
+; X64-NEXT:    mov r9, rcx
+; X64-NEXT:    imul rdi, r9
+; X64-NEXT:    mov r9, rdx
+; X64-NEXT:    imul rdi, r9
+; X64-NEXT:    mov r9, rsi
+; X64-NEXT:    imul rdi, r9
+; X64-NEXT:    mov r9, r8
+; X64-NEXT:    imul rdi, r9
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
