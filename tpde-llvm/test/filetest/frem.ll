@@ -211,9 +211,8 @@ define float @frem_f32_no_salvage_imm(float %0) {
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fmodf-0x4
-; X64-NEXT:    movd dword ptr [rbp - 0x30], xmm0
+; X64-NEXT:    movapd xmm1, xmm0
 ; X64-NEXT:    movd xmm0, dword ptr [rbp - 0x2c]
-; X64-NEXT:    movd xmm1, dword ptr [rbp - 0x30]
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    call <L1>
 ; X64-NEXT:     R_X86_64_PLT32 fmodf-0x4
@@ -230,10 +229,9 @@ define float @frem_f32_no_salvage_imm(float %0) {
 ; ARM64-NEXT:    fmov s1, #1.00000000
 ; ARM64-NEXT:    bl 0x208 <frem_f32_no_salvage_imm+0x18>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fmodf
-; ARM64-NEXT:    str s0, [x29, #0xa4]
+; ARM64-NEXT:    mov v1.16b, v0.16b
 ; ARM64-NEXT:    ldr s0, [x29, #0xa0]
-; ARM64-NEXT:    ldr s1, [x29, #0xa4]
-; ARM64-NEXT:    bl 0x218 <frem_f32_no_salvage_imm+0x28>
+; ARM64-NEXT:    bl 0x214 <frem_f32_no_salvage_imm+0x24>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fmodf
 ; ARM64-NEXT:    ldp x29, x30, [sp]
 ; ARM64-NEXT:    add sp, sp, #0xb0
@@ -255,9 +253,8 @@ define float @frem_f32_no_salvage_reg(float %0, float %1) {
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fmodf-0x4
-; X64-NEXT:    movd dword ptr [rbp - 0x30], xmm0
+; X64-NEXT:    movapd xmm1, xmm0
 ; X64-NEXT:    movd xmm0, dword ptr [rbp - 0x2c]
-; X64-NEXT:    movd xmm1, dword ptr [rbp - 0x30]
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    call <L1>
 ; X64-NEXT:     R_X86_64_PLT32 fmodf-0x4
@@ -273,10 +270,9 @@ define float @frem_f32_no_salvage_reg(float %0, float %1) {
 ; ARM64-NEXT:    str s0, [x29, #0xa0]
 ; ARM64-NEXT:    bl 0x264 <frem_f32_no_salvage_reg+0x14>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fmodf
-; ARM64-NEXT:    str s0, [x29, #0xa4]
+; ARM64-NEXT:    mov v1.16b, v0.16b
 ; ARM64-NEXT:    ldr s0, [x29, #0xa0]
-; ARM64-NEXT:    ldr s1, [x29, #0xa4]
-; ARM64-NEXT:    bl 0x274 <frem_f32_no_salvage_reg+0x24>
+; ARM64-NEXT:    bl 0x270 <frem_f32_no_salvage_reg+0x20>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fmodf
 ; ARM64-NEXT:    ldp x29, x30, [sp]
 ; ARM64-NEXT:    add sp, sp, #0xb0
@@ -291,7 +287,7 @@ define double @frem_f64_no_salvage_imm(double %0) {
 ; X64-LABEL: <frem_f64_no_salvage_imm>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    sub rsp, 0x40
+; X64-NEXT:    sub rsp, 0x30
 ; X64-NEXT:    nop word ptr [rax + rax]
 ; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    movq qword ptr [rbp - 0x30], xmm0
@@ -300,13 +296,12 @@ define double @frem_f64_no_salvage_imm(double %0) {
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fmod-0x4
-; X64-NEXT:    movq qword ptr [rbp - 0x38], xmm0
+; X64-NEXT:    movapd xmm1, xmm0
 ; X64-NEXT:    movq xmm0, qword ptr [rbp - 0x30]
-; X64-NEXT:    movq xmm1, qword ptr [rbp - 0x38]
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    call <L1>
 ; X64-NEXT:     R_X86_64_PLT32 fmod-0x4
-; X64-NEXT:    add rsp, 0x40
+; X64-NEXT:    add rsp, 0x30
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -317,12 +312,11 @@ define double @frem_f64_no_salvage_imm(double %0) {
 ; ARM64-NEXT:    nop
 ; ARM64-NEXT:    str d0, [x29, #0xa0]
 ; ARM64-NEXT:    fmov d1, #1.00000000
-; ARM64-NEXT:    bl 0x2c8 <frem_f64_no_salvage_imm+0x18>
+; ARM64-NEXT:    bl 0x2b8 <frem_f64_no_salvage_imm+0x18>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fmod
-; ARM64-NEXT:    str d0, [x29, #0xa8]
+; ARM64-NEXT:    mov v1.16b, v0.16b
 ; ARM64-NEXT:    ldr d0, [x29, #0xa0]
-; ARM64-NEXT:    ldr d1, [x29, #0xa8]
-; ARM64-NEXT:    bl 0x2d8 <frem_f64_no_salvage_imm+0x28>
+; ARM64-NEXT:    bl 0x2c4 <frem_f64_no_salvage_imm+0x24>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fmod
 ; ARM64-NEXT:    ldp x29, x30, [sp]
 ; ARM64-NEXT:    add sp, sp, #0xb0
@@ -337,20 +331,19 @@ define double @frem_f64_no_salvage_reg(double %0, double %1) {
 ; X64-LABEL: <frem_f64_no_salvage_reg>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    sub rsp, 0x40
+; X64-NEXT:    sub rsp, 0x30
 ; X64-NEXT:    nop word ptr [rax + rax]
 ; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    movq qword ptr [rbp - 0x30], xmm0
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fmod-0x4
-; X64-NEXT:    movq qword ptr [rbp - 0x38], xmm0
+; X64-NEXT:    movapd xmm1, xmm0
 ; X64-NEXT:    movq xmm0, qword ptr [rbp - 0x30]
-; X64-NEXT:    movq xmm1, qword ptr [rbp - 0x38]
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    call <L1>
 ; X64-NEXT:     R_X86_64_PLT32 fmod-0x4
-; X64-NEXT:    add rsp, 0x40
+; X64-NEXT:    add rsp, 0x30
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -360,12 +353,11 @@ define double @frem_f64_no_salvage_reg(double %0, double %1) {
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    nop
 ; ARM64-NEXT:    str d0, [x29, #0xa0]
-; ARM64-NEXT:    bl 0x324 <frem_f64_no_salvage_reg+0x14>
+; ARM64-NEXT:    bl 0x314 <frem_f64_no_salvage_reg+0x14>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fmod
-; ARM64-NEXT:    str d0, [x29, #0xa8]
+; ARM64-NEXT:    mov v1.16b, v0.16b
 ; ARM64-NEXT:    ldr d0, [x29, #0xa0]
-; ARM64-NEXT:    ldr d1, [x29, #0xa8]
-; ARM64-NEXT:    bl 0x334 <frem_f64_no_salvage_reg+0x24>
+; ARM64-NEXT:    bl 0x320 <frem_f64_no_salvage_reg+0x20>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fmod
 ; ARM64-NEXT:    ldp x29, x30, [sp]
 ; ARM64-NEXT:    add sp, sp, #0xb0
