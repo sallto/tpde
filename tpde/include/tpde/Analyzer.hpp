@@ -37,6 +37,8 @@ namespace tpde {
         std::unordered_set<ValLocalIdx> values_;
         u32 used_gp_regs_ = 0;
         u32 used_fp_regs_ = 0;
+        u32 result_gp_regs_ = 0;
+        u32 result_fp_regs_ = 0;
         std::unordered_map<ValLocalIdx, std::array<u8, 2> > &val_parts_map_;
         Adaptor *adaptor_;
 
@@ -87,6 +89,8 @@ namespace tpde {
             values_.clear();
             used_gp_regs_ = 0;
             used_fp_regs_ = 0;
+            result_gp_regs_ = 0;
+            result_fp_regs_ = 0;
         }
 
         /// Replace the working set with a new set of values.
@@ -105,14 +109,23 @@ namespace tpde {
         /// Get the current register usage.
         u32 used_gp_regs() const { return used_gp_regs_; }
         u32 used_fp_regs() const { return used_fp_regs_; }
+        u32 used_gp_regs(bool include_results) const {
+            return used_gp_regs_ + (include_results ? result_gp_regs_ : 0);
+        }
+        u32 used_fp_regs(bool include_results) const {
+            return used_fp_regs_ + (include_results ? result_fp_regs_ : 0);
+        }
 
         /// Check if there's capacity for additional registers.
         bool has_capacity_for(u32 additional_gp_regs,
                               u32 additional_fp_regs,
                               u32 total_gp_capacity,
-                              u32 total_fp_capacity) const {
-            return used_gp_regs_ + additional_gp_regs <= total_gp_capacity &&
-                   used_fp_regs_ + additional_fp_regs <= total_fp_capacity;
+                              u32 total_fp_capacity,
+                              bool include_results) const {
+            const u32 gp_regs = used_gp_regs_ + (include_results ? result_gp_regs_ : 0);
+            const u32 fp_regs = used_fp_regs_ + (include_results ? result_fp_regs_ : 0);
+            return gp_regs + additional_gp_regs <= total_gp_capacity &&
+                   fp_regs + additional_fp_regs <= total_fp_capacity;
         }
 
         /// Check if a specific value can fit.
@@ -172,6 +185,41 @@ namespace tpde {
             return insert(val_idx);
         }
 
+        /// Insert a result value into the working set without increasing used regs.
+        /// Returns true if the value was newly inserted.
+        bool insert_as_result(IRValueRef value) {
+            ValLocalIdx val_idx = adaptor_->val_local_idx(value);
+            if (!has_parts_cached(val_idx)) {
+                std::array<u8, 2> parts = {0u, 0u};
+                const auto value_parts = adaptor_->val_parts(value);
+                for (u32 i = 0; i < value_parts.count(); ++i) {
+                    const u8 bank_id = value_parts.reg_bank(i).id();
+                    if (bank_id < parts.size()) {
+                        ++parts[bank_id];
+                    }
+                }
+                ensure_parts_cached(val_idx, parts);
+            }
+
+            const auto [it, inserted] = values_.insert(val_idx);
+            if (inserted) {
+                const auto parts_it = val_parts_map_.find(val_idx);
+                assert(parts_it != val_parts_map_.end() &&
+                    "Value not found in parts map");
+                result_gp_regs_ += parts_it->second[0];
+                result_fp_regs_ += parts_it->second[1];
+            }
+            return inserted;
+        }
+
+        /// Commit result register usage into the main counters.
+        void commit_result_regs() {
+            used_gp_regs_ += result_gp_regs_;
+            used_fp_regs_ += result_fp_regs_;
+            result_gp_regs_ = 0;
+            result_fp_regs_ = 0;
+        }
+
         /// Iteration support (const).
         auto begin() const { return values_.begin(); }
         auto end() const { return values_.end(); }
@@ -185,6 +233,8 @@ namespace tpde {
         void recalculate_used_regs() {
             used_gp_regs_ = 0;
             used_fp_regs_ = 0;
+            result_gp_regs_ = 0;
+            result_fp_regs_ = 0;
             for (const auto val_idx: values_) {
                 const auto parts_it = val_parts_map_.find(val_idx);
                 assert(parts_it != val_parts_map_.end() &&
@@ -1989,7 +2039,7 @@ namespace tpde {
                     // limits. Iterating through results could be expensive, so we wan't to
                     // avoid iterating it twice. Results have a current_use of 0 so they
                     // will not be spilled.
-                    working_set.insert_value(result);
+                    working_set.insert_as_result(result);
 
                     const auto val_idx = adaptor->val_local_idx(result);
                     const auto parts = working_set.num_parts(val_idx);
@@ -2011,7 +2061,9 @@ namespace tpde {
                 if (working_set.has_capacity_for(0,
                                                  0,
                                                  capacity_after_instr_gp,
-                                                 capacity_after_instr_fp)) {
+                                                 capacity_after_instr_fp,
+                                                 true)) {
+                    working_set.commit_result_regs();
                     ++idx;
                     continue;
                 }
@@ -2047,14 +2099,17 @@ namespace tpde {
                 if (working_set.has_capacity_for(0,
                                                  0,
                                                  capacity_after_instr_gp,
-                                                 capacity_after_instr_fp)) {
+                                                 capacity_after_instr_fp,
+                                                 true)) {
+                    working_set.commit_result_regs();
                     ++idx;
                     continue;
                 }
 
                 // we are limited by the results.
                 if (working_set.has_capacity_for(0, 0, capacity_after_instr_gp + num_result_regs[0],
-                                                 capacity_after_instr_fp + num_result_regs[1])) {
+                                                 capacity_after_instr_fp + num_result_regs[1],
+                                                 true)) {
                     // sort by next use instead of current use since we have enough space
                     // for all the operands and we might be able to evict a operand for a
                     // result.
@@ -2096,7 +2151,8 @@ namespace tpde {
                     if (!working_set.has_capacity_for(num_result_regs[0],
                                                       num_result_regs[1],
                                                       capacity_after_instr_gp,
-                                                      capacity_after_instr_fp)) {
+                                                      capacity_after_instr_fp,
+                                                      true)) {
                         TPDE_LOG_TRACE("Second limit pass for instruction {}", idx);
 
                         // todo(salto): we could check if we can evict the next values of
@@ -2117,6 +2173,7 @@ namespace tpde {
                               true);
                     }
                 }
+                working_set.commit_result_regs();
                 ++idx;
             }
             for (const auto val_idx: working_set) {
@@ -2147,12 +2204,12 @@ namespace tpde {
         WorkingSetTracker<Adaptor> &working_set,
         bool after_instr) {
       // Calculate how many registers need to be freed
-      u32 gp_to_free = working_set.used_gp_regs() > NUM_GP_REGS
-                           ? (working_set.used_gp_regs() - NUM_GP_REGS)
-                           : 0;
-      u32 fp_to_free = working_set.used_fp_regs() > NUM_FP_REGS
-                           ? (working_set.used_fp_regs() - NUM_FP_REGS)
-                           : 0;
+      const u32 used_gp_regs = working_set.used_gp_regs(true);
+      const u32 used_fp_regs = working_set.used_fp_regs(true);
+      u32 gp_to_free = used_gp_regs > NUM_GP_REGS ? (used_gp_regs - NUM_GP_REGS)
+                                                  : 0;
+      u32 fp_to_free = used_fp_regs > NUM_FP_REGS ? (used_fp_regs - NUM_FP_REGS)
+                                                  : 0;
 
       if (gp_to_free == 0 && fp_to_free == 0) {
         return; // Already within capacity
@@ -2250,8 +2307,8 @@ namespace tpde {
       if (gp_limited || fp_limited) {
         spill_pass(gp_to_free, fp_to_free, true);
         if ((gp_to_free > 0 || fp_to_free > 0) &&
-            (working_set.used_gp_regs() > NUM_GP_REGS ||
-             working_set.used_fp_regs() > NUM_FP_REGS)) [[unlikely]] {
+            (working_set.used_gp_regs(true) > NUM_GP_REGS ||
+             working_set.used_fp_regs(true) > NUM_FP_REGS)) [[unlikely]] {
           spill_pass(gp_to_free, fp_to_free, false);
         }
         return;
