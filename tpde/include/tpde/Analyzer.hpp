@@ -117,15 +117,12 @@ namespace tpde {
         }
 
         /// Check if there's capacity for additional registers.
-        bool has_capacity_for(u32 additional_gp_regs,
-                              u32 additional_fp_regs,
-                              u32 total_gp_capacity,
-                              u32 total_fp_capacity,
-                              bool include_results) const {
+        bool fits_into(u32 total_gp_capacity,
+                       u32 total_fp_capacity,
+                       bool include_results) const {
             const u32 gp_regs = used_gp_regs_ + (include_results ? result_gp_regs_ : 0);
             const u32 fp_regs = used_fp_regs_ + (include_results ? result_fp_regs_ : 0);
-            return gp_regs + additional_gp_regs <= total_gp_capacity &&
-                   fp_regs + additional_fp_regs <= total_fp_capacity;
+            return gp_regs <= total_gp_capacity && fp_regs <= total_fp_capacity;
         }
 
         /// Check if a specific value can fit.
@@ -2054,11 +2051,9 @@ namespace tpde {
                 const u32 capacity_after_instr_fp =
                         NUM_FP_REGS - static_cast<u32>(has_call) * (NUM_CALLER_SAVED_FP - num_result_regs[1]);
                 // we still have enough registers for both results and operands at the same time, no spills needed
-                if (working_set.has_capacity_for(0,
-                                                 0,
-                                                 capacity_after_instr_gp,
-                                                 capacity_after_instr_fp,
-                                                 true)) {
+                if (working_set.fits_into(capacity_after_instr_gp,
+                                          capacity_after_instr_fp,
+                                          true)) {
                     working_set.commit_result_regs();
                     ++idx;
                     continue;
@@ -2092,20 +2087,18 @@ namespace tpde {
                 }
                 // Evicting dead values was enough to free up registers, avoid more
                 // expensive spill calculation.
-                if (working_set.has_capacity_for(0,
-                                                 0,
-                                                 capacity_after_instr_gp,
-                                                 capacity_after_instr_fp,
-                                                 true)) {
+                if (working_set.fits_into(capacity_after_instr_gp,
+                                          capacity_after_instr_fp,
+                                          true)) {
                     working_set.commit_result_regs();
                     ++idx;
                     continue;
                 }
 
                 // we are limited by the results.
-                if (working_set.has_capacity_for(0, 0, capacity_after_instr_gp ,
-                                                 capacity_after_instr_fp,
-                                                 false)) {
+                if (working_set.fits_into(capacity_after_instr_gp,
+                                          capacity_after_instr_fp,
+                                          false)) {
                     // sort by next use instead of current use since we have enough space
                     // for all the operands and we might be able to evict a operand for a
                     // result.
@@ -2144,11 +2137,9 @@ namespace tpde {
                           false);
                     // in the same instruction we are limited both by the results and the
                     // operands todo(salto): check how often this happens.
-                    if (!working_set.has_capacity_for(0,
-                                                      0,
-                                                      capacity_after_instr_gp,
-                                                      capacity_after_instr_fp,
-                                                      true)) {
+                    if (!working_set.fits_into(capacity_after_instr_gp,
+                                               capacity_after_instr_fp,
+                                               true)) {
                         TPDE_LOG_TRACE("Second limit pass for instruction {}", idx);
 
                         // todo(salto): we could check if we can evict the next values of
