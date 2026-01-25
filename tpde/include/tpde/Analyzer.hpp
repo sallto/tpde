@@ -2094,71 +2094,50 @@ namespace tpde {
                     ++idx;
                     continue;
                 }
+                if (!working_set.fits_into(capacity_after_instr_gp,
+                                           capacity_after_instr_fp,
+                                           false)) {
+                  // sort by current use since we need space for operands
+                  std::sort(W_next_uses.begin(),
+                            W_next_uses.end(),
+                            [](const auto &a, const auto &b) {
+                              // todo(salto): maybe prefer spilling values with
+                              // more parts? todo(salto): evaluate if more
+                              // expensive sort is worth it
+
+                              return (a.current_use == b.current_use)
+                                         ? (a.next_use > b.next_use)
+                                         : a.current_use > b.current_use;
+                            });
+                  limit(W_next_uses,
+                        capacity_after_instr_gp + num_result_regs[0],
+                        capacity_after_instr_fp + num_result_regs[1],
+                        idx,
+                        working_set,
+                        false);
+                }
 
                 // we are limited by the results.
-                if (working_set.fits_into(capacity_after_instr_gp,
-                                          capacity_after_instr_fp,
-                                          false)) {
-                    // sort by next use instead of current use since we have enough space
-                    // for all the operands and we might be able to evict a operand for a
-                    // result.
-                    // we try to avoid 2 sorts as much as possible.
-                    std::sort(W_next_uses.begin(),
-                              W_next_uses.end(),
-                              [](const auto &a, const auto &b) {
-                                  // todo(salto): maybe prefer spilling values with more
-                                  // parts?
-                                  return a.next_use > b.next_use;
-                              });
-                    limit(W_next_uses,
-                          capacity_after_instr_gp,
-                          capacity_after_instr_fp,
-                          idx,
-                          working_set,
-                          true);
-
-                } else {
-                    // sort by current use since we need space for operands
-                    std::sort(W_next_uses.begin(),
-                              W_next_uses.end(),
-                              [](const auto &a, const auto &b) {
-                                  // todo(salto): maybe prefer spilling values with more
-                                  // parts?
-                                  // todo(salto): evaluate if more expensive sort is worth it
-                                  return (a.current_use == b.current_use)
-                                             ? (a.next_use > b.next_use)
-                                             : a.current_use > b.current_use;
-                              });
-                    limit(W_next_uses,
-                          capacity_after_instr_gp + num_result_regs[0],
-                          capacity_after_instr_fp + num_result_regs[1],
-                          idx,
-                          working_set,
-                          false);
-                    // in the same instruction we are limited both by the results and the
-                    // operands todo(salto): check how often this happens.
-                    if (!working_set.fits_into(capacity_after_instr_gp,
-                                               capacity_after_instr_fp,
-                                               true)) {
-                        TPDE_LOG_TRACE("Second limit pass for instruction {}", idx);
-
-                        // todo(salto): we could check if we can evict the next values of
-                        // W_next_uses and if so we can avoid the second sort.
-
-                        std::sort(W_next_uses.begin(),
-                                  W_next_uses.end(),
-                                  [](const auto &a, const auto &b) {
-                                      // todo(salto): maybe prefer spilling values with more
-                                      // parts?
-                                      return a.next_use > b.next_use;
-                                  });
-                        limit(W_next_uses,
-                              capacity_after_instr_gp,
-                              capacity_after_instr_fp,
-                              idx,
-                              working_set,
-                              true);
-                    }
+                if (!working_set.fits_into(capacity_after_instr_gp,
+                                           capacity_after_instr_fp,
+                                           true)) {
+                  // sort by next use instead of current use since we have
+                  // enough space for all the operands and we might be able to
+                  // evict a operand for a result. we try to avoid 2 sorts as
+                  // much as possible.
+                  std::sort(W_next_uses.begin(),
+                            W_next_uses.end(),
+                            [](const auto &a, const auto &b) {
+                              // todo(salto): maybe prefer spilling values with
+                              // more parts?
+                              return a.next_use > b.next_use;
+                            });
+                  limit(W_next_uses,
+                        capacity_after_instr_gp,
+                        capacity_after_instr_fp,
+                        idx,
+                        working_set,
+                        true);
                 }
                 working_set.commit_result_regs();
                 ++idx;
