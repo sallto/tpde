@@ -14,8 +14,7 @@ define void @lshr_v1i8(ptr %p, ptr %q) {
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rsi]
 ; X64-NEXT:    movzx eax, al
-; X64-NEXT:    mov byte ptr [rbp - 0x29], cl
-; X64-NEXT:    movzx edx, byte ptr [rbp - 0x29]
+; X64-NEXT:    mov edx, ecx
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    shr eax, cl
 ; X64-NEXT:    mov byte ptr [rdi], al
@@ -85,36 +84,34 @@ define void @lshr_v5i8(ptr %p, ptr %q) {
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
-; X64-NEXT:    movzx ebx, byte ptr [rdi + 0x3]
-; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x4]
-; X64-NEXT:    movzx r9d, byte ptr [rsi]
-; X64-NEXT:    movzx r10d, byte ptr [rsi + 0x1]
-; X64-NEXT:    movzx r11d, byte ptr [rsi + 0x2]
+; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x3]
+; X64-NEXT:    movzx r9d, byte ptr [rdi + 0x4]
+; X64-NEXT:    movzx r10d, byte ptr [rsi]
+; X64-NEXT:    movzx r11d, byte ptr [rsi + 0x1]
+; X64-NEXT:    movzx ebx, byte ptr [rsi + 0x2]
 ; X64-NEXT:    movzx r12d, byte ptr [rsi + 0x3]
 ; X64-NEXT:    movzx r13d, byte ptr [rsi + 0x4]
 ; X64-NEXT:    movzx eax, al
-; X64-NEXT:    mov byte ptr [rbp - 0x2f], cl
-; X64-NEXT:    mov ecx, r9d
-; X64-NEXT:    shr eax, cl
-; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x2f]
-; X64-NEXT:    movzx ecx, cl
-; X64-NEXT:    mov rsi, rcx
+; X64-NEXT:    mov esi, ecx
 ; X64-NEXT:    mov ecx, r10d
+; X64-NEXT:    shr eax, cl
+; X64-NEXT:    movzx esi, sil
+; X64-NEXT:    mov ecx, r11d
 ; X64-NEXT:    shr esi, cl
 ; X64-NEXT:    movzx edx, dl
-; X64-NEXT:    mov ecx, r11d
+; X64-NEXT:    mov ecx, ebx
 ; X64-NEXT:    shr edx, cl
-; X64-NEXT:    movzx ebx, bl
-; X64-NEXT:    mov ecx, r12d
-; X64-NEXT:    shr ebx, cl
 ; X64-NEXT:    movzx r8d, r8b
-; X64-NEXT:    mov ecx, r13d
+; X64-NEXT:    mov ecx, r12d
 ; X64-NEXT:    shr r8d, cl
+; X64-NEXT:    movzx r9d, r9b
+; X64-NEXT:    mov ecx, r13d
+; X64-NEXT:    shr r9d, cl
 ; X64-NEXT:    mov byte ptr [rdi], al
 ; X64-NEXT:    mov byte ptr [rdi + 0x1], sil
 ; X64-NEXT:    mov byte ptr [rdi + 0x2], dl
-; X64-NEXT:    mov byte ptr [rdi + 0x3], bl
-; X64-NEXT:    mov byte ptr [rdi + 0x4], r8b
+; X64-NEXT:    mov byte ptr [rdi + 0x3], r8b
+; X64-NEXT:    mov byte ptr [rdi + 0x4], r9b
 ; X64-NEXT:    pop r13
 ; X64-NEXT:    pop r12
 ; X64-NEXT:    pop rbx
@@ -165,30 +162,28 @@ define void @lshr_v5i8_3(ptr %p) {
 ; X64-LABEL: <lshr_v5i8_3>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
-; X64-NEXT:    movzx ebx, byte ptr [rdi + 0x3]
-; X64-NEXT:    movzx esi, byte ptr [rdi + 0x4]
+; X64-NEXT:    movzx esi, byte ptr [rdi + 0x3]
+; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x4]
 ; X64-NEXT:    movzx eax, al
 ; X64-NEXT:    shr eax, 0x3
 ; X64-NEXT:    movzx ecx, cl
 ; X64-NEXT:    shr ecx, 0x3
 ; X64-NEXT:    movzx edx, dl
 ; X64-NEXT:    shr edx, 0x3
-; X64-NEXT:    movzx ebx, bl
-; X64-NEXT:    shr ebx, 0x3
 ; X64-NEXT:    movzx esi, sil
 ; X64-NEXT:    shr esi, 0x3
+; X64-NEXT:    movzx r8d, r8b
+; X64-NEXT:    shr r8d, 0x3
 ; X64-NEXT:    mov byte ptr [rdi], al
 ; X64-NEXT:    mov byte ptr [rdi + 0x1], cl
 ; X64-NEXT:    mov byte ptr [rdi + 0x2], dl
-; X64-NEXT:    mov byte ptr [rdi + 0x3], bl
-; X64-NEXT:    mov byte ptr [rdi + 0x4], sil
-; X64-NEXT:    pop rbx
+; X64-NEXT:    mov byte ptr [rdi + 0x3], sil
+; X64-NEXT:    mov byte ptr [rdi + 0x4], r8b
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
