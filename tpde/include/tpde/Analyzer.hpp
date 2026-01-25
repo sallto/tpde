@@ -1995,15 +1995,20 @@ namespace tpde {
                 }
                 //todo(salto): check wether if with [[unlikely]] has better performance
                 const bool has_call = adaptor->inst_has_call(inst);
-                const u32 current_capacity_gp =
-                    NUM_GP_REGS - static_cast<u32>(has_call) * NUM_CALLER_SAVED_GP;
-                const u32 current_capacity_fp =
-                    NUM_FP_REGS - static_cast<u32>(has_call) * NUM_CALLER_SAVED_FP;
-                // we still have enough registers for both results and operands, no spills needed
-                if (working_set.has_capacity_for(num_result_regs[0],
-                                                 num_result_regs[1],
-                                                 current_capacity_gp,
-                                                 current_capacity_fp)) {
+                // capacity after is lower for calls due to caller-saved registers. But the call results are already in the registers automatically.
+                const u32 capacity_after_instr_gp =
+                        NUM_GP_REGS - static_cast<u32>(has_call) * (NUM_CALLER_SAVED_GP - num_result_regs[0]);
+                const u32 capacity_after_instr_fp =
+                        NUM_FP_REGS - static_cast<u32>(has_call) * (NUM_CALLER_SAVED_FP - num_result_regs[1]);
+                const u32 capacity_before_instr_gp =
+                        NUM_GP_REGS;
+                const u32 capacity_before_instr_fp =
+                        NUM_FP_REGS;
+                // we still have enough registers for both results and operands at the same time, no spills needed
+                if (working_set.has_capacity_for(0,
+                                                 0,
+                                                 capacity_after_instr_gp,
+                                                 capacity_after_instr_fp)) {
                     ++idx;
                     continue;
                 }
@@ -2036,17 +2041,17 @@ namespace tpde {
                 }
                 // Evicting dead values was enough to free up registers, avoid more
                 // expensive spill calculation.
-                if (working_set.has_capacity_for(num_result_regs[0],
-                                                 num_result_regs[1],
-                                                 current_capacity_gp,
-                                                 current_capacity_fp)) {
+                if (working_set.has_capacity_for(0,
+                                                 0,
+                                                 capacity_after_instr_gp,
+                                                 capacity_after_instr_fp)) {
                     ++idx;
                     continue;
                 }
 
                 // we are limited by the results.
-                if (working_set.used_gp_regs() <= current_capacity_gp + num_result_regs[0] &&
-                    working_set.used_fp_regs() <= current_capacity_fp + num_result_regs[1]) {
+                if (working_set.has_capacity_for(0, 0, capacity_before_instr_gp + num_result_regs[0],
+                                                 capacity_before_instr_fp + num_result_regs[1])) {
                     // sort by next use instead of current use since we have enough space
                     // for all the operands and we might be able to evict a operand for a
                     // result.
@@ -2059,8 +2064,8 @@ namespace tpde {
                                   return std::get < 2 > (a) > std::get < 2 > (b);
                               });
                     limit(W_next_uses,
-                          current_capacity_gp,
-                          current_capacity_fp,
+                          capacity_after_instr_gp,
+                          capacity_after_instr_fp,
                           idx,
                           working_set,
                           true);
@@ -2078,8 +2083,8 @@ namespace tpde {
                                              : std::get < 1 > (a) > std::get < 1 > (b);
                               });
                     limit(W_next_uses,
-                          current_capacity_gp,
-                          current_capacity_fp,
+                          capacity_after_instr_gp,
+                          capacity_after_instr_fp,
                           idx,
                           working_set,
                           false);
@@ -2087,8 +2092,8 @@ namespace tpde {
                     // operands todo(salto): check how often this happens.
                     if (!working_set.has_capacity_for(num_result_regs[0],
                                                       num_result_regs[1],
-                                                      current_capacity_gp,
-                                                      current_capacity_fp)) {
+                                                      capacity_after_instr_gp,
+                                                      capacity_after_instr_fp)) {
                         TPDE_LOG_TRACE("Second limit pass for instruction {}", idx);
 
                         // todo(salto): we could check if we can evict the next values of
@@ -2102,8 +2107,8 @@ namespace tpde {
                                       return std::get < 2 > (a) > std::get < 2 > (b);
                                   });
                         limit(W_next_uses,
-                              current_capacity_gp,
-                              current_capacity_fp,
+                              capacity_after_instr_gp,
+                              capacity_after_instr_fp,
                               idx,
                               working_set,
                               true);
@@ -2220,15 +2225,15 @@ namespace tpde {
                     }
                 }
 
-                TPDE_LOG_TRACE("Spilling value {} with current use {} and {} parts at "
-                               "instruction idx {}",
-                               static_cast<u32>(val_idx),
-                               current_use,
-                               static_cast<u32>(parts[0] + parts[1]),
-                               idx);
 
                 // don't spill if the value is dead after the instruction
                 if (!(after_instr && (next_use == INF))) {
+                    TPDE_LOG_TRACE("Spilling value {} with current use {} and {} parts at "
+                                   "instruction idx {}",
+                                   static_cast<u32>(val_idx),
+                                   current_use,
+                                   static_cast<u32>(parts[0] + parts[1]),
+                                   idx);
                     // todo(salto): check if already set?
                     spilled_values.mark_set(static_cast<u32>(val_idx));
                 }
