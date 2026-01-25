@@ -298,6 +298,13 @@ namespace tpde {
             u32 last;
         };
 
+        struct SpillCandidate {
+          ValLocalIdx val_idx;
+          u32 current_use;
+          u32 next_use;
+          std::array<u8, 2> parts;
+        };
+
         util::SmallVector<ValuePartsInfo, SMALL_VALUE_NUM> value_parts_cache = {};
         util::SmallVector<BlockPressure, SMALL_BLOCK_NUM> block_pressure = {};
 
@@ -430,16 +437,12 @@ namespace tpde {
 
         void compute_spills() noexcept;
 
-        void limit(
-        tpde::util::SmallVector<
-            std::tuple<tpde::ValLocalIdx, tpde::u32, tpde::u32, std::array<u8, 2> >,
-            16UL> &W_next_uses,
-
-            const tpde::u32 NUM_GP_REGS,
-            const tpde::u32 NUM_FP_REGS,
-            tpde::u32 &idx,
-            WorkingSetTracker<Adaptor> &working_set,
-            bool after_instr = false);
+        void limit(util::SmallVector<SpillCandidate, 16> &W_next_uses,
+                   const u32 NUM_GP_REGS,
+                   const u32 NUM_FP_REGS,
+                   u32 &idx,
+                   WorkingSetTracker<Adaptor> &working_set,
+                   bool after_instr = false);
     };
 
     template<IRAdaptor Adaptor, typename CompilerType>
@@ -2015,9 +2018,7 @@ namespace tpde {
                 // todo(salto): we could store dead after instr during the initial loop,
                 // then maybe we can avoid some sorts We spill the furthest next-use
                 // value. (val_idx, ,current_use,next_use, parts)
-                util::SmallVector<std::tuple<ValLocalIdx, u32, u32, std::array<u8, 2> >,
-                                      16>
-                    W_next_uses;
+                util::SmallVector<SpillCandidate, 16> W_next_uses;
                 util::SmallVector<ValLocalIdx, 16> dead_values;
                 for (const auto val_idx: working_set) {
                     const auto [current_use, next_use] = get_current_and_next_use(
@@ -2032,8 +2033,10 @@ namespace tpde {
                         // todo(salto): maybe break if we already have enough registers?
                         continue;
                     }
-                    W_next_uses.emplace_back(
-                        val_idx, current_use, next_use, working_set.num_parts(val_idx));
+                    W_next_uses.emplace_back(val_idx,
+                                             current_use,
+                                             next_use,
+                                             working_set.num_parts(val_idx));
                 }
                 // Remove dead values
                 for (const auto val_idx: dead_values) {
@@ -2061,7 +2064,7 @@ namespace tpde {
                               [](const auto &a, const auto &b) {
                                   // todo(salto): maybe prefer spilling values with more
                                   // parts?
-                                  return std::get < 2 > (a) > std::get < 2 > (b);
+                                  return a.next_use > b.next_use;
                               });
                     limit(W_next_uses,
                           capacity_after_instr_gp,
@@ -2078,9 +2081,9 @@ namespace tpde {
                                   // todo(salto): maybe prefer spilling values with more
                                   // parts?
                                   // todo(salto): evaluate if more expensive sort is worth it
-                                  return (std::get < 1 > (a) == std::get < 1 > (b))
-                                             ? (std::get < 2 > (a) > std::get < 2 > (b))
-                                             : std::get < 1 > (a) > std::get < 1 > (b);
+                                  return (a.current_use == b.current_use)
+                                             ? (a.next_use > b.next_use)
+                                             : a.current_use > b.current_use;
                               });
                     limit(W_next_uses,
                           capacity_after_instr_gp + num_result_regs[0],
@@ -2104,7 +2107,7 @@ namespace tpde {
                                   [](const auto &a, const auto &b) {
                                       // todo(salto): maybe prefer spilling values with more
                                       // parts?
-                                      return std::get < 2 > (a) > std::get < 2 > (b);
+                                      return a.next_use > b.next_use;
                                   });
                         limit(W_next_uses,
                               capacity_after_instr_gp,
@@ -2135,129 +2138,126 @@ namespace tpde {
         TPDE_LOG_TRACE("Spill Analysis completed");
     }
 
-    template<IRAdaptor Adaptor, typename CompilerType>
+    template <IRAdaptor Adaptor, typename CompilerType>
     void Analyzer<Adaptor, CompilerType>::limit(
-        tpde::util::SmallVector<
-            std::tuple<tpde::ValLocalIdx, tpde::u32, tpde::u32, std::array<u8, 2> >,
-            16UL> &W_next_uses,
-        const tpde::u32 NUM_GP_REGS,
-        const tpde::u32 NUM_FP_REGS,
-        tpde::u32 &idx,
+        util::SmallVector<SpillCandidate, 16> &W_next_uses,
+        const u32 NUM_GP_REGS,
+        const u32 NUM_FP_REGS,
+        u32 &idx,
         WorkingSetTracker<Adaptor> &working_set,
         bool after_instr) {
-        // Calculate how many registers need to be freed
-        u32 gp_to_free = working_set.used_gp_regs() > NUM_GP_REGS
-                             ? (working_set.used_gp_regs() - NUM_GP_REGS)
-                             : 0;
-        u32 fp_to_free = working_set.used_fp_regs() > NUM_FP_REGS
-                             ? (working_set.used_fp_regs() - NUM_FP_REGS)
-                             : 0;
+      // Calculate how many registers need to be freed
+      u32 gp_to_free = working_set.used_gp_regs() > NUM_GP_REGS
+                           ? (working_set.used_gp_regs() - NUM_GP_REGS)
+                           : 0;
+      u32 fp_to_free = working_set.used_fp_regs() > NUM_FP_REGS
+                           ? (working_set.used_fp_regs() - NUM_FP_REGS)
+                           : 0;
 
-        if (gp_to_free == 0 && fp_to_free == 0) {
-            return; // Already within capacity
+      if (gp_to_free == 0 && fp_to_free == 0) {
+        return; // Already within capacity
+      }
+
+      const bool gp_limited = gp_to_free > 0 && fp_to_free == 0;
+      const bool fp_limited = fp_to_free > 0 && gp_to_free == 0;
+
+      // Phase 1: Collect candidate values that could be spilled
+      // These are selected in priority order (respecting the caller's sort)
+      util::SmallVector<SpillCandidate, 16> candidates;
+      u32 total_gp_in_candidates = 0;
+      u32 total_fp_in_candidates = 0;
+
+      for (const auto &entry : W_next_uses) {
+        // we should have already evicted all dead values.
+        assert(entry.current_use != INF);
+
+        candidates.push_back(entry);
+        total_gp_in_candidates += entry.parts[0];
+        total_fp_in_candidates += entry.parts[1];
+
+        const bool enough_gp = total_gp_in_candidates >= gp_to_free;
+        const bool enough_fp = total_fp_in_candidates >= fp_to_free;
+        if ((gp_limited && enough_gp) || (fp_limited && enough_fp) ||
+            (enough_gp && enough_fp)) {
+          break;
         }
+      }
 
-        const bool gp_limited = gp_to_free > 0 && fp_to_free == 0;
-        const bool fp_limited = fp_to_free > 0 && gp_to_free == 0;
+      // Phase 2: Optimize selection if we have excess capacity
+      // mainly happens with large vectors, since we can only spill whole vector
+      // atm.
+      const u32 excess_gp = total_gp_in_candidates > gp_to_free
+                                ? total_gp_in_candidates - gp_to_free
+                                : 0;
+      const u32 excess_fp = total_fp_in_candidates > fp_to_free
+                                ? total_fp_in_candidates - fp_to_free
+                                : 0;
 
-        // Phase 1: Collect candidate values that could be spilled
-        // These are selected in priority order (respecting the caller's sort)
-        util::SmallVector<std::tuple<ValLocalIdx, u32, u32, std::array<u8, 2> >, 16>
-            candidates;
-        u32 total_gp_in_candidates = 0;
-        u32 total_fp_in_candidates = 0;
+      // If we have excess and multiple candidates, reorder by size
+      // This can reduce the number of values spilled
+      if ((excess_gp > 0 || excess_fp > 0) && candidates.size() > 1)
+          [[unlikely]] {
+        std::sort(candidates.begin(),
+                  candidates.end(),
+                  [&](const auto &a, const auto &b) {
+                    const u32 total_a = a.parts[0] + a.parts[1];
+                    const u32 total_b = b.parts[0] + b.parts[1];
+                    // Sort by num_parts (descending) - prefer spilling larger
+                    // values
+                    return total_a > total_b;
+                  });
+      }
 
-        for (const auto &entry: W_next_uses) {
-            const u32 current_use = std::get<1>(entry);
-            const auto parts = std::get<3>(entry);
-
-            // we should have already evicted all dead values.
-            assert(current_use != INF);
-
-            candidates.push_back(entry);
-            total_gp_in_candidates += parts[0];
-            total_fp_in_candidates += parts[1];
-
-            const bool enough_gp = total_gp_in_candidates >= gp_to_free;
-            const bool enough_fp = total_fp_in_candidates >= fp_to_free;
-            if ((gp_limited && enough_gp) || (fp_limited && enough_fp) ||
-                (enough_gp && enough_fp)) {
-                break;
+      auto spill_pass = [&](u32 &gp_needed, u32 &fp_needed, bool single_bank) {
+        u32 gp_freed = 0;
+        u32 fp_freed = 0;
+        for (const auto &entry : candidates) {
+          if (gp_freed >= gp_needed && fp_freed >= fp_needed) {
+            break; // Freed enough registers
+          }
+          if (single_bank) {
+            if (gp_needed > 0 && gp_freed >= gp_needed) {
+              break;
             }
-        }
-
-        // Phase 2: Optimize selection if we have excess capacity
-        // mainly happens with large vectors, since we can only spill whole vector atm.
-        const u32 excess_gp = total_gp_in_candidates > gp_to_free
-                                  ? total_gp_in_candidates - gp_to_free
-                                  : 0;
-        const u32 excess_fp = total_fp_in_candidates > fp_to_free
-                                  ? total_fp_in_candidates - fp_to_free
-                                  : 0;
-
-        // If we have excess and multiple candidates, reorder by size
-        // This can reduce the number of values spilled
-        if ((excess_gp > 0 || excess_fp > 0) && candidates.size() > 1) [[unlikely]] {
-            std::sort(candidates.begin(), candidates.end(),
-                      [&](const auto &a, const auto &b) {
-                          const auto parts_a = std::get<3>(a);
-                          const auto parts_b = std::get<3>(b);
-                          const u32 total_a = parts_a[0] + parts_a[1];
-                          const u32 total_b = parts_b[0] + parts_b[1];
-                          // Sort by num_parts (descending) - prefer spilling larger values
-                          return total_a > total_b;
-                      });
-        }
-
-        auto spill_pass = [&](u32 &gp_needed, u32 &fp_needed, bool single_bank) {
-            u32 gp_freed = 0;
-            u32 fp_freed = 0;
-            for (const auto &[val_idx, current_use, next_use, parts]: candidates) {
-                if (gp_freed >= gp_needed && fp_freed >= fp_needed) {
-                    break; // Freed enough registers
-                }
-                if (single_bank) {
-                    if (gp_needed > 0 && gp_freed >= gp_needed) {
-                        break;
-                    }
-                    if (fp_needed > 0 && fp_freed >= fp_needed) {
-                        break;
-                    }
-                }
-
-
-                // don't spill if the value is dead after the instruction
-                if (!(after_instr && (next_use == INF))) {
-                    TPDE_LOG_TRACE("Spilling value {} with current use {} and {} parts at "
-                                   "instruction idx {}",
-                                   static_cast<u32>(val_idx),
-                                   current_use,
-                                   static_cast<u32>(parts[0] + parts[1]),
-                                   idx);
-                    // todo(salto): check if already set?
-                    spilled_values.mark_set(static_cast<u32>(val_idx));
-                }
-
-                working_set.erase(val_idx);
-                gp_freed += parts[0];
-                fp_freed += parts[1];
+            if (fp_needed > 0 && fp_freed >= fp_needed) {
+              break;
             }
+          }
 
-            gp_needed = gp_freed >= gp_needed ? 0 : gp_needed - gp_freed;
-            fp_needed = fp_freed >= fp_needed ? 0 : fp_needed - fp_freed;
-        };
 
-        if (gp_limited || fp_limited) {
-            spill_pass(gp_to_free, fp_to_free, true);
-            if ((gp_to_free > 0 || fp_to_free > 0) &&
-                (working_set.used_gp_regs() > NUM_GP_REGS ||
-                 working_set.used_fp_regs() > NUM_FP_REGS)) [[unlikely]] {
-                spill_pass(gp_to_free, fp_to_free, false);
-            }
-            return;
+          // don't spill if the value is dead after the instruction
+          if (!(after_instr && (entry.next_use == INF))) {
+            TPDE_LOG_TRACE(
+                "Spilling value {} with current use {} and {} parts at "
+                "instruction idx {}",
+                static_cast<u32>(entry.val_idx),
+                entry.current_use,
+                static_cast<u32>(entry.parts[0] + entry.parts[1]),
+                idx);
+            // todo(salto): check if already set?
+            spilled_values.mark_set(static_cast<u32>(entry.val_idx));
+          }
+
+          working_set.erase(entry.val_idx);
+          gp_freed += entry.parts[0];
+          fp_freed += entry.parts[1];
         }
 
-        spill_pass(gp_to_free, fp_to_free, false);
+        gp_needed = gp_freed >= gp_needed ? 0 : gp_needed - gp_freed;
+        fp_needed = fp_freed >= fp_needed ? 0 : fp_needed - fp_freed;
+      };
+
+      if (gp_limited || fp_limited) {
+        spill_pass(gp_to_free, fp_to_free, true);
+        if ((gp_to_free > 0 || fp_to_free > 0) &&
+            (working_set.used_gp_regs() > NUM_GP_REGS ||
+             working_set.used_fp_regs() > NUM_FP_REGS)) [[unlikely]] {
+          spill_pass(gp_to_free, fp_to_free, false);
+        }
+        return;
+      }
+
+      spill_pass(gp_to_free, fp_to_free, false);
     }
 
 
