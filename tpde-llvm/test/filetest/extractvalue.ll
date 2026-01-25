@@ -466,20 +466,18 @@ define i128 @extract_i128_i1_0_no_salvage(ptr %0) {
 ; X64-LABEL: <extract_i128_i1_0_no_salvage>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x10]
-; X64-NEXT:    mov rbx, rax
-; X64-NEXT:    mov rsi, rcx
+; X64-NEXT:    mov rsi, rax
+; X64-NEXT:    mov r8, rcx
 ; X64-NEXT:    mov qword ptr [rdi], rax
 ; X64-NEXT:    mov qword ptr [rdi + 0x8], rcx
 ; X64-NEXT:    mov byte ptr [rdi + 0x10], dl
-; X64-NEXT:    mov rax, rbx
-; X64-NEXT:    mov rdx, rsi
-; X64-NEXT:    pop rbx
+; X64-NEXT:    mov rax, rsi
+; X64-NEXT:    mov rdx, r8
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -512,18 +510,16 @@ define i1 @extract_i128_i1_1_no_salvage(ptr %0) {
 ; X64-LABEL: <extract_i128_i1_1_no_salvage>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x10]
-; X64-NEXT:    mov ebx, edx
+; X64-NEXT:    mov esi, edx
 ; X64-NEXT:    mov qword ptr [rdi], rax
 ; X64-NEXT:    mov qword ptr [rdi + 0x8], rcx
 ; X64-NEXT:    mov byte ptr [rdi + 0x10], dl
-; X64-NEXT:    mov eax, ebx
-; X64-NEXT:    pop rbx
+; X64-NEXT:    mov eax, esi
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -560,26 +556,26 @@ define i64 @params({i8, {i8, i8}, i8} %s, i64, [2 x i64] %a, [2 x i64] %b) {
 ; X64-NEXT:    nop word ptr [rax + rax]
 ; X64-NEXT:    nop
 ; X64-NEXT:    mov rax, qword ptr [rbp + 0x10]
-; X64-NEXT:    mov rbx, qword ptr [rbp + 0x18]
-; X64-NEXT:    mov r8, qword ptr [rbp + 0x20]
-; X64-NEXT:    mov r10d, edi
-; X64-NEXT:    movzx r10d, r10b
-; X64-NEXT:    mov r11d, esi
+; X64-NEXT:    mov r8, qword ptr [rbp + 0x18]
+; X64-NEXT:    mov r10, qword ptr [rbp + 0x20]
+; X64-NEXT:    mov r11d, edi
+; X64-NEXT:    movzx r11d, r11b
+; X64-NEXT:    mov ebx, esi
 ; X64-NEXT:    mov r12d, edx
-; X64-NEXT:    mov r13d, r11d
+; X64-NEXT:    mov r13d, ebx
 ; X64-NEXT:    movzx r13d, r13b
 ; X64-NEXT:    movzx r12d, r12b
 ; X64-NEXT:    movzx ecx, cl
 ; X64-NEXT:    mov rdx, r9
-; X64-NEXT:    mov rsi, rbx
-; X64-NEXT:    lea r10, [r10 + r13]
-; X64-NEXT:    lea r10, [r10 + r12]
-; X64-NEXT:    lea r10, [r10 + rcx]
-; X64-NEXT:    lea r10, [r10 + rdx]
-; X64-NEXT:    lea r10, [r10 + rax]
-; X64-NEXT:    lea r10, [r10 + rsi]
-; X64-NEXT:    lea r10, [r10 + r8]
-; X64-NEXT:    mov rax, r10
+; X64-NEXT:    mov rsi, r8
+; X64-NEXT:    lea r11, [r11 + r13]
+; X64-NEXT:    lea r11, [r11 + r12]
+; X64-NEXT:    lea r11, [r11 + rcx]
+; X64-NEXT:    lea r11, [r11 + rdx]
+; X64-NEXT:    lea r11, [r11 + rax]
+; X64-NEXT:    lea r11, [r11 + rsi]
+; X64-NEXT:    lea r11, [r11 + r10]
+; X64-NEXT:    mov rax, r11
 ; X64-NEXT:    pop r13
 ; X64-NEXT:    pop r12
 ; X64-NEXT:    pop rbx
@@ -642,15 +638,13 @@ define void @extract_nested_1(ptr %p) {
 ; X64-LABEL: <extract_nested_1>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
-; X64-NEXT:    mov ebx, dword ptr [rdi + 0xc]
+; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
 ; X64-NEXT:    mov dword ptr [rdi], eax
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -677,15 +671,13 @@ define void @extract_nested_2(ptr %p) {
 ; X64-LABEL: <extract_nested_2>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
-; X64-NEXT:    mov ebx, dword ptr [rdi + 0xc]
+; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
 ; X64-NEXT:    mov dword ptr [rdi], ecx
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -712,15 +704,13 @@ define void @extract_nested_3(ptr %p) {
 ; X64-LABEL: <extract_nested_3>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
-; X64-NEXT:    mov ebx, dword ptr [rdi + 0xc]
+; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
 ; X64-NEXT:    mov dword ptr [rdi], edx
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -747,15 +737,13 @@ define void @extract_nested_4(ptr %p) {
 ; X64-LABEL: <extract_nested_4>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
-; X64-NEXT:    mov ebx, dword ptr [rdi + 0xc]
-; X64-NEXT:    mov dword ptr [rdi], ebx
-; X64-NEXT:    pop rbx
+; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
+; X64-NEXT:    mov dword ptr [rdi], esi
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -782,19 +770,17 @@ define void @extract_nested_5(ptr %p) {
 ; X64-LABEL: <extract_nested_5>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
-; X64-NEXT:    mov ebx, dword ptr [rdi + 0xc]
-; X64-NEXT:    mov esi, dword ptr [rdi + 0x10]
-; X64-NEXT:    mov r8d, dword ptr [rdi + 0x14]
-; X64-NEXT:    mov r9d, dword ptr [rdi + 0x18]
-; X64-NEXT:    mov dword ptr [rdi], esi
-; X64-NEXT:    mov dword ptr [rdi + 0x4], r8d
-; X64-NEXT:    pop rbx
+; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
+; X64-NEXT:    mov r8d, dword ptr [rdi + 0x10]
+; X64-NEXT:    mov r9d, dword ptr [rdi + 0x14]
+; X64-NEXT:    mov r10d, dword ptr [rdi + 0x18]
+; X64-NEXT:    mov dword ptr [rdi], r8d
+; X64-NEXT:    mov dword ptr [rdi + 0x4], r9d
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
