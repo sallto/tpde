@@ -2050,8 +2050,8 @@ namespace tpde {
                 }
 
                 // we are limited by the results.
-                if (working_set.has_capacity_for(0, 0, capacity_before_instr_gp + num_result_regs[0],
-                                                 capacity_before_instr_fp + num_result_regs[1])) {
+                if (working_set.has_capacity_for(0, 0, capacity_after_instr_gp + num_result_regs[0],
+                                                 capacity_after_instr_fp + num_result_regs[1])) {
                     // sort by next use instead of current use since we have enough space
                     // for all the operands and we might be able to evict a operand for a
                     // result.
@@ -2083,8 +2083,8 @@ namespace tpde {
                                              : std::get < 1 > (a) > std::get < 1 > (b);
                               });
                     limit(W_next_uses,
-                          capacity_after_instr_gp,
-                          capacity_after_instr_fp,
+                          capacity_after_instr_gp + num_result_regs[0],
+                          capacity_after_instr_fp + num_result_regs[1],
                           idx,
                           working_set,
                           false);
