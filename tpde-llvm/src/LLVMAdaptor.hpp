@@ -413,8 +413,7 @@ namespace tpde_llvm {
 
         [[nodiscard]] bool inst_has_call(const IRInstRef inst) const noexcept {
             // todo(salto): some are missing
-            return llvm::isa<llvm::CallInst, llvm::InvokeInst, llvm::FPToUIInst, llvm::FPToSIInst, llvm::UIToFPInst,
-                llvm::SIToFPInst>(inst);
+            return llvm::isa<llvm::CallInst, llvm::InvokeInst>(inst);
         }
 
         [[nodiscard]] bool

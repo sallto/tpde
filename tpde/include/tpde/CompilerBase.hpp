@@ -721,7 +721,8 @@ public:
   void free_reg(Reg reg) noexcept;
 
   /// Spill all caller-saved registers before a call that may branch. (ex. LLVMIR invoke)
-  typename RegisterFile::RegBitSet spill_caller_saved_before_call() noexcept;
+  typename RegisterFile::RegBitSet spill_caller_saved_before_call(
+    typename RegisterFile::RegBitSet call_arguments) noexcept;
 
   // TODO(ts): switch to a branch_spill_before naming style?
   typename RegisterFile::RegBitSet
@@ -1166,7 +1167,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     std::variant<SymRef, ValuePart> target) noexcept {
   assert(!compiler.stack.is_leaf_function && "leaf func must not have calls");
   compiler.stack.generated_call = true;
-  compiler.spill_caller_saved_before_call();
+  compiler.spill_caller_saved_before_call(arg_regs);
 
   // Phase 1: Update evicted sources - check if any REG_TO_* sources were
   // spilled
@@ -2300,8 +2301,8 @@ void CompilerBase<Adaptor, Derived, Config>::free_reg(Reg reg) noexcept {
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
-CompilerBase<Adaptor, Derived, Config>::spill_caller_saved_before_call()
-  noexcept {
+CompilerBase<Adaptor, Derived, Config>::spill_caller_saved_before_call(
+  typename RegisterFile::RegBitSet call_arguments) noexcept {
   using RegBitSet = typename RegisterFile::RegBitSet;
 
   assert(may_change_value_state());
@@ -2328,6 +2329,11 @@ CompilerBase<Adaptor, Derived, Config>::spill_caller_saved_before_call()
     if (!ap.register_valid()) {
       register_file.unmark_used(reg);
       spilled |= (1ull << reg_id);
+      continue;
+    }
+
+    if ((call_arguments & (1ull << reg_id)) &&
+        ap.assignment()->references_left == 1) {
       continue;
     }
 

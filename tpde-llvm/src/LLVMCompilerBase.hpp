@@ -4173,7 +4173,7 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_invoke(
   // TODO: this will also spill the call arguments even if the call kills them
   // however, spillBeforeCall already does this anyways so probably something
   // for later
-  auto spilled = this->spill_caller_saved_before_call();
+  auto spilled = this->spill_caller_saved_before_call(0);
 
   const auto off_before_call = this->text_writer.offset();
   // compile the call
