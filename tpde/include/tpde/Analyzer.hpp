@@ -1868,7 +1868,7 @@ namespace tpde {
                     }
                     // fixme(salto): multi-part, ignore_liveness?
                     working_set.insert(local_idx);
-                        free_regs -= num_parts;
+                    free_regs -= num_parts;
                 }
             } else {
                 // We need to choose which values to keep in W across the multiple incoming
