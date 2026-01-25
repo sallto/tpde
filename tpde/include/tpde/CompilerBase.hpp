@@ -1081,9 +1081,14 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       if (!ap.variable_ref()) {
         arg.frame_off = ap.frame_off();
       }
-    } else if (cca.sret) {
+    } else {
+      // var-refs and sret
       // todo(salto): test unlikely
-      //  not worth optimizing in any way
+      //  not worth optimizing
+      if (compiler.register_file.is_used(cca.reg)) {
+        compiler.evict_reg(cca.reg);
+      }
+
       vp.load_to_specific(&compiler, cca.reg);
       vp.reset(&compiler);
       return;
@@ -1161,6 +1166,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     std::variant<SymRef, ValuePart> target) noexcept {
   assert(!compiler.stack.is_leaf_function && "leaf func must not have calls");
   compiler.stack.generated_call = true;
+  compiler.spill_caller_saved_before_call();
 
   // Phase 1: Update evicted sources - check if any REG_TO_* sources were
   // spilled
