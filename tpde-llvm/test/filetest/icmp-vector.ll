@@ -5427,19 +5427,17 @@ define void @icmp_sle_v1i64(ptr %p, ptr %pa, ptr %pb) {
 ; X64-LABEL: <icmp_sle_v1i64>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov rax, qword ptr [rsi]
 ; X64-NEXT:    mov rcx, qword ptr [rdx]
 ; X64-NEXT:    mov rdx, rax
-; X64-NEXT:    mov rbx, rcx
-; X64-NEXT:    cmp rdx, rbx
+; X64-NEXT:    mov rsi, rcx
+; X64-NEXT:    cmp rdx, rsi
 ; X64-NEXT:    setle dl
-; X64-NEXT:    mov ebx, edx
-; X64-NEXT:    and ebx, 0x1
-; X64-NEXT:    mov byte ptr [rdi], bl
-; X64-NEXT:    pop rbx
+; X64-NEXT:    mov esi, edx
+; X64-NEXT:    and esi, 0x1
+; X64-NEXT:    mov byte ptr [rdi], sil
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -5475,33 +5473,33 @@ define void @icmp_sle_v3i64(ptr %p, ptr %pa, ptr %pb) {
 ; X64-NEXT:    nop word ptr [rax + rax]
 ; X64-NEXT:    mov rax, qword ptr [rsi]
 ; X64-NEXT:    mov rcx, qword ptr [rsi + 0x8]
-; X64-NEXT:    mov rbx, qword ptr [rsi + 0x10]
+; X64-NEXT:    mov r8, qword ptr [rsi + 0x10]
 ; X64-NEXT:    mov rsi, qword ptr [rdx]
-; X64-NEXT:    mov r8, qword ptr [rdx + 0x8]
-; X64-NEXT:    mov r9, qword ptr [rdx + 0x10]
+; X64-NEXT:    mov r9, qword ptr [rdx + 0x8]
+; X64-NEXT:    mov r10, qword ptr [rdx + 0x10]
 ; X64-NEXT:    mov rdx, rax
-; X64-NEXT:    mov r10, rsi
-; X64-NEXT:    cmp rdx, r10
+; X64-NEXT:    mov r11, rsi
+; X64-NEXT:    cmp rdx, r11
 ; X64-NEXT:    setle dl
-; X64-NEXT:    mov r10d, edx
-; X64-NEXT:    and r10d, 0x1
+; X64-NEXT:    mov r11d, edx
+; X64-NEXT:    and r11d, 0x1
 ; X64-NEXT:    mov rdx, rcx
-; X64-NEXT:    mov r11, r8
-; X64-NEXT:    cmp rdx, r11
+; X64-NEXT:    mov rbx, r9
+; X64-NEXT:    cmp rdx, rbx
 ; X64-NEXT:    setle dl
-; X64-NEXT:    btr r10, 0x1
-; X64-NEXT:    mov r11d, edx
-; X64-NEXT:    and r11d, 0x1
-; X64-NEXT:    lea r10, [r10 + 2*r11]
-; X64-NEXT:    mov rdx, rbx
-; X64-NEXT:    mov r11, r9
-; X64-NEXT:    cmp rdx, r11
+; X64-NEXT:    btr r11, 0x1
+; X64-NEXT:    mov ebx, edx
+; X64-NEXT:    and ebx, 0x1
+; X64-NEXT:    lea r11, [r11 + 2*rbx]
+; X64-NEXT:    mov rdx, r8
+; X64-NEXT:    mov rbx, r10
+; X64-NEXT:    cmp rdx, rbx
 ; X64-NEXT:    setle dl
-; X64-NEXT:    btr r10, 0x2
-; X64-NEXT:    mov r11d, edx
-; X64-NEXT:    and r11d, 0x1
-; X64-NEXT:    lea r10, [r10 + 4*r11]
-; X64-NEXT:    mov byte ptr [rdi], r10b
+; X64-NEXT:    btr r11, 0x2
+; X64-NEXT:    mov ebx, edx
+; X64-NEXT:    and ebx, 0x1
+; X64-NEXT:    lea r11, [r11 + 4*rbx]
+; X64-NEXT:    mov byte ptr [rdi], r11b
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
