@@ -50,23 +50,21 @@ define i1 @is_snan_double(double %p) {
 ; X64-LABEL: <is_snan_double>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    movq rcx, xmm0
 ; X64-NEXT:    movabs rdx, 0x7fffffffffffffff
 ; X64-NEXT:    and rdx, rcx
 ; X64-NEXT:    movabs rcx, 0x7ff8000000000000
 ; X64-NEXT:    cmp rdx, rcx
-; X64-NEXT:    setl bl
+; X64-NEXT:    setl sil
 ; X64-NEXT:    movabs rcx, 0x7ff0000000000000
 ; X64-NEXT:    cmp rdx, rcx
 ; X64-NEXT:    setg cl
-; X64-NEXT:    and cl, bl
+; X64-NEXT:    and cl, sil
 ; X64-NEXT:    or cl, al
 ; X64-NEXT:    mov eax, ecx
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -276,24 +274,22 @@ define i1 @is_nnorm_double(double %p) {
 ; X64-LABEL: <is_nnorm_double>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    movq rcx, xmm0
 ; X64-NEXT:    movabs rdx, 0x7fffffffffffffff
 ; X64-NEXT:    and rdx, rcx
-; X64-NEXT:    movabs rbx, -0x10000000000000
-; X64-NEXT:    add rbx, rdx
-; X64-NEXT:    shr rbx, 0x35
-; X64-NEXT:    cmp ebx, 0x3ff
+; X64-NEXT:    movabs rsi, -0x10000000000000
+; X64-NEXT:    add rsi, rdx
+; X64-NEXT:    shr rsi, 0x35
+; X64-NEXT:    cmp esi, 0x3ff
 ; X64-NEXT:    setb dl
 ; X64-NEXT:    test rcx, rcx
 ; X64-NEXT:    sets cl
 ; X64-NEXT:    and cl, dl
 ; X64-NEXT:    or cl, al
 ; X64-NEXT:    mov eax, ecx
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -364,23 +360,21 @@ define i1 @is_nsnorm_double(double %p) {
 ; X64-LABEL: <is_nsnorm_double>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    movq rcx, xmm0
 ; X64-NEXT:    movabs rdx, 0x7fffffffffffffff
 ; X64-NEXT:    and rdx, rcx
 ; X64-NEXT:    dec rdx
-; X64-NEXT:    movabs rbx, 0xfffffffffffff
-; X64-NEXT:    cmp rdx, rbx
+; X64-NEXT:    movabs rsi, 0xfffffffffffff
+; X64-NEXT:    cmp rdx, rsi
 ; X64-NEXT:    setb dl
 ; X64-NEXT:    test rcx, rcx
 ; X64-NEXT:    sets cl
 ; X64-NEXT:    and cl, dl
 ; X64-NEXT:    or cl, al
 ; X64-NEXT:    mov eax, ecx
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -651,24 +645,22 @@ define i1 @is_pnorm_double(double %p) {
 ; X64-LABEL: <is_pnorm_double>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    movq rcx, xmm0
 ; X64-NEXT:    movabs rdx, 0x7fffffffffffffff
 ; X64-NEXT:    and rdx, rcx
-; X64-NEXT:    movabs rbx, -0x10000000000000
-; X64-NEXT:    add rbx, rdx
-; X64-NEXT:    shr rbx, 0x35
-; X64-NEXT:    cmp ebx, 0x3ff
+; X64-NEXT:    movabs rsi, -0x10000000000000
+; X64-NEXT:    add rsi, rdx
+; X64-NEXT:    shr rsi, 0x35
+; X64-NEXT:    cmp esi, 0x3ff
 ; X64-NEXT:    setb dl
 ; X64-NEXT:    test rcx, rcx
 ; X64-NEXT:    setns cl
 ; X64-NEXT:    and cl, dl
 ; X64-NEXT:    or cl, al
 ; X64-NEXT:    mov eax, ecx
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -1015,20 +1007,19 @@ define i1 @is_snan_psnorm_double(double %p) {
 ; X64-LABEL: <is_snan_psnorm_double>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    movq rcx, xmm0
 ; X64-NEXT:    movabs rdx, 0x7fffffffffffffff
 ; X64-NEXT:    and rdx, rcx
 ; X64-NEXT:    movabs rcx, 0x7ff8000000000000
 ; X64-NEXT:    cmp rdx, rcx
-; X64-NEXT:    setl bl
+; X64-NEXT:    setl sil
 ; X64-NEXT:    movabs rcx, 0x7ff0000000000000
 ; X64-NEXT:    cmp rdx, rcx
 ; X64-NEXT:    setg cl
-; X64-NEXT:    and cl, bl
+; X64-NEXT:    and cl, sil
 ; X64-NEXT:    or cl, al
 ; X64-NEXT:    movq rax, xmm0
 ; X64-NEXT:    dec rax
@@ -1036,7 +1027,6 @@ define i1 @is_snan_psnorm_double(double %p) {
 ; X64-NEXT:    cmp rax, rdx
 ; X64-NEXT:    setb al
 ; X64-NEXT:    or al, cl
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
