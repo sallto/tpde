@@ -413,7 +413,13 @@ namespace tpde_llvm {
 
         [[nodiscard]] bool inst_has_call(const IRInstRef inst) const noexcept {
             // todo(salto): some are missing
-            return llvm::isa<llvm::CallInst, llvm::InvokeInst>(inst);
+            if (auto *call = llvm::dyn_cast<llvm::CallInst>(inst)) {
+                if (auto *callee = call->getCalledFunction()) {
+                    return !callee->isIntrinsic();
+                }
+                return true; // indirect call
+            }
+            return llvm::isa<llvm::InvokeInst>(inst); // invoke requires spills anyway
         }
 
         [[nodiscard]] bool
