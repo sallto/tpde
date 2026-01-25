@@ -248,7 +248,7 @@ namespace tpde {
             assert(bank == reg_file.reg_bank(reg));
             return reg;
         }
-        TPDE_LOG_INFO("Allocating new register");
+        TPDE_LOG_TRACE("Allocating new register");
         // todo(salto)
         auto [local, global] = compiler->select_reg(bank, /*exclusion_mask=*/0);
         //compiler->tree_ra_ctx->global_regs.push_back(global);

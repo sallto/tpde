@@ -1775,7 +1775,7 @@ namespace tpde {
             return {INF, INF};
         }
 
-        const util::SmallVector<u32, 32> &vec = it->second;
+        const auto &vec = it->second;
 
 #ifndef NDEBUG
         // Verify the vector is sorted (ignoring DEF_BIT) in debug builds
@@ -1881,6 +1881,8 @@ namespace tpde {
         // todo(salto): better datastructure!
         std::unordered_map<BlockIndex, std::unordered_map<ValLocalIdx, u32> >
                 W_entry_freq;
+        util::SmallVector<u32, 16> W_max_entry_freq;
+        W_max_entry_freq.resize(block_layout.size(), 0u);
 
         for (u32 i = 0; i < this->block_layout.size(); ++i) {
             // TODO(salto): Handle register arguments in entry block
@@ -1924,30 +1926,19 @@ namespace tpde {
                 // We need to choose which values to keep in W across the multiple incoming
                 // edges. prefer values that are used in many predecessors.
                 util::SmallVector<ValLocalIdx, 16> incoming_from_all;
-                util::SmallVector<ValLocalIdx, 16> incoming_from_some;
-                // todo(salto): maybe just store max_seen_freq alongside W_entry_freq?
-                u32 max_seen_freq = 0;
-                std::array<u32, 2> from_all_registers = {0u, 0u};
+                const u32 max_seen_freq =
+                    W_max_entry_freq[static_cast<u32>(block_idx(block))];
+                std::array<u8, 2> from_all_registers = {0u, 0u};
                 for (const auto [val_idx, freq]: W_entry_freq[block_idx(block)]) {
-                    // todo(salto): loop headers
-                    if (freq > max_seen_freq) {
-                        max_seen_freq = freq;
-                        for (const auto old_val_idx: incoming_from_all) {
-                            incoming_from_some.push_back(old_val_idx);
-                        }
-                        const auto parts = working_set.num_parts(val_idx);
-                        from_all_registers = {parts[0], parts[1]};
-                        incoming_from_all.clear();
-                        incoming_from_all.push_back(val_idx);
-                    } else if (freq == max_seen_freq) {
+                  if (freq != max_seen_freq) {
+                    continue;
+                  }
                         incoming_from_all.push_back(val_idx);
                         const auto parts = working_set.num_parts(val_idx);
                         from_all_registers[0] += parts[0];
                         from_all_registers[1] += parts[1];
-                    } else {
-                        incoming_from_some.push_back(val_idx);
-                    }
                 }
+
                 if (from_all_registers[0] > NUM_GP_REGS ||
                     from_all_registers[1] > NUM_FP_REGS) [[unlikely]] {
                     // prefer values that are used soon.
@@ -1974,30 +1965,7 @@ namespace tpde {
                         working_set.insert(val_idx);
                     }
                 } else {
-                    working_set.replace_with(incoming_from_all);
-                    // todo(salto): check if the effort for incoming_from_some is worth it.
-                    // todo(salto): sort could be replaced by top-k
-                    std::sort(
-                        incoming_from_some.begin(),
-                        incoming_from_some.end(),
-                        [&](const auto &a, const auto &b) {
-                            return get_current_and_next_use(
-                                       precise_liveness[static_cast<u32>(block_idx(block))],
-                                       a,
-                                       0)
-                                   .first <
-                                   get_current_and_next_use(
-                                       precise_liveness[static_cast<u32>(block_idx(block))],
-                                       b,
-                                       0)
-                                   .first;
-                        });
-                    for (const auto val_idx: incoming_from_some) {
-                        if (!working_set.can_fit(val_idx, NUM_GP_REGS, NUM_FP_REGS)) {
-                            break;
-                        }
-                        working_set.insert(val_idx);
-                    }
+                  working_set.replace_with(incoming_from_all);
                 }
             }
 
@@ -2154,7 +2122,12 @@ namespace tpde {
                     if (vec.empty()) {
                         continue;
                     }
-                    ++W_entry_freq[succ_idx][val_idx];
+                    const u32 updated_freq = ++W_entry_freq[succ_idx][val_idx];
+                    if (updated_freq >
+                        W_max_entry_freq[static_cast<u32>(succ_idx)]) {
+                      W_max_entry_freq[static_cast<u32>(succ_idx)] =
+                          updated_freq;
+                    }
                 }
             }
         }
