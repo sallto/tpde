@@ -1840,115 +1840,114 @@ namespace tpde {
             // Currently, argument assignments are determined later during prologue
             // generation, so we can't easily determine this here without duplicating
             // the CCAssigner logic.
-            if constexpr (Adaptor::TPDE_LIVENESS_VISIT_ARGS) {
-                if (i == 0) {
-                    assert(block_layout[0] == compiler->adaptor->cur_entry_block());
-                    // TODO: Query cc_assigner to determine which args are in registers
-                    // and add them to W with appropriate used_regs tracking
-                    auto *cc_assiger = compiler->cur_cc_assigner();
-                    const auto &cc_info = cc_assiger->get_ccinfo();
-                    const u64 arg_regs = cc_info.arg_regs;
-                    u64 free_regs = std::popcount(arg_regs);
-                    for (const IRValueRef arg: adaptor->cur_args()) {
-                        //todo(salto): is this correct
-                        auto local_idx = adaptor->val_local_idx(arg);
-                        std::array<u8, 2> parts = {0u, 0u};
-                        const auto value_parts = adaptor->val_parts(arg);
-                        for (u32 part_idx = 0; part_idx < value_parts.count(); ++part_idx) {
-                            const u8 bank_id = value_parts.reg_bank(part_idx).id();
-                            if (bank_id < parts.size()) {
-                                ++parts[bank_id];
-                            }
-                        }
-                        const u32 num_parts = static_cast<u32>(parts[0] + parts[1]);
-                        working_set.ensure_parts_cached(local_idx, parts);
-                        if (free_regs < num_parts) {
-                            // rest of args must be on stack
-                            break;
-                        }
-                        // fixme(salto): multi-part, ignore_liveness?
-                        working_set.insert(local_idx);
-                        free_regs -= num_parts;
-                    }
-                }
-            }
             const auto block = this->block_layout[i];
-            // We need to choose which values to keep in W across the multiple incoming
-            // edges. prefer values that are used in many predecessors.
-            util::SmallVector<ValLocalIdx, 16> incoming_from_all;
-            util::SmallVector<ValLocalIdx, 16> incoming_from_some;
-            // todo(salto): maybe just store max_seen_freq alongside W_entry_freq?
-            u32 max_seen_freq = 0;
-            std::array<u32, 2> from_all_registers = {0u, 0u};
-            for (const auto [val_idx, freq]: W_entry_freq[block_idx(block)]) {
-                // todo(salto): loop headers
-                if (freq > max_seen_freq) {
-                    max_seen_freq = freq;
-                    for (const auto old_val_idx: incoming_from_all) {
-                        incoming_from_some.push_back(old_val_idx);
+            if (Adaptor::TPDE_LIVENESS_VISIT_ARGS && i == 0) {
+                assert(block_layout[0] == compiler->adaptor->cur_entry_block());
+                // TODO: Query cc_assigner to determine which args are in registers
+                // and add them to W with appropriate used_regs tracking
+                auto *cc_assiger = compiler->cur_cc_assigner();
+                const auto &cc_info = cc_assiger->get_ccinfo();
+                const u64 arg_regs = cc_info.arg_regs;
+                u64 free_regs = std::popcount(arg_regs);
+                for (const IRValueRef arg: adaptor->cur_args()) {
+                    //todo(salto): is this correct
+                    auto local_idx = adaptor->val_local_idx(arg);
+                    std::array<u8, 2> parts = {0u, 0u};
+                    const auto value_parts = adaptor->val_parts(arg);
+                    for (u32 part_idx = 0; part_idx < value_parts.count(); ++part_idx) {
+                        const u8 bank_id = value_parts.reg_bank(part_idx).id();
+                        if (bank_id < parts.size()) {
+                            ++parts[bank_id];
+                        }
                     }
-                    const auto parts = working_set.num_parts(val_idx);
-                    from_all_registers = {parts[0], parts[1]};
-                    incoming_from_all.clear();
-                    incoming_from_all.push_back(val_idx);
-                } else if (freq == max_seen_freq) {
-                    incoming_from_all.push_back(val_idx);
-                    const auto parts = working_set.num_parts(val_idx);
-                    from_all_registers[0] += parts[0];
-                    from_all_registers[1] += parts[1];
-                } else {
-                    incoming_from_some.push_back(val_idx);
-                }
-            }
-            if (from_all_registers[0] > NUM_GP_REGS ||
-                from_all_registers[1] > NUM_FP_REGS) [[unlikely]] {
-                // prefer values that are used soon.
-                std::sort(
-                    incoming_from_all.begin(),
-                    incoming_from_all.end(),
-                    [&](const auto &a, const auto &b) {
-                        return get_current_and_next_use(
-                                   precise_liveness[static_cast<u32>(block_idx(block))],
-                                   a,
-                                   0)
-                               .first <
-                               get_current_and_next_use(
-                                   precise_liveness[static_cast<u32>(block_idx(block))],
-                                   b,
-                                   0)
-                               .first;
-                    });
-                working_set.clear();
-                for (const auto val_idx: incoming_from_all) {
-                    if (!working_set.can_fit(val_idx, NUM_GP_REGS, NUM_FP_REGS)) {
+                    const u32 num_parts = static_cast<u32>(parts[0] + parts[1]);
+                    working_set.ensure_parts_cached(local_idx, parts);
+                    if (free_regs < num_parts) {
+                        // rest of args must be on stack
                         break;
                     }
-                    working_set.insert(val_idx);
+                    // fixme(salto): multi-part, ignore_liveness?
+                    working_set.insert(local_idx);
+                        free_regs -= num_parts;
                 }
             } else {
-                working_set.replace_with(incoming_from_all);
-                // todo(salto): check if the effort for incoming_from_some is worth it.
-                // todo(salto): sort could be replaced by top-k
-                std::sort(
-                    incoming_from_some.begin(),
-                    incoming_from_some.end(),
-                    [&](const auto &a, const auto &b) {
-                        return get_current_and_next_use(
-                                   precise_liveness[static_cast<u32>(block_idx(block))],
-                                   a,
-                                   0)
-                               .first <
-                               get_current_and_next_use(
-                                   precise_liveness[static_cast<u32>(block_idx(block))],
-                                   b,
-                                   0)
-                               .first;
-                    });
-                for (const auto val_idx: incoming_from_some) {
-                    if (!working_set.can_fit(val_idx, NUM_GP_REGS, NUM_FP_REGS)) {
-                        break;
+                // We need to choose which values to keep in W across the multiple incoming
+                // edges. prefer values that are used in many predecessors.
+                util::SmallVector<ValLocalIdx, 16> incoming_from_all;
+                util::SmallVector<ValLocalIdx, 16> incoming_from_some;
+                // todo(salto): maybe just store max_seen_freq alongside W_entry_freq?
+                u32 max_seen_freq = 0;
+                std::array<u32, 2> from_all_registers = {0u, 0u};
+                for (const auto [val_idx, freq]: W_entry_freq[block_idx(block)]) {
+                    // todo(salto): loop headers
+                    if (freq > max_seen_freq) {
+                        max_seen_freq = freq;
+                        for (const auto old_val_idx: incoming_from_all) {
+                            incoming_from_some.push_back(old_val_idx);
+                        }
+                        const auto parts = working_set.num_parts(val_idx);
+                        from_all_registers = {parts[0], parts[1]};
+                        incoming_from_all.clear();
+                        incoming_from_all.push_back(val_idx);
+                    } else if (freq == max_seen_freq) {
+                        incoming_from_all.push_back(val_idx);
+                        const auto parts = working_set.num_parts(val_idx);
+                        from_all_registers[0] += parts[0];
+                        from_all_registers[1] += parts[1];
+                    } else {
+                        incoming_from_some.push_back(val_idx);
                     }
-                    working_set.insert(val_idx);
+                }
+                if (from_all_registers[0] > NUM_GP_REGS ||
+                    from_all_registers[1] > NUM_FP_REGS) [[unlikely]] {
+                    // prefer values that are used soon.
+                    std::sort(
+                        incoming_from_all.begin(),
+                        incoming_from_all.end(),
+                        [&](const auto &a, const auto &b) {
+                            return get_current_and_next_use(
+                                       precise_liveness[static_cast<u32>(block_idx(block))],
+                                       a,
+                                       0)
+                                   .first <
+                                   get_current_and_next_use(
+                                       precise_liveness[static_cast<u32>(block_idx(block))],
+                                       b,
+                                       0)
+                                   .first;
+                        });
+                    working_set.clear();
+                    for (const auto val_idx: incoming_from_all) {
+                        if (!working_set.can_fit(val_idx, NUM_GP_REGS, NUM_FP_REGS)) {
+                            break;
+                        }
+                        working_set.insert(val_idx);
+                    }
+                } else {
+                    working_set.replace_with(incoming_from_all);
+                    // todo(salto): check if the effort for incoming_from_some is worth it.
+                    // todo(salto): sort could be replaced by top-k
+                    std::sort(
+                        incoming_from_some.begin(),
+                        incoming_from_some.end(),
+                        [&](const auto &a, const auto &b) {
+                            return get_current_and_next_use(
+                                       precise_liveness[static_cast<u32>(block_idx(block))],
+                                       a,
+                                       0)
+                                   .first <
+                                   get_current_and_next_use(
+                                       precise_liveness[static_cast<u32>(block_idx(block))],
+                                       b,
+                                       0)
+                                   .first;
+                        });
+                    for (const auto val_idx: incoming_from_some) {
+                        if (!working_set.can_fit(val_idx, NUM_GP_REGS, NUM_FP_REGS)) {
+                            break;
+                        }
+                        working_set.insert(val_idx);
+                    }
                 }
             }
 
@@ -2000,7 +1999,7 @@ namespace tpde {
                     NUM_GP_REGS - static_cast<u32>(has_call) * NUM_CALLER_SAVED_GP;
                 const u32 current_capacity_fp =
                     NUM_FP_REGS - static_cast<u32>(has_call) * NUM_CALLER_SAVED_FP;
-                // we still have enough registers, no spills needed
+                // we still have enough registers for both results and operands, no spills needed
                 if (working_set.has_capacity_for(num_result_regs[0],
                                                  num_result_regs[1],
                                                  current_capacity_gp,
@@ -2046,8 +2045,8 @@ namespace tpde {
                 }
 
                 // we are limited by the results.
-                if (working_set.used_gp_regs() <= current_capacity_gp &&
-                    working_set.used_fp_regs() <= current_capacity_fp) {
+                if (working_set.used_gp_regs() <= current_capacity_gp + num_result_regs[0] &&
+                    working_set.used_fp_regs() <= current_capacity_fp + num_result_regs[1]) {
                     // sort by next use instead of current use since we have enough space
                     // for all the operands and we might be able to evict a operand for a
                     // result.
