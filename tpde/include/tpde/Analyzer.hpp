@@ -2053,10 +2053,6 @@ namespace tpde {
                         NUM_GP_REGS - static_cast<u32>(has_call) * (NUM_CALLER_SAVED_GP - num_result_regs[0]);
                 const u32 capacity_after_instr_fp =
                         NUM_FP_REGS - static_cast<u32>(has_call) * (NUM_CALLER_SAVED_FP - num_result_regs[1]);
-                const u32 capacity_before_instr_gp =
-                        NUM_GP_REGS;
-                const u32 capacity_before_instr_fp =
-                        NUM_FP_REGS;
                 // we still have enough registers for both results and operands at the same time, no spills needed
                 if (working_set.has_capacity_for(0,
                                                  0,
@@ -2107,9 +2103,9 @@ namespace tpde {
                 }
 
                 // we are limited by the results.
-                if (working_set.has_capacity_for(0, 0, capacity_after_instr_gp + num_result_regs[0],
-                                                 capacity_after_instr_fp + num_result_regs[1],
-                                                 true)) {
+                if (working_set.has_capacity_for(0, 0, capacity_after_instr_gp ,
+                                                 capacity_after_instr_fp,
+                                                 false)) {
                     // sort by next use instead of current use since we have enough space
                     // for all the operands and we might be able to evict a operand for a
                     // result.
@@ -2148,8 +2144,8 @@ namespace tpde {
                           false);
                     // in the same instruction we are limited both by the results and the
                     // operands todo(salto): check how often this happens.
-                    if (!working_set.has_capacity_for(num_result_regs[0],
-                                                      num_result_regs[1],
+                    if (!working_set.has_capacity_for(0,
+                                                      0,
                                                       capacity_after_instr_gp,
                                                       capacity_after_instr_fp,
                                                       true)) {
