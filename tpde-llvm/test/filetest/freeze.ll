@@ -196,19 +196,17 @@ define void @freeze_i128_i1_no_salvage(ptr %0) {
 ; X64-LABEL: <freeze_i128_i1_no_salvage>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop word ptr [rax + rax]
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x10]
-; X64-NEXT:    mov rbx, rax
-; X64-NEXT:    mov rsi, rcx
-; X64-NEXT:    mov r8d, edx
-; X64-NEXT:    mov qword ptr [rdi], rbx
-; X64-NEXT:    mov qword ptr [rdi + 0x8], rsi
-; X64-NEXT:    mov byte ptr [rdi + 0x10], r8b
-; X64-NEXT:    pop rbx
+; X64-NEXT:    mov rsi, rax
+; X64-NEXT:    mov r8, rcx
+; X64-NEXT:    mov r9d, edx
+; X64-NEXT:    mov qword ptr [rdi], rsi
+; X64-NEXT:    mov qword ptr [rdi + 0x8], r8
+; X64-NEXT:    mov byte ptr [rdi + 0x10], r9b
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
