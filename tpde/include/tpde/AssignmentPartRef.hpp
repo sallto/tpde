@@ -111,6 +111,32 @@ public:
     }
   }
 
+  template<typename Compiler>
+  void mov(Compiler *compiler, ValLocalIdx local_idx, typename Compiler::AsmReg value_reg) noexcept {
+    assert(compiler->may_change_value_state());
+
+    auto &reg_file = compiler->register_file;
+
+    assert(value_reg.valid() && "cannot initialize with invalid register");
+    assert(!variable_ref() && "cannot update variable ref");
+    assert(!fixed_assignment() && "can't move fixed assignments");
+    assert(local_idx != Compiler::INVALID_VAL_LOCAL_IDX &&
+      "assignment not tracked in compiler");
+
+    if (register_valid()) {
+      compiler->derived()->mov(value_reg, get_reg(), part_size());
+      if (reg_file.is_used(get_reg())) {
+        reg_file.unmark_used(get_reg());
+      }
+    }
+
+    reg_file.mark_used(value_reg, local_idx, part);
+    reg_file.mark_clobbered(value_reg);
+    set_reg(value_reg);
+    set_register_valid(true);
+    set_modified(true);
+  }
+
   [[nodiscard]] bool stack_valid() const noexcept {
     return (va->parts[part] & (1u << 9)) == 0;
   }
