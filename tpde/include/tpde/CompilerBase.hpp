@@ -964,8 +964,30 @@ public:
 
     MoveList result = sequentialize(moves);
     // todo(salto): maybe execute the mov in sequentialize directly
-    for (auto move : result) {
-      derived()->mov(move.dst, move.src, move.size);
+    for (auto move: result) {
+      if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
+        ValueAssignment *assignment = this->val_assignment(move.value_idx);
+        if (!assignment)
+          continue;
+        AssignmentPartRef ap{assignment, move.part_idx};
+        if (ap.register_valid() && assignment->pending_free) {
+          this->derived()->mov(move.dst, ap.get_reg(), ap.part_size());
+          ap.set_register_valid(false);
+          continue;
+        }
+        if (ap.fixed_assignment()) {
+          this->derived()->mov(move.dst, ap.get_reg(), ap.part_size());
+          continue;
+        }
+        this->global_assign(move.value_idx, move.dst);
+
+        ap.mov(this, move.value_idx, move.dst);
+      } else {
+        this->derived()->mov(move.dst, move.src, 8);
+        this->register_file.mark_used(
+          Reg{move.dst}, move.value_idx, move.part_idx);
+        this->register_file.mark_clobbered(Reg{move.dst});
+      }
     }
   }
 
@@ -2860,6 +2882,7 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
     // phi_vr.disown();
     auto val_vr = derived()->val_ref(incoming_val);
     ValLocalIdx incoming_val_idx = INVALID_VAL_LOCAL_IDX;
+    ValLocalIdx phi_val_idx = adaptor->val_local_idx(phi);
     if (!adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
       incoming_val_idx = adaptor->val_local_idx(incoming_val);
     }
@@ -2979,14 +3002,14 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
         used_phi_regs |= (1ull << target_phi_reg.id());
         used_phi_regs_global |= (1ull << target_phi_reg.id());
         moves.emplace_back(
-            target_phi_reg, reg, val_vpr.part_size(), incoming_val_idx, i);
+          target_phi_reg, reg, val_vpr.part_size(), phi_val_idx, i);
       } else {
         if (phi_ap.fixed_assignment()) {
           used_phi_regs |= (1ull << phi_ap.get_reg().id());
           used_phi_regs_global |= (1ull << phi_ap.get_reg().id());
           phi_regs[adaptor->val_local_idx(phi)].push_back(phi_ap.get_reg());
           moves.emplace_back(
-              phi_ap.get_reg(), reg, val_vpr.part_size(), incoming_val_idx, i);
+            phi_ap.get_reg(), reg, val_vpr.part_size(), phi_val_idx, i);
           continue;
         }
         // no assigned registers. Avoid moves on this edge if possible.
@@ -3030,7 +3053,7 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
           used_phi_regs_global |= (1ull << phi_reg.id());
           phi_regs[adaptor->val_local_idx(phi)].push_back(phi_reg);
           moves.emplace_back(
-              phi_reg, reg, val_vpr.part_size(), incoming_val_idx, i);
+            phi_reg, reg, val_vpr.part_size(), phi_val_idx, i);
         }
       }
     }

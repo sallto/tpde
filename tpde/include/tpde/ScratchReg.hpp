@@ -136,9 +136,8 @@ namespace tpde {
                             continue;
                         }
                         compiler->global_assign(move.value_idx, move.dst);
-                        ValueRef vr{compiler, move.value_idx};
-                        vr.disown();
-                        vr.part_unowned(move.part_idx).mov(move.dst);
+
+                        ap.mov(compiler, move.value_idx, move.dst);
 #ifndef NDEBUG
 
                         compiler->verification_ir.emit_active_reg_move(
