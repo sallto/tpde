@@ -609,18 +609,19 @@ define void @phi_const_float_regpressure(ptr %ptr) {
 ; ARM64-NEXT:    ldrb w0, [x19]
 ; ARM64-NEXT:    mov x16, #0x42000000 // =1107296256
 ; ARM64-NEXT:    fmov s8, w16
-; ARM64-NEXT:    strb w8, [x29, #0xa5]
-; ARM64-NEXT:    mov w8, #0x0 // =0
-; ARM64-NEXT:    tst w8, #0x1
-; ARM64-NEXT:    b.eq 0x4e8 <phi_const_float_regpressure+0xf8>
+; ARM64-NEXT:    strb w0, [x29, #0xa5]
+; ARM64-NEXT:    mov w0, #0x0 // =0
+; ARM64-NEXT:    tst w0, #0x1
+; ARM64-NEXT:    b.eq 0x4ec <phi_const_float_regpressure+0xfc>
 ; ARM64-NEXT:    fmov s8, #16.00000000
-; ARM64-NEXT:    b 0x4d4 <phi_const_float_regpressure+0xe4>
+; ARM64-NEXT:    ldrb w0, [x29, #0xa5]
+; ARM64-NEXT:    b 0x4d0 <phi_const_float_regpressure+0xe0>
 ; ARM64-NEXT:    strb w20, [x19]
 ; ARM64-NEXT:    strb w21, [x19]
 ; ARM64-NEXT:    strb w22, [x19]
 ; ARM64-NEXT:    strb w23, [x19]
-; ARM64-NEXT:    ldrb w8, [x29, #0xa0]
-; ARM64-NEXT:    strb w8, [x19]
+; ARM64-NEXT:    ldrb w0, [x29, #0xa0]
+; ARM64-NEXT:    strb w0, [x19]
 ; ARM64-NEXT:    strb w1, [x19]
 ; ARM64-NEXT:    strb w2, [x19]
 ; ARM64-NEXT:    strb w3, [x19]
@@ -628,8 +629,7 @@ define void @phi_const_float_regpressure(ptr %ptr) {
 ; ARM64-NEXT:    strb w5, [x19]
 ; ARM64-NEXT:    strb w6, [x19]
 ; ARM64-NEXT:    strb w7, [x19]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa5]
-; ARM64-NEXT:    strb w1, [x19]
+; ARM64-NEXT:    strb w8, [x19]
 ; ARM64-NEXT:    strb w9, [x19]
 ; ARM64-NEXT:    strb w10, [x19]
 ; ARM64-NEXT:    strb w11, [x19]
@@ -644,14 +644,15 @@ define void @phi_const_float_regpressure(ptr %ptr) {
 ; ARM64-NEXT:    strb w26, [x19]
 ; ARM64-NEXT:    strb w27, [x19]
 ; ARM64-NEXT:    strb w28, [x19]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa1]
-; ARM64-NEXT:    strb w1, [x19]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa2]
-; ARM64-NEXT:    strb w1, [x19]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa3]
-; ARM64-NEXT:    strb w1, [x19]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa4]
-; ARM64-NEXT:    strb w1, [x19]
+; ARM64-NEXT:    ldrb w0, [x29, #0xa1]
+; ARM64-NEXT:    strb w0, [x19]
+; ARM64-NEXT:    ldrb w0, [x29, #0xa2]
+; ARM64-NEXT:    strb w0, [x19]
+; ARM64-NEXT:    ldrb w0, [x29, #0xa3]
+; ARM64-NEXT:    strb w0, [x19]
+; ARM64-NEXT:    ldrb w0, [x29, #0xa4]
+; ARM64-NEXT:    strb w0, [x19]
+; ARM64-NEXT:    ldrb w0, [x29, #0xa5]
 ; ARM64-NEXT:    strb w0, [x19]
 ; ARM64-NEXT:    str s8, [x19]
 ; ARM64-NEXT:    ldp x29, x30, [sp]

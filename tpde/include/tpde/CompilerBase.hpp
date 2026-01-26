@@ -170,6 +170,7 @@ struct CompilerBase {
 
   BlockIndex cur_block_idx;
   u32 cur_instr_idx;
+  RegisterFile::RegBitSet used_phi_regs_global = 0;
 
   // Assignments
 
@@ -1616,7 +1617,8 @@ void CompilerBase<Adaptor, Derived, Config>::init_assignment(
 
       // TODO: if the register is used, we can free it most of the time, but not
       // always, e.g. for PHI nodes. Detect this case and free_reg otherwise.
-      if (!reg.invalid() && !register_file.is_used(reg)) {
+      if (!reg.invalid() && !(used_phi_regs_global & (1ull << reg.id())) &&
+          !register_file.is_used(reg)) {
         TPDE_LOG_TRACE("Assigning fixed assignment to reg {} for value {}",
                        reg.id(),
                        static_cast<u32>(local_idx));
@@ -2836,12 +2838,14 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
 
       if (phi_regs[adaptor->val_local_idx(phi)].size() > i) {
         auto target_phi_reg = phi_regs[adaptor->val_local_idx(phi)][i];
-        used_phi_regs |= (1 << target_phi_reg.id());
+        used_phi_regs |= (1ull << target_phi_reg.id());
+        used_phi_regs_global |= (1ull << target_phi_reg.id());
         moves.emplace_back(
             target_phi_reg, reg, val_vpr.part_size(), incoming_val_idx, i);
       } else {
         if (phi_ap.fixed_assignment()) {
-          used_phi_regs |= (1 << phi_ap.get_reg().id());
+          used_phi_regs |= (1ull << phi_ap.get_reg().id());
+          used_phi_regs_global |= (1ull << phi_ap.get_reg().id());
           phi_regs[adaptor->val_local_idx(phi)].push_back(phi_ap.get_reg());
           moves.emplace_back(
               phi_ap.get_reg(), reg, val_vpr.part_size(), incoming_val_idx, i);
@@ -2849,7 +2853,9 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
         }
         // no assigned registers. Avoid moves on this edge if possible.
         if (val_vr.last_ref()) {
-          used_phi_regs |= (1 << reg.id());
+          // todo(salto): evaluate if this is really a good idea
+          used_phi_regs |= (1ull << reg.id());
+          used_phi_regs_global |= (1ull << reg.id());
           phi_regs[adaptor->val_local_idx(phi)].push_back(reg);
         } else {
           // todo(salto): preferred register
@@ -2883,6 +2889,7 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
           }
 
           used_phi_regs |= (1ull << phi_reg.id());
+          used_phi_regs_global |= (1ull << phi_reg.id());
           phi_regs[adaptor->val_local_idx(phi)].push_back(phi_reg);
           moves.emplace_back(
               phi_reg, reg, val_vpr.part_size(), incoming_val_idx, i);
@@ -3066,6 +3073,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   block_states.resize(analyzer.block_layout.size());
   block_regs.clear();
   phi_regs.clear();
+  used_phi_regs_global = 0;
   register_file.reset();
   global_register_file.reset();
   // if (tree_ra_ctx) {
@@ -3230,14 +3238,14 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
                    phi_regs[phi_idx].size() > i) {
           reg = phi_regs[phi_idx][i];
           ap.set_reg(reg);
+          // we cas savely unmark it used
+          used_phi_regs_global &= ~(1ull << reg.id());
           ap.set_register_valid(true);
           if (register_file.is_used(reg)) {
-            //this->evict_reg(reg);
-          }
-          if (!register_file.is_used(reg)) {
-            register_file.mark_used(reg, phi_idx, i);
+            register_file.unmark_used(reg);
           }
 
+          register_file.mark_used(reg, phi_idx, i);
         } else if (ap.stack_valid()) {
           // PHI is on stack - keep it on stack, will load when used
           reg = Reg::make_invalid();
