@@ -2858,7 +2858,8 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
           // for it.
 
 
-          auto phi_reg = scratch.alloc_from_bank(phi_ap.bank(), used_phi_regs);
+          auto [phi_reg, _] =
+              this->select_reg(phi_ap.bank(), used_phi_regs);
           if (!phi_reg.valid()) {
             // Spill phi to stack if no register available
             allocate_spill_slot(phi_ap);
@@ -2881,7 +2882,7 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
             continue;
           }
 
-          used_phi_regs |= (1 << phi_reg.id());
+          used_phi_regs |= (1ull << phi_reg.id());
           phi_regs[adaptor->val_local_idx(phi)].push_back(phi_reg);
           moves.emplace_back(
               phi_reg, reg, val_vpr.part_size(), incoming_val_idx, i);
@@ -3194,29 +3195,6 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(
   // Write verification IR to file
   std::string vir_filename = "/tmp/" + verification_ir.get_func_name() + ".vir";
   verification_ir.write_to_file(vir_filename);
-  std::string verifier_cmd;
-  #ifdef TPDE_VIR_VERIFIER_PATH
-  verifier_cmd = std::string("python3 \"") + TPDE_VIR_VERIFIER_PATH + "\" \"" +
-                 vir_filename + "\" > /dev/null 2>&1";
-  #else
-  verifier_cmd =
-      std::string("python3 \"tpde/test/filetest/vir/vir_verifier.py\" \"") +
-      vir_filename + "\" ";
-  #endif
-  int verifier_status = std::system(verifier_cmd.c_str());
-  if (verifier_status == -1) {
-    TPDE_LOG_WARN("Failed to run vir verifier for {}", vir_filename);
-  }
-  if (WIFEXITED(verifier_status)) {
-    int exit_code = WEXITSTATUS(verifier_status);
-    if (exit_code != 0) {
-      TPDE_LOG_ERR("vir verifier failed with exit code {} for {}",
-                   exit_code,
-                   vir_filename);
-    }
-  } else {
-    TPDE_LOG_ERR("vir verifier terminated abnormally for {}", vir_filename);
-  }
 #endif
 
   return true;
@@ -3253,6 +3231,9 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           reg = phi_regs[phi_idx][i];
           ap.set_reg(reg);
           ap.set_register_valid(true);
+          if (register_file.is_used(reg)) {
+            //this->evict_reg(reg);
+          }
           if (!register_file.is_used(reg)) {
             register_file.mark_used(reg, phi_idx, i);
           }
@@ -3284,6 +3265,9 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           auto reg = state.registers[i];
           if (!reg.valid()) {
             continue;
+          }
+          if (ap.register_valid() && ap.get_reg() != reg) {
+            register_file.unmark_used(ap.get_reg());
           }
           ap.set_reg(reg);
           ap.set_register_valid(true);
@@ -3480,8 +3464,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     if (!ap.register_valid()) {
       continue;
     }
-
-    assert(ap.get_reg() == reg);
+    assert(
+      ap.get_reg() == reg);
     assert(!register_file.is_fixed(reg) || ap.fixed_assignment());
   }
 #endif
