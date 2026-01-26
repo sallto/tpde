@@ -301,35 +301,36 @@ struct CompilerBase {
   MoveList parallel_copies;
 
   void global_assign(ValLocalIdx idx, Reg reg) noexcept {
-    if (global_register_file.is_used(reg) &&
-        global_register_file.reg_local_idx(reg) == idx) {
-      return;
-    }
-    if (global_register_file.is_used(reg)) {
-      // unassign the old one if different
-      // ValLocalIdx old_idx = global_register_file.reg_local_idx(reg);
-      global_register_file.unmark_used(reg);
-      global_register_file.mark_used(reg, idx, 0); // assume part 0 for now
-    } else {
-      global_register_file.mark_used(reg, idx, 0);
-    }
+    /*if (global_register_file.is_used(reg) &&
+       global_register_file.reg_local_idx(reg) == idx) {
+     return;
+   }
+   if (global_register_file.is_used(reg)) {
+     // unassign the old one if different
+     // ValLocalIdx old_idx = global_register_file.reg_local_idx(reg);
+     global_register_file.unmark_used(reg);
+     global_register_file.mark_used(reg, idx, 0); // assume part 0 for now
+   } else {
+     global_register_file.mark_used(reg, idx, 0);
+   }*/
   }
 
   void global_unassign(ValLocalIdx idx) noexcept {
-    for (auto reg_id : global_register_file.used_regs()) {
+    /*for (auto reg_id : global_register_file.used_regs()) {
       if (global_register_file.reg_local_idx(Reg{reg_id}) == idx) {
         global_register_file.unmark_used(Reg{reg_id});
         break;
       }
-    }
+    }*/
   }
 
   Reg global_reg_for(ValLocalIdx idx) const noexcept {
-    for (auto reg_id : global_register_file.used_regs()) {
+    /*for (auto reg_id : global_register_file.used_regs()) {
       if (global_register_file.reg_local_idx(Reg{reg_id}) == idx) {
         return Reg{reg_id};
       }
     }
+    */
     return Reg::make_invalid();
   }
 #ifndef NDEBUG
@@ -2813,10 +2814,47 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
   }
   typename RegisterFile::RegBitSet used_phi_regs = 0;
 
-  const auto move_to_phi_reg = [this, &moves, &used_phi_regs](
-                                   IRValueRef phi,
-                                   IRValueRef incoming_val,
-                                   bool force_stack) {
+  const auto apply_parallel_copies = [this](AsmReg old_reg) {
+    if (parallel_copies.empty()) {
+      return;
+    }
+    auto ordered = sequentialize(parallel_copies);
+    auto &reg_file = register_file;
+    for (auto move: ordered) {
+      derived()->mov(move.dst, move.src, move.size);
+#ifndef NDEBUG
+      if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
+        verification_ir.emit_active_reg_move(move.src, move.dst, move.size);
+        vir_record_arg_move(move.value_idx, move.part_idx, move.dst);
+      }
+#endif
+      if (move.value_idx == INVALID_VAL_LOCAL_IDX) {
+        continue;
+      }
+      if (ValueAssignment *va = val_assignment(move.value_idx)) {
+        if (!reg_file.is_used(Reg{move.dst})) {
+          AssignmentPartRef ap{va, move.part_idx};
+          ap.set_reg(move.dst);
+          ap.set_register_valid(true);
+          if (move.src != old_reg) {
+            reg_file.unmark_used(move.src);
+          }
+          reg_file.mark_used(move.dst, move.value_idx, move.part_idx);
+        } else {
+          reg_file.update_reg_assignment(
+            Reg{move.dst}, move.value_idx, move.part_idx);
+        }
+      }
+    }
+    parallel_copies.clear();
+  };
+
+  const auto move_to_phi_reg = [this,
+        &moves,
+        &used_phi_regs,
+        &apply_parallel_copies](IRValueRef phi,
+                                IRValueRef incoming_val,
+                                bool force_stack) {
     auto phi_vr = derived()->result_ref(phi);
     // We access the phi here
     // phi_vr.disown();
@@ -2880,34 +2918,56 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
       }
 
       AsmReg reg = val_vpr.cur_reg_unlocked();
-      // todo(salto): do this all with the repairing routine
       if (!reg.valid()) {
         if (phi_ap.fixed_assignment()) {
           val_vpr.reload_into_specific_fixed(phi_ap.get_reg());
           reg = phi_ap.get_reg();
         } else {
-          // todo(salto): move to reg from phi if already assigned
+          auto target_reg = AsmReg::make_invalid();
           if (phi_regs[adaptor->val_local_idx(phi)].size() > i) {
-            auto target_phi_reg = phi_regs[adaptor->val_local_idx(phi)][i];
-            // can assign directly to phi_reg
-            if (!register_file.is_used(target_phi_reg) ||
-                register_file.reg_local_idx(target_phi_reg) ==
-                    adaptor->val_local_idx(phi)) {
-              val_vpr.reload_into_specific_fixed(target_phi_reg);
-              reg = target_phi_reg;
+            target_reg = phi_regs[adaptor->val_local_idx(phi)][i];
+          } else {
+            auto [selected_reg, _] =
+                this->select_reg(val_vpr.bank(), used_phi_regs);
+            target_reg = selected_reg;
+          }
+
+          auto available = (register_file.allocatable & ~register_file.used) &
+                           register_file.bank_regs(val_vpr.bank());
+          if (target_reg.valid() && register_file.is_used(target_reg) &&
+              register_file.reg_local_idx(target_reg) !=
+              adaptor->val_local_idx(phi)) {
+            parallel_copies.clear();
+            AsmReg source_reg = AsmReg::make_invalid();
+            if (val_vpr.has_reg()) {
+              source_reg = val_vpr.cur_reg_unlocked();
+            } else if (val_vpr.has_assignment()) {
+              AssignmentPartRef src_ap = val_vpr.assignment();
+              if (src_ap.register_valid()) {
+                source_reg = src_ap.get_reg();
+              }
+            }
+            bool repaired = repair_argument(incoming_val_idx,
+                                            i,
+                                            val_vpr.part_size(),
+                                            val_vpr.bank(),
+                                            (1ull << target_reg.id()),
+                                            available,
+                                            used_phi_regs,
+                                            source_reg);
+            if (repaired) {
+              apply_parallel_copies(source_reg);
+              val_vpr.reload_into_specific_fixed(target_reg);
+              reg = target_reg;
             } else {
-              // need a intermediate register, sequentialize will resolve move
-              // issues later
               auto [selected_reg, _] =
                   this->select_reg(val_vpr.bank(), used_phi_regs);
               reg = selected_reg;
               val_vpr.reload_into_specific_fixed(reg, val_vpr.part_size());
             }
-          } else {
-            auto [selected_reg, _] =
-                this->select_reg(val_vpr.bank(), used_phi_regs);
-            reg = selected_reg;
-            val_vpr.reload_into_specific_fixed(reg, val_vpr.part_size());
+          } else if (target_reg.valid()) {
+            val_vpr.reload_into_specific_fixed(target_reg);
+            reg = target_reg;
           }
         }
       }
@@ -3320,10 +3380,10 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           used_phi_regs_global &= ~(1ull << reg.id());
           ap.set_register_valid(true);
           if (register_file.is_used(reg)) {
-            register_file.unmark_used(reg);
+            register_file.update_reg_assignment(reg, phi_idx, i);
+          } else {
+            register_file.mark_used(reg, phi_idx, i);
           }
-
-          register_file.mark_used(reg, phi_idx, i);
         } else if (ap.stack_valid()) {
           // PHI is on stack - keep it on stack, will load when used
           reg = Reg::make_invalid();
@@ -3357,7 +3417,19 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           }
           ap.set_reg(reg);
           ap.set_register_valid(true);
-          if (!register_file.is_used(reg)) {
+          if (register_file.is_used(reg) && (register_file.reg_local_idx(reg) != state.val_local_idx || register_file.
+                                             reg_part(reg) != i)) {
+            if (register_file.reg_local_idx(reg) != INVALID_VAL_LOCAL_IDX) {
+              ValueAssignment *other = this->val_assignment(register_file.reg_local_idx(reg));
+              if (other) {
+                auto other_ap = AssignmentPartRef{other, register_file.reg_part(reg)};
+                if (other_ap.register_valid()) {
+                  other_ap.set_register_valid(false);
+                }
+              }
+            }
+            register_file.update_reg_assignment(reg, state.val_local_idx, i);
+          } else if (!register_file.is_used(reg)) {
             register_file.mark_used(reg, state.val_local_idx, i);
           }
         }
