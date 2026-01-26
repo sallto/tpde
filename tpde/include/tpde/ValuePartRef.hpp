@@ -193,10 +193,6 @@ private:
                              AsmReg reg,
                              bool reload) noexcept;
 
-  bool repair_argument(CompilerBase *compiler,
-                       typename RegisterFile::RegBitSet constraints,
-                       typename RegisterFile::RegBitSet available,
-                       typename RegisterFile::RegBitSet forbidden = 0);
 
   void execute_moves(CompilerBase *compiler, AsmReg old_reg);
 
@@ -548,72 +544,6 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
   return reg;
 }
 
-template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
-bool CompilerBase<Adaptor, Derived, Config>::ValuePart::repair_argument(
-  CompilerBase *compiler,
-  typename RegisterFile::RegBitSet constraints,
-  typename RegisterFile::RegBitSet available,
-  typename RegisterFile::RegBitSet forbidden) {
-  auto &reg_file = compiler->register_file;
-  Reg reg = Reg::make_invalid();
-  std::unordered_set<ValLocalIdx> operands;
-  // commented out current_instr usage
-  // for (auto operand:
-  // compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
-  //   operands.insert(compiler->adaptor->val_local_idx(operand));
-  // }
-  bool success = false;
-  typename RegisterFile::RegBitSet allowed =
-      constraints & (~forbidden); // todo(salto): constraints
-  while (reg == Reg::make_invalid() && allowed != 0) {
-    for (u64 candidate: util::BitSetIterator<>(allowed)) {
-      if (reg_file.is_used(Reg{candidate}) &&
-          (!operands.contains(reg_file.reg_local_idx(Reg{candidate})) &&
-           !reg_file.is_fixed(Reg{candidate}))) {
-        reg = Reg{candidate};
-        break;
-      }
-    }
-    if (reg == Reg::make_invalid()) {
-      // todo(salto): choose color from allowed
-      reg = Reg{*util::BitSetIterator<>(allowed).begin()};
-    }
-    ValLocalIdx pawn = reg_file.reg_local_idx(reg);
-    // todo(salto): constraints of pawn?
-    typename RegisterFile::RegBitSet pawnAllowed =
-        (available |
-         (this->has_reg() ? (1ull << this->cur_reg().id()) : 0ull)) &
-        (~forbidden);
-    if (pawnAllowed != 0) {
-      compiler->parallel_copies.emplace_back(
-        Reg{*util::BitSetIterator<>(pawnAllowed).begin()},
-        reg,
-        8,
-        pawn,
-        this->part());
-      success = true;
-    } else {
-      success = repair_argument(compiler,
-                                available | (1ull << this->cur_reg().id()),
-                                forbidden | (1ull << reg.id()));
-    }
-    if (!success) {
-      allowed &= ~(1ull << reg.id());
-      reg = Reg::make_invalid();
-    }
-  }
-  if (reg != Reg::make_invalid()) {
-    assert(has_assignment() && assignment().register_valid());
-    auto ap = assignment();
-    compiler->parallel_copies.emplace_back(Reg{reg},
-                                           ap.get_reg(),
-                                           this->part_size(),
-                                           this->local_idx(),
-                                           this->part());
-    return true;
-  }
-  return false;
-}
 
 template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::ValuePart::execute_moves(
@@ -682,10 +612,23 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_specific_impl(
         }
       }
     }
-    bool success = repair_argument(compiler,
-                                   (1ull << reg.id()),
-                                   (reg_file.allocatable & ~reg_file.used) &
-                                   reg_file.bank_regs(this->bank()));
+    AsmReg source_reg = AsmReg::make_invalid();
+    if (has_reg()) {
+      source_reg = cur_reg();
+    } else {
+      auto ap = assignment();
+      assert(ap.register_valid());
+      source_reg = ap.get_reg();
+    }
+    bool success = compiler->repair_argument(
+        local_idx(),
+        part(),
+        part_size(),
+        bank(),
+        (1ull << reg.id()),
+        (reg_file.allocatable & ~reg_file.used) & reg_file.bank_regs(bank()),
+        0,
+        source_reg);
     auto old_reg = this->cur_reg();
     if (success) [[likely]] {
       execute_moves(compiler, old_reg);

@@ -679,6 +679,15 @@ public:
   /// ValuePartRef), store it in dst.
   AsmReg gval_as_reg_reuse(GenericValuePart &gv, ScratchReg &dst) noexcept;
 
+  bool repair_argument(ValLocalIdx var,
+                       u32 part,
+                       u8 size,
+                       RegBank bank,
+                       typename RegisterFile::RegBitSet constraints,
+                       typename RegisterFile::RegBitSet available,
+                       typename RegisterFile::RegBitSet forbidden = 0,
+                       AsmReg current_reg = AsmReg::make_invalid()) noexcept;
+
 private:
   Reg select_reg_evict(RegBank bank, u64 exclusion_mask) noexcept;
 
@@ -2386,6 +2395,75 @@ CompilerBase<Adaptor, Derived, Config>::spill_before_branch(
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+bool CompilerBase<Adaptor, Derived, Config>::repair_argument(
+  ValLocalIdx var,
+  u32 part,
+  u8 size,
+  RegBank bank,
+  typename RegisterFile::RegBitSet constraints,
+  typename RegisterFile::RegBitSet available,
+  typename RegisterFile::RegBitSet forbidden,
+  AsmReg current_reg) noexcept {
+  auto &reg_file = register_file;
+  Reg reg = Reg::make_invalid();
+  std::unordered_set<ValLocalIdx> operands;
+  // commented out current_instr usage
+  // for (auto operand:
+  // compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
+  //   operands.insert(compiler->adaptor->val_local_idx(operand));
+  // }
+  bool success = false;
+  typename RegisterFile::RegBitSet allowed =
+      constraints & (~forbidden); // todo(salto): constraints
+  while (reg == Reg::make_invalid() && allowed != 0) {
+    for (u64 candidate: util::BitSetIterator<>(allowed)) {
+      if (reg_file.is_used(Reg{candidate}) &&
+          (!operands.contains(reg_file.reg_local_idx(Reg{candidate})) &&
+           !reg_file.is_fixed(Reg{candidate}))) {
+        reg = Reg{candidate};
+        break;
+      }
+    }
+    if (reg == Reg::make_invalid()) {
+      // todo(salto): choose color from allowed
+      reg = Reg{*util::BitSetIterator<>(allowed).begin()};
+    }
+    ValLocalIdx pawn = reg_file.reg_local_idx(reg);
+    // todo(salto): constraints of pawn?
+    u64 current_reg_bit =
+        current_reg.valid() ? (1ull << current_reg.id()) : 0ull;
+    typename RegisterFile::RegBitSet pawn_allowed =
+        (available | current_reg_bit) & (~forbidden);
+    auto pawn_part = reg_file.reg_part(reg);
+    if (pawn_allowed != 0) {
+      Reg pawn_reg = reg_file.find_first_free_excluding(bank, ~pawn_allowed);
+      parallel_copies.emplace_back(pawn_reg, reg, 8, pawn, pawn_part);
+      success = true;
+    } else {
+      success = repair_argument(pawn,
+                                pawn_part,
+                                size,
+                                bank,
+                                available | current_reg_bit,
+                                forbidden | (1ull << reg.id()),
+                                0,
+                                current_reg);
+    }
+    if (!success) {
+      allowed &= ~(1ull << reg.id());
+      reg = Reg::make_invalid();
+    }
+  }
+  if (reg != Reg::make_invalid()) {
+    if (current_reg.valid()) {
+      parallel_copies.emplace_back(Reg{reg}, current_reg, size, var, part);
+    }
+    return true;
+  }
+  return false;
+}
+
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::release_spilled_regs(
     typename RegisterFile::RegBitSet regs) noexcept {
   assert(may_change_value_state());

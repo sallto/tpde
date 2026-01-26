@@ -13,11 +13,6 @@ namespace tpde {
         // TODO(ts): get this using the CompilerConfig?
         AsmReg reg = AsmReg::make_invalid();
 
-        bool repair_argument(CompilerBase *compiler,
-                             ValLocalIdx var,
-                             typename RegisterFile::RegBitSet constraints,
-                             typename RegisterFile::RegBitSet available,
-                             typename RegisterFile::RegBitSet forbidden = 0);
 
     public:
         explicit ScratchReg(CompilerBase *compiler) : compiler(compiler) {
@@ -87,77 +82,6 @@ namespace tpde {
         return *this;
     }
 
-    template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
-    bool CompilerBase<Adaptor, Derived, Config>::ScratchReg::repair_argument(
-        CompilerBase *compiler,
-        ValLocalIdx var,
-        typename RegisterFile::RegBitSet constraints,
-        typename RegisterFile::RegBitSet available,
-        typename RegisterFile::RegBitSet forbidden) {
-        auto &reg_file = compiler->register_file;
-        Reg reg = Reg::make_invalid();
-        std::unordered_set<ValLocalIdx> operands;
-        // commented out current_instr usage
-        // for (auto operand:
-        //      compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
-        //   if (compiler->adaptor->val_ignore_in_liveness_analysis(operand)) {
-        //     operands.insert(INVALID_VAL_LOCAL_IDX);
-        //     continue;
-        //   }
-        //   operands.insert(compiler->adaptor->val_local_idx(operand));
-        // }
-        bool success = false;
-        typename RegisterFile::RegBitSet allowed =
-                constraints & (~forbidden); // todo(salto): constraints
-        while (reg == Reg::make_invalid() && allowed != 0) {
-            for (u64 candidate: util::BitSetIterator<>(allowed)) {
-                if (reg_file.is_used(Reg{candidate}) &&
-                    (!operands.contains(reg_file.reg_local_idx(Reg{candidate})) &&
-                     !reg_file.is_fixed(Reg{candidate}))) {
-                    reg = Reg{candidate};
-                    break;
-                }
-            }
-            if (reg == Reg::make_invalid()) {
-                // todo(salto): choose color from allowed
-                //reg =compiler->register_file.find_first_free_excluding(reg_file.reg_bank(this->cur_reg()),forbidden);
-                reg = Reg{*util::BitSetIterator<>(allowed).begin()};
-            }
-            ValLocalIdx pawn = reg_file.reg_local_idx(reg);
-            // todo(salto): constraints of pawn?
-            // |
-            //(this->has_reg() ? (1ull << this->cur_reg().id()) : 0ull)
-            typename RegisterFile::RegBitSet pawnAllowed =
-                    (available) &
-                    (~forbidden);
-            if (pawnAllowed != 0) {
-                Reg pawnReg = compiler->register_file.find_first_free_excluding(reg_file.reg_bank(reg), ~pawnAllowed);
-                compiler->parallel_copies.emplace_back(
-                    pawnReg,
-                    reg,
-                    8,
-                    pawn,
-                    reg_file.reg_part(reg));
-                success = true;
-            } else {
-                success = repair_argument(compiler,
-                                          pawn,
-                                          available | (1ull << this->cur_reg().id()),
-                                          forbidden | (1ull << reg.id()));
-            }
-            if (!success) {
-                allowed &= ~(1ull << reg.id());
-                reg = Reg::make_invalid();
-            }
-        }
-        if (reg != Reg::make_invalid()) {
-            if (this->has_reg())
-                compiler->parallel_copies.emplace_back(
-                    Reg{reg}, this->cur_reg(), 8, var, reg_file.reg_part(reg));
-            return true;
-        }
-        return false;
-    }
 
     template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
     typename CompilerBase<Adaptor, Derived, Config>::AsmReg
@@ -186,11 +110,17 @@ namespace tpde {
             // we are an empty scratch reg so we just shuffle the target register away.
             auto &reg_file = compiler->register_file;
             bool success =
-                    repair_argument(compiler,
-                                    INVALID_VAL_LOCAL_IDX,
-                                    (1ull << reg.id()),
-                                    (reg_file.allocatable & ~reg_file.used) &
-                                    reg_file.bank_regs(reg_file.reg_bank(reg)));
+                    compiler->repair_argument(
+                        INVALID_VAL_LOCAL_IDX,
+                        0,
+                        8,
+                        reg_file.reg_bank(reg),
+                        (1ull << reg.id()),
+                        (reg_file.allocatable & ~reg_file.used) &
+                            reg_file.bank_regs(reg_file.reg_bank(reg)),
+                        0,
+                        this->has_reg() ? this->cur_reg()
+                                        : AsmReg::make_invalid());
             if (success) [[likely]] {
                 auto moves =
                         compiler->sequentialize(compiler->parallel_copies);
