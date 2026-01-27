@@ -728,6 +728,9 @@ public:
   /// Evict the value from the register, spilling if needed, and free register.
   void evict_reg(Reg reg) noexcept;
 
+  /// Lazily free a register using parallel moves when possible.
+  void lazy_free_reg(Reg reg) noexcept;
+
   /// Free the register. Requires that the contained value is already spilled.
   void free_reg(Reg reg) noexcept;
 
@@ -2318,6 +2321,44 @@ void CompilerBase<Adaptor, Derived, Config>::evict_reg(Reg reg) noexcept {
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+void CompilerBase<Adaptor, Derived, Config>::lazy_free_reg(Reg reg) noexcept {
+  assert(may_change_value_state());
+  assert(!register_file.is_fixed(reg));
+
+  if (!register_file.is_used(reg)) {
+    return;
+  }
+
+  ValLocalIdx local_idx = register_file.reg_local_idx(reg);
+  if (local_idx == INVALID_VAL_LOCAL_IDX) {
+    register_file.unmark_used(reg);
+    return;
+  }
+
+  auto part = register_file.reg_part(reg);
+  AssignmentPartRef ap{val_assignment(local_idx), part};
+  if (!ap.register_valid()) {
+    register_file.unmark_used(reg);
+    return;
+  }
+
+  RegBank bank = register_file.reg_bank(reg);
+  auto available = (register_file.allocatable & ~register_file.used) &
+                   register_file.bank_regs(bank);
+  bool success = repair_argument(local_idx,
+                                 part,
+                                 ap.part_size(),
+                                 bank,
+                                 (1ull << reg.id()),
+                                 available,
+                                 0,
+                                 AsmReg::make_invalid());
+  if (!success) {
+    evict_reg(reg);
+  }
+}
+
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::free_reg(Reg reg) noexcept {
   assert(may_change_value_state());
   assert(!register_file.is_fixed(reg));
