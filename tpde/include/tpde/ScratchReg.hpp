@@ -117,10 +117,11 @@ namespace tpde {
                         reg_file.reg_bank(reg),
                         (1ull << reg.id()),
                         (reg_file.allocatable & ~reg_file.used) &
-                            reg_file.bank_regs(reg_file.reg_bank(reg)),
+                        reg_file.bank_regs(reg_file.reg_bank(reg)),
                         0,
-                        this->has_reg() ? this->cur_reg()
-                                        : AsmReg::make_invalid());
+                        this->has_reg()
+                            ? this->cur_reg()
+                            : AsmReg::make_invalid());
             if (success) [[likely]] {
                 auto moves =
                         compiler->sequentialize(compiler->parallel_copies);

@@ -621,14 +621,14 @@ CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_specific_impl(
       source_reg = ap.get_reg();
     }
     bool success = compiler->repair_argument(
-        local_idx(),
-        part(),
-        part_size(),
-        bank(),
-        (1ull << reg.id()),
-        (reg_file.allocatable & ~reg_file.used) & reg_file.bank_regs(bank()),
-        0,
-        source_reg);
+      local_idx(),
+      part(),
+      part_size(),
+      bank(),
+      (1ull << reg.id()),
+      (reg_file.allocatable & ~reg_file.used) & reg_file.bank_regs(bank()),
+      0,
+      source_reg);
     auto old_reg = this->cur_reg();
     if (success) [[likely]] {
       execute_moves(compiler, old_reg);
