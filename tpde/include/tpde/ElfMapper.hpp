@@ -9,7 +9,7 @@
 #include "tpde/util/SmallVector.hpp"
 #include "tpde/util/function_ref.hpp"
 
-namespace tpde {
+namespace tpde::elf {
 
 class ElfMapper {
 public:
@@ -17,7 +17,7 @@ public:
   using SymbolResolver = util::function_ref<void *(std::string_view)>;
 
 private:
-  u8 *mapped_addr;
+  u8 *mapped_addr = nullptr;
   size_t mapped_size;
   u32 registered_frame_off = 0;
 
@@ -25,7 +25,7 @@ private:
   util::SmallVector<void *, 64> sym_addrs;
 
 public:
-  ElfMapper() noexcept = default;
+  ElfMapper() = default;
   ~ElfMapper() { reset(); }
 
   ElfMapper(const ElfMapper &) = delete;
@@ -34,11 +34,11 @@ public:
   ElfMapper &operator=(const ElfMapper &) = delete;
   ElfMapper &operator=(ElfMapper &&) = delete;
 
-  void reset() noexcept;
+  void reset();
 
-  bool map(AssemblerElf &assembler, SymbolResolver resolver) noexcept;
+  bool map(AssemblerElf &assembler, SymbolResolver resolver);
 
-  void *get_sym_addr(SymRef sym) noexcept;
+  void *get_sym_addr(SymRef sym);
 };
 
-} // namespace tpde
+} // namespace tpde::elf

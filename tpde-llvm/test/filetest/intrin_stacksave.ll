@@ -11,24 +11,13 @@ declare void @llvm.stackrestore.p0(ptr)
 
 define void @test() {
 ; X64-LABEL: <test>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    mov rax, rsp
+; X64:         mov rax, rsp
 ; X64-NEXT:    mov rsp, rax
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <test>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    mov x0, sp
+; ARM64:         mov x0, sp
 ; ARM64-NEXT:    mov sp, x0
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
 ; ARM64-NEXT:    ret
 entry:
   %0 = call ptr @llvm.stacksave.p0()

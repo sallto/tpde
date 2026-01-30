@@ -5,10 +5,8 @@
 
 #include "TestIR.hpp"
 #include "tpde/base.hpp"
+#include <vector>
 
 namespace tpde::test {
-bool compile_ir_arm64(TestIR *ir,
-                      bool no_fixed_assignments,
-                      const std::string &obj_out_path,
-                      std::vector<Reg> registers);
+std::vector<u8> compile_ir_arm64(TestIR *ir, bool no_fixed_assignments);
 }

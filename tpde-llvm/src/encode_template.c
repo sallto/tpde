@@ -22,6 +22,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+// Note: using 8/16-bit integers as parameters is problematic, as some ABIs will
+// expect an implicit extension of the argument to 32 bit (which we don't do).
+
 typedef int8_t i8;
 typedef int16_t i16;
 typedef int32_t i32;
@@ -264,24 +267,23 @@ u128 TARGET_V1 bswapi128(u128 a) { return (u128)__builtin_bswap64(a) << 64 | __b
 u32 TARGET_V1 ctpopi32(u32 a) { return __builtin_popcount(a); }
 u64 TARGET_V1 ctpopi64(u64 a) { return __builtin_popcountll(a); }
 
-u32 TARGET_V1 cttzi32_zero_poison(u32 a) { return __builtin_ctz(a); }
-u64 TARGET_V1 cttzi64_zero_poison(u64 a) { return __builtin_ctzll(a); }
+u32 TARGET_V1 cttzi32_zp(u32 a) { return __builtin_ctz(a); }
+u64 TARGET_V1 cttzi64_zp(u64 a) { return __builtin_ctzll(a); }
 
-u32 TARGET_V1 cttzi8(i8 a) { if ((u8)a == 0) { return 8; } else { return __builtin_ctz(a); }}
-u32 TARGET_V1 cttzi16(i16 a) { if ((u16)a == 0) { return 16; } else { return __builtin_ctz(a); }}
-u32 TARGET_V1 cttzi32(u32 a) { if (a == 0) { return 32; } else { return __builtin_ctz(a); }}
-u64 TARGET_V1 cttzi64(u64 a) { if (a == 0) { return 64; } else { return __builtin_ctzll(a); }}
+u32 TARGET_V1 cttzi8(u32 a) { return __builtin_ctz(0x100|a); }
+u32 TARGET_V1 cttzi16(u32 a) { return __builtin_ctz(0x10000|a); }
+u32 TARGET_V1 cttzi32(u32 a) { return !a ? 32 : __builtin_ctz(a); }
+u64 TARGET_V1 cttzi64(u64 a) { return !a ? 64 : __builtin_ctzll(a); }
 
+u32 TARGET_V1 ctlzi8_zp(u32 a) { return __builtin_clz((u8)a) - 24; }
+u32 TARGET_V1 ctlzi16_zp(u32 a) { return __builtin_clz((u16)a) - 16; }
+u32 TARGET_V1 ctlzi32_zp(u32 a) { return __builtin_clz(a); }
+u64 TARGET_V1 ctlzi64_zp(u64 a) { return __builtin_clzll(a); }
 
-u32 TARGET_V1 ctlzi8_zero_poison(i8 a) { return __builtin_clz((u32)(u8)a) - 24; }
-u32 TARGET_V1 ctlzi16_zero_poison(i16 a) { return __builtin_clz((u32)(u16)a) - 16; }
-u32 TARGET_V1 ctlzi32_zero_poison(u32 a) { return __builtin_clz(a); }
-u64 TARGET_V1 ctlzi64_zero_poison(u64 a) { return __builtin_clzll(a); }
-
-u32 TARGET_V1 ctlzi8(i8 a) { if ((u8)a == 0) { return 8; } else { return __builtin_clz((u32)(u8)a) - 24; }}
-u32 TARGET_V1 ctlzi16(i16 a) { if ((u16)a == 0) { return 16; } else { return __builtin_clz((u32)(u16)a) - 16; }}
-u32 TARGET_V1 ctlzi32(u32 a) { if (a == 0) { return 32; } else { return __builtin_clz(a); }}
-u64 TARGET_V1 ctlzi64(u64 a) { if (a == 0) { return 64; } else { return __builtin_clzll(a); }}
+u32 TARGET_V1 ctlzi8(u32 a) { return !(u8)a ? 8 : __builtin_clz((u8)a) - 24; }
+u32 TARGET_V1 ctlzi16(u32 a) { return !(u16)a ? 16 : __builtin_clz((u16)a) - 16; }
+u32 TARGET_V1 ctlzi32(u32 a) { return !a ? 32 : __builtin_clz(a); }
+u64 TARGET_V1 ctlzi64(u64 a) { return !a ? 64 : __builtin_clzll(a); }
 
 u32 TARGET_V1 bitreversei32(u32 a) { return __builtin_bitreverse32(a); }
 u64 TARGET_V1 bitreversei64(u64 a) { return __builtin_bitreverse64(a); }
@@ -526,8 +528,11 @@ float TARGET_V1 fabsf32(float a) { return __builtin_fabsf(a); }
 double TARGET_V1 fabsf64(double a) { return __builtin_fabs(a); }
 fp128 TARGET_V1 fabsf128(fp128 a) { return __builtin_fabsf128(a); }
 
-float TARGET_V1 fmaf32(float a, float b, float c) { return a * b + c; }
-double TARGET_V1 fmaf64(double a, double b, double c) { return a * b + c; }
+float TARGET_V1 fmuladdf32(float a, float b, float c) { return a * b + c; }
+double TARGET_V1 fmuladdf64(double a, double b, double c) { return a * b + c; }
+v2f32 TARGET_V1 fmuladdv2f32(v2f32 a, v2f32 b, v2f32 c) { return a * b + c; }
+v4f32 TARGET_V1 fmuladdv4f32(v4f32 a, v4f32 b, v4f32 c) { return a * b + c; }
+v2f64 TARGET_V1 fmuladdv2f64(v2f64 a, v2f64 b, v2f64 c) { return a * b + c; }
 
 float TARGET_V1 copysignf32(float a, float b) { return __builtin_copysignf(a, b); }
 double TARGET_V1 copysignf64(double a, double b) { return __builtin_copysign(a, b); }
@@ -726,7 +731,13 @@ double TARGET_V1 atomic_max_f64_seqcst(double *p, double v) { return __atomic_fe
 void TARGET_V1 fence_acq(void) { __atomic_thread_fence(__ATOMIC_ACQUIRE); }
 void TARGET_V1 fence_rel(void) { __atomic_thread_fence(__ATOMIC_RELEASE); }
 void TARGET_V1 fence_acqrel(void) { __atomic_thread_fence(__ATOMIC_ACQ_REL); }
+#ifdef __x86_64__
+// LLVM 21+ uses lock or [rsp+64], 0, which is more efficient, but unsupported
+// by encodegen.
+void TARGET_V1 fence_seqcst(void) { __builtin_ia32_mfence(); }
+#else
 void TARGET_V1 fence_seqcst(void) { __atomic_thread_fence(__ATOMIC_SEQ_CST); }
+#endif
 
 // --------------------------
 // select
@@ -811,3 +822,5 @@ void prefetch_wl0(void* addr) { __builtin_prefetch(addr, 1, 0); }
 void prefetch_wl1(void* addr) { __builtin_prefetch(addr, 1, 1); }
 void prefetch_wl2(void* addr) { __builtin_prefetch(addr, 1, 2); }
 void prefetch_wl3(void* addr) { __builtin_prefetch(addr, 1, 3); }
+
+u64 TARGET_V1 readcyclecounter(void) { return __builtin_readcyclecounter(); }

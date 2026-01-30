@@ -7,42 +7,20 @@
 
 define void @f0_seq_cst() {
 ; X64-LABEL: <f0_seq_cst>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    pop rbp
-; X64-NEXT:    ret
+; X64:         ret
 ;
 ; ARM64-LABEL: <f0_seq_cst>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
-; ARM64-NEXT:    ret
+; ARM64:         ret
   fence syncscope("singlethread") seq_cst
   ret void
 }
 
 define void @f1_acquire() {
 ; X64-LABEL: <f1_acquire>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    pop rbp
-; X64-NEXT:    ret
+; X64:         ret
 ;
 ; ARM64-LABEL: <f1_acquire>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    dmb ishld
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         dmb ishld
 ; ARM64-NEXT:    ret
   fence acquire
   ret void
@@ -50,21 +28,10 @@ define void @f1_acquire() {
 
 define void @f1_release() {
 ; X64-LABEL: <f1_release>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    pop rbp
-; X64-NEXT:    ret
+; X64:         ret
 ;
 ; ARM64-LABEL: <f1_release>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    dmb ish
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         dmb ish
 ; ARM64-NEXT:    ret
   fence release
   ret void
@@ -72,21 +39,10 @@ define void @f1_release() {
 
 define void @f1_acq_rel() {
 ; X64-LABEL: <f1_acq_rel>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    pop rbp
-; X64-NEXT:    ret
+; X64:         ret
 ;
 ; ARM64-LABEL: <f1_acq_rel>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    dmb ish
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         dmb ish
 ; ARM64-NEXT:    ret
   fence acq_rel
   ret void
@@ -94,22 +50,11 @@ define void @f1_acq_rel() {
 
 define void @f1_seq_cst() {
 ; X64-LABEL: <f1_seq_cst>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    mfence
-; X64-NEXT:    pop rbp
+; X64:         mfence
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <f1_seq_cst>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    dmb ish
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         dmb ish
 ; ARM64-NEXT:    ret
   fence seq_cst
   ret void

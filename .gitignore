@@ -11,3 +11,4 @@ tmp/
 *.vir
 *.pyc
 session*.md
+/CMakeUserPresets.json

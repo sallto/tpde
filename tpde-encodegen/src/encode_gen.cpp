@@ -52,7 +52,9 @@ struct GenerationState {
   llvm::MachineFunction *func;
   EncodingTarget *target;
   std::vector<std::string> param_names{};
-  std::set<unsigned> used_regs{};
+  /// Map from (used) register ID to result index (or none for ScratchReg).
+  /// Used to reuse result ValueParts and distinguish these. Stored off-by-one.
+  llvm::DenseMap<unsigned, unsigned> used_regs{};
   llvm::DenseMap<unsigned, std::string> asm_operand_refs{};
   std::unordered_map<std::string, unsigned> operand_ref_counts{};
   /// Mapping from register id to the last instruction defining the return
@@ -91,11 +93,11 @@ struct GenerationState {
 
   bool can_salvage_operand(const llvm::MachineOperand &op);
 
-  void generate_cp_entry_sym(llvm::raw_ostream &os,
+  bool generate_cp_entry_sym(llvm::raw_ostream &os,
                              std::string_view sym_name,
                              unsigned cp_idx);
 
-  void handle_terminator(llvm::raw_ostream &os, llvm::MachineInstr *inst);
+  bool handle_terminator(llvm::raw_ostream &os, llvm::MachineInstr *inst);
 
   void handle_end_of_block(llvm::raw_ostream &os, llvm::MachineBasicBlock *);
 };
@@ -160,7 +162,7 @@ bool const_to_bytes(const llvm::DataLayout &dl,
   return false;
 }
 
-void GenerationState::generate_cp_entry_sym(llvm::raw_ostream &os,
+bool GenerationState::generate_cp_entry_sym(llvm::raw_ostream &os,
                                             std::string_view sym_name,
                                             unsigned cp_idx) {
   auto [it, inserted] = const_pool_indices_used.try_emplace(cp_idx, sym_count);
@@ -173,13 +175,13 @@ void GenerationState::generate_cp_entry_sym(llvm::raw_ostream &os,
 
   if (cp_entry.isMachineConstantPoolEntry()) {
     std::cerr << "ERROR: encountered MachineConstantPoolEntry\n";
-    exit(1);
+    return false;
   }
 
   if (cp_entry.needsRelocation()) {
     std::cerr
         << "ERROR: encountered constant pool entry that needs relocation\n";
-    exit(1);
+    return false;
   }
 
   const auto *constant = cp_entry.Val.ConstVal;
@@ -192,7 +194,7 @@ void GenerationState::generate_cp_entry_sym(llvm::raw_ostream &os,
   bytes.resize(size);
   if (!const_to_bytes(func->getDataLayout(), constant, bytes, 0)) {
     std::cerr << "ERROR: could not convert constant to bytes\n";
-    exit(1);
+    return false;
   }
 
   os << "    auto &" << sym_name << " = symbols[" << it->second << "];\n";
@@ -202,10 +204,12 @@ void GenerationState::generate_cp_entry_sym(llvm::raw_ostream &os,
     os << llvm::format_hex(byte, 2) << ',';
   }
   os << "}};\n";
-  os << "      auto sec = derived()->assembler.get_data_section(true);\n";
+  os << "      auto sec = "
+        "derived()->assembler.get_default_section(SectionKind::ReadOnly);\n";
   os << "      " << sym_name << " = derived()->assembler.sym_def_data(sec, "
      << "\"\", data, " << align << ", Assembler::SymBinding::LOCAL);\n";
   os << "    }\n";
+  return true;
 }
 
 bool generate_inst(std::string &buf,
@@ -257,9 +261,6 @@ bool generate_inst(std::string &buf,
     } else if (Name == "MEMBARRIER") {
       state.fmt_line(buf, 4, "// MEMBARRIER is a no-op");
       return true;
-    } else {
-      llvm::errs() << "ERROR: unhandled pseudo: " << *inst << "\n";
-      return false;
     }
   }
 
@@ -275,7 +276,9 @@ bool generate_inst(std::string &buf,
 
   llvm::SmallVector<MICandidate> candidates;
   state.target->get_inst_candidates(*inst, candidates);
-  assert(candidates.size() > 0);
+  if (candidates.empty()) {
+    return false;
+  }
 
   if (candidates.size() > 1) {
     state.fmt_line(buf, 4, "do {{");
@@ -348,7 +351,7 @@ bool generate_inst(std::string &buf,
       }
 
       defs_allocated.emplace_back(def.isImplicit(), &def);
-      state.used_regs.insert(state.target->reg_id_from_mc_reg(reg));
+      state.used_regs.try_emplace(state.target->reg_id_from_mc_reg(reg), 0);
     }
 
     const auto def_idx = [inst, &state](const llvm::MachineOperand *op) {
@@ -391,7 +394,9 @@ bool generate_inst(std::string &buf,
         auto var_name = std::format("op{}_sym", use.getOperandNo());
         use_ops.push_back(var_name);
         llvm::raw_string_ostream os(buf);
-        state.generate_cp_entry_sym(os, var_name, use.getIndex());
+        if (!state.generate_cp_entry_sym(os, var_name, use.getIndex())) {
+          return false;
+        }
         continue;
       }
 
@@ -419,7 +424,7 @@ bool generate_inst(std::string &buf,
              (!use.isImplicit() && "implicit tied use not implemented"));
 
       auto reg_id = state.target->reg_id_from_mc_reg(use.getReg());
-      state.used_regs.insert(reg_id);
+      state.used_regs.try_emplace(reg_id, 0);
 
       // Don't allocate the same register twice
       auto it = allocated_regs.find(reg_id);
@@ -435,14 +440,24 @@ bool generate_inst(std::string &buf,
           state.fmt_line(buf, 8, "// undef tied");
         } else {
           state.fmt_line(buf, 8, "// undef allocate scratch");
-          state.fmt_line(buf,
-                         8,
-                         "AsmReg inst{}_op{} = "
-                         "scratch_{}.alloc(RegBank({}));\n",
-                         inst_id,
-                         op_idx,
-                         state.target->reg_name_lower(reg_id),
-                         state.target->reg_bank(reg_id));
+          if (state.used_regs[reg_id] > 0) {
+            state.fmt_line(buf,
+                           8,
+                           "AsmReg inst{}_op{} = "
+                           "scratch_{}.cur_reg_or_alloc(derived());\n",
+                           inst_id,
+                           op_idx,
+                           state.target->reg_name_lower(reg_id));
+          } else {
+            state.fmt_line(buf,
+                           8,
+                           "AsmReg inst{}_op{} = "
+                           "scratch_{}.alloc(RegBank({}));\n",
+                           inst_id,
+                           op_idx,
+                           state.target->reg_name_lower(reg_id),
+                           state.target->reg_bank(reg_id));
+          }
           use_ops.push_back(std::format("inst{}_op{}", inst_id, op_idx));
           allocated_regs[reg_id] = use_ops.back();
         }
@@ -561,15 +576,26 @@ bool generate_inst(std::string &buf,
                          state.target->reg_bank(reg_id),
                          reg_size_bytes(state.func, use.getReg()));
         } else {
-          std::format_to(std::back_inserter(buf),
-                         "{:>{}}AsmReg inst{}_op{} = "
-                         "scratch_{}.alloc(RegBank({}));\n",
-                         "",
-                         8,
-                         inst_id,
-                         op_idx,
-                         state.target->reg_name_lower(reg_id),
-                         state.target->reg_bank(reg_id));
+          if (state.used_regs[reg_id] > 0) {
+            std::format_to(std::back_inserter(buf),
+                           "{:>{}}AsmReg inst{}_op{} = "
+                           "scratch_{}.cur_reg_or_alloc(derived());\n",
+                           "",
+                           8,
+                           inst_id,
+                           op_idx,
+                           state.target->reg_name_lower(reg_id));
+          } else {
+            std::format_to(std::back_inserter(buf),
+                           "{:>{}}AsmReg inst{}_op{} = "
+                           "scratch_{}.alloc(RegBank({}));\n",
+                           "",
+                           8,
+                           inst_id,
+                           op_idx,
+                           state.target->reg_name_lower(reg_id),
+                           state.target->reg_bank(reg_id));
+          }
           std::format_to(std::back_inserter(buf),
                          "{:>{}}AsmReg inst{}_op{}_tmp = "
                          "derived()->gval_as_reg({});\n",
@@ -617,18 +643,10 @@ bool generate_inst(std::string &buf,
         std::format_to(std::back_inserter(buf),
                        "        // def {} has not been allocated yet\n",
                        state.target->reg_name_lower(reg_id));
-
-        // If the scratch corresponds to a return register.
-        // Try to allocate the scratch to the result recommended register
-        const auto corresponding_ret_reg = std::find(
-            state.return_regs.begin(), state.return_regs.end(), reg_id);
-        if (corresponding_ret_reg != state.return_regs.end()) {
-          std::format_to(
-              std::back_inserter(buf),
-              "        scratch_{}.alloc_rec(RegBank({}),result_{});\n",
-              state.target->reg_name_lower(reg_id),
-              state.target->reg_bank(reg_id),
-              std::distance(state.return_regs.begin(), corresponding_ret_reg));
+        if (state.used_regs[reg_id] > 0) {
+          std::format_to(std::back_inserter(buf),
+                         "        scratch_{}.cur_reg_or_alloc(derived());\n",
+                         state.target->reg_name_lower(reg_id));
         } else {
           std::format_to(std::back_inserter(buf),
                          "        scratch_{}.alloc(RegBank({}));\n",
@@ -753,7 +771,7 @@ void GenerationState::handle_end_of_block(llvm::raw_ostream &os,
 
           const auto reg_id = target->reg_id_from_mc_reg(op.getReg());
           func_used_regs.try_emplace(reg_id, 0);
-          used_regs.insert(reg_id);
+          used_regs.try_emplace(reg_id, 0);
         }
       }
     }
@@ -764,12 +782,14 @@ void GenerationState::handle_end_of_block(llvm::raw_ostream &os,
       auto name = target->reg_name_lower(reg);
       auto bank = target->reg_bank(reg);
       auto asm_op_ref_it = asm_operand_refs.find(reg);
-      if (asm_op_ref_it == asm_operand_refs.end()) {
-        os << "  scratch_" << name << ".alloc(RegBank(" << bank << "));\n";
-      } else {
+      if (asm_op_ref_it != asm_operand_refs.end()) {
         auto param = asm_op_ref_it->second;
         os << "  try_salvage_or_materialize(" << param << ", scratch_" << name
            << ", " << bank << ", " << size << ");\n";
+      } else if (used_regs[reg] > 0) {
+        os << "  scratch_" << name << ".cur_reg_or_alloc(derived());\n";
+      } else {
+        os << "  scratch_" << name << ".alloc(RegBank(" << bank << "));\n";
       }
     }
 
@@ -777,11 +797,11 @@ void GenerationState::handle_end_of_block(llvm::raw_ostream &os,
   }
 }
 
-void GenerationState::handle_terminator(llvm::raw_ostream &os,
+bool GenerationState::handle_terminator(llvm::raw_ostream &os,
                                         llvm::MachineInstr *inst) {
   if (!inst->isBranch() || inst->isIndirectBranch()) {
     llvm::errs() << "ERROR: unhandled terminator: " << inst << "\n";
-    exit(1);
+    return false;
   }
 
   handle_end_of_block(os, inst->getParent());
@@ -807,7 +827,7 @@ void GenerationState::handle_terminator(llvm::raw_ostream &os,
 
     if (jump_code.empty()) {
       llvm::errs() << "ERROR: encountered jump without known condition code\n";
-      exit(1);
+      return false;
     }
   }
   llvm::MachineBasicBlock *target = nullptr;
@@ -815,18 +835,19 @@ void GenerationState::handle_terminator(llvm::raw_ostream &os,
     if (op.isMBB()) {
       if (target) {
         llvm::errs() << "ERROR: multiple block targets for branch\n";
-        exit(1);
+        return false;
       }
       target = op.getMBB();
     }
   }
   if (!target) {
     llvm::errs() << "ERROR: could not find block target for branch\n";
-    exit(1);
+    return false;
   }
 
   os << "  derived()->generate_raw_jump(Derived::Jump::" << jump_code
      << ", block" << target->getNumber() << "_label);\n\n";
+  return true;
 }
 
 bool encode_prepass(llvm::MachineFunction *func, GenerationState &state) {
@@ -1000,9 +1021,11 @@ bool create_encode_function(llvm::MachineFunction *func,
   auto &mach_reg_info = func->getRegInfo();
   // const auto &target_reg_info = func->getSubtarget().getRegisterInfo();
 
-  // Mark return registers as used.
-  for (auto reg_id : state.return_regs) {
-    state.used_regs.insert(reg_id);
+  // Mark return registers as used. Try to reuse result ValueParts for regs.
+  for (auto [idx, reg_id] : llvm::enumerate(state.return_regs)) {
+    if (!state.maybe_fixed_regs.contains(reg_id)) {
+      state.used_regs.try_emplace(reg_id, idx + 1);
+    }
   }
 
   // map inputs
@@ -1016,7 +1039,7 @@ bool create_encode_function(llvm::MachineFunction *func,
       state.param_names.push_back(std::move(name));
 
       const auto reg_id = target->reg_id_from_mc_reg(it->first);
-      state.used_regs.insert(reg_id);
+      state.used_regs.try_emplace(reg_id, 0);
       state.asm_operand_refs[reg_id] = state.param_names[idx++];
       state.operand_ref_counts[state.param_names.back()] = 1;
 
@@ -1074,7 +1097,9 @@ bool create_encode_function(llvm::MachineFunction *func,
                 "ret_converge_label);\n";
         }
       } else if (inst->isTerminator()) {
-        state.handle_terminator(os, inst);
+        if (!state.handle_terminator(os, inst)) {
+          return false;
+        }
       } else {
         if (!generate_inst(write_buf_inner, state, inst)) {
           llvm::errs() << "ERROR: failed for instruction: " << *inst << "\n";
@@ -1096,11 +1121,18 @@ bool create_encode_function(llvm::MachineFunction *func,
   }
 
   // create ScratchRegs
-  // todo(salto): remove unused scratch registers
-  for (const auto reg : state.used_regs) {
-    std::format_to(std::back_inserter(write_buf),
-                   "    ScratchReg scratch_{}{{derived()}};\n",
-                   state.target->reg_name_lower(reg));
+  for (const auto &entry : state.used_regs) {
+    auto name = state.target->reg_name_lower(entry.first);
+    if (!entry.second) {
+      std::format_to(std::back_inserter(write_buf),
+                     "    ScratchReg scratch_{}{{derived()}};\n",
+                     name);
+    } else {
+      std::format_to(std::back_inserter(write_buf),
+                     "    ValuePart &scratch_{} = result_{};\n",
+                     name,
+                     entry.second - 1);
+    }
   }
 
   // create param conditions
@@ -1185,6 +1217,11 @@ bool create_encode_function(llvm::MachineFunction *func,
   // backups
   for (unsigned idx = 0; idx < state.num_ret_regs; ++idx) {
     const auto reg = state.return_regs[idx];
+    if (state.used_regs[reg] > 0) {
+      os << "  if (result_" << idx << ".has_assignment())\n";
+      os << "    result_" << idx << ".unlock(derived());\n";
+      continue;
+    }
     auto name = state.target->reg_name_lower(reg);
 
     if (auto it = state.asm_operand_refs.find(reg);
@@ -1222,7 +1259,7 @@ bool create_encode_function(llvm::MachineFunction *func,
     for (unsigned i = 0; i < state.num_ret_regs; ++i) {
       func_args_os << (func_args.empty() ? "" : ", ") << "ValuePart &result_"
                    << i;
-      func_args_rvalue_os << (func_args.empty() ? "" : ", ")
+      func_args_rvalue_os << (func_args_rvalue.empty() ? "" : ", ")
                           << "ValuePart &&result_" << i;
     }
 

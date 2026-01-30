@@ -8,27 +8,16 @@
 
 define void @free_intrinsics(ptr %p) {
 ; X64-LABEL: <free_intrinsics>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    pop rbp
+; X64:         xor eax, eax
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <free_intrinsics>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         mov w0, #0x0 // =0
 ; ARM64-NEXT:    ret
   call void @llvm.donothing()
 ; %a0 = call i32 @llvm.annotation.i32(i32 undef, ptr undef, ptr undef, i32 undef)
   call void @llvm.assume(i1 undef)
-  call void @llvm.assume(i1 undef) ["nonnull"(ptr %p)]
+  call void @llvm.assume(i1 true) ["nonnull"(ptr %p)]
   call void @llvm.experimental.noalias.scope.decl(metadata !4)
   call void @llvm.sideeffect()
   call void @llvm.dbg.assign(metadata ptr undef, metadata !0, metadata !DIExpression(), metadata !10, metadata ptr undef, metadata !DIExpression()), !dbg !8

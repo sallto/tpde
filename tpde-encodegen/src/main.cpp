@@ -5,20 +5,24 @@
 #include <format>
 #include <fstream>
 #include <iostream>
+#include <memory>
 
-#include <llvm/AsmParser/Parser.h>
+#include <llvm/ADT/SmallVector.h>
 #include <llvm/CodeGen/MachineFunction.h>
 #include <llvm/CodeGen/MachineModuleInfo.h>
 #include <llvm/CodeGen/TargetPassConfig.h>
 #include <llvm/Config/llvm-config.h>
+#include <llvm/IR/Function.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/Module.h>
-#include <llvm/IR/Verifier.h>
 #include <llvm/IRReader/IRReader.h>
 #include <llvm/MC/TargetRegistry.h>
+#include <llvm/Support/Allocator.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/MemoryBuffer.h>
+#include <llvm/Support/SourceMgr.h>
+#include <llvm/Support/StringSaver.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Target/TargetOptions.h>
@@ -27,7 +31,6 @@
 #include "encode_gen.hpp"
 #include "x64/EncCompilerTemplate.hpp"
 
-#include <llvm/Support/SourceMgr.h>
 
 namespace tpde_encgen {
 llvm::cl::OptionCategory tpde_category("Code Generation Options");
@@ -103,15 +106,18 @@ int main(const int argc, char *argv[]) {
 #endif
 
   // Required so that our target triple is actually found
+#ifdef TPDE_ARCH_X86_64
   LLVMInitializeX86TargetInfo();
-  LLVMInitializeAArch64TargetInfo();
   LLVMInitializeX86Target();
-  LLVMInitializeAArch64Target();
   LLVMInitializeX86TargetMC();
-  LLVMInitializeAArch64TargetMC();
   LLVMInitializeX86AsmPrinter();
+#endif
+#ifdef TPDE_ARCH_AARCH64
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmPrinter();
-
+#endif
 
   std::string error;
   const llvm::Target *target =
@@ -213,6 +219,8 @@ int main(const int argc, char *argv[]) {
               machine_func, fn.getName(), decl_lines, sym_count, impl_lines)) {
         std::cerr << std::format("Failed to generate code for function {}\n",
                                  fn.getName().str());
+        fn.print(llvm::outs());
+        machine_func->print(llvm::outs(), nullptr);
         return 1;
       }
     }

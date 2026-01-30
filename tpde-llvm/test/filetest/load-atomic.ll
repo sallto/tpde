@@ -7,24 +7,13 @@
 
 define i8 @load_atomic_i8_monotonic(ptr %p) {
 ; X64-LABEL: <load_atomic_i8_monotonic>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    movzx edi, byte ptr [rdi]
+; X64:         movzx edi, byte ptr [rdi]
 ; X64-NEXT:    movzx edi, dil
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i8_monotonic>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldrb w0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldrb w0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i8, ptr %p monotonic, align 1
   ret i8 %l
@@ -32,24 +21,13 @@ define i8 @load_atomic_i8_monotonic(ptr %p) {
 
 define i16 @load_atomic_i16_monotonic(ptr %p) {
 ; X64-LABEL: <load_atomic_i16_monotonic>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    movzx edi, word ptr [rdi]
+; X64:         movzx edi, word ptr [rdi]
 ; X64-NEXT:    movzx edi, di
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i16_monotonic>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldrh w0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldrh w0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i16, ptr %p monotonic, align 2
   ret i16 %l
@@ -57,23 +35,12 @@ define i16 @load_atomic_i16_monotonic(ptr %p) {
 
 define i32 @load_atomic_i32_monotonic(ptr %p) {
 ; X64-LABEL: <load_atomic_i32_monotonic>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    mov edi, dword ptr [rdi]
+; X64:         mov edi, dword ptr [rdi]
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i32_monotonic>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldr w0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldr w0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i32, ptr %p monotonic, align 4
   ret i32 %l
@@ -81,23 +48,12 @@ define i32 @load_atomic_i32_monotonic(ptr %p) {
 
 define i64 @load_atomic_i64_monotonic(ptr %p) {
 ; X64-LABEL: <load_atomic_i64_monotonic>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    mov rdi, qword ptr [rdi]
+; X64:         mov rdi, qword ptr [rdi]
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i64_monotonic>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldr x0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldr x0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i64, ptr %p monotonic, align 8
   ret i64 %l
@@ -106,24 +62,13 @@ define i64 @load_atomic_i64_monotonic(ptr %p) {
 
 define i8 @load_atomic_i8_acquire(ptr %p) {
 ; X64-LABEL: <load_atomic_i8_acquire>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    movzx edi, byte ptr [rdi]
+; X64:         movzx edi, byte ptr [rdi]
 ; X64-NEXT:    movzx edi, dil
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i8_acquire>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldarb w0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldarb w0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i8, ptr %p acquire, align 1
   ret i8 %l
@@ -131,24 +76,13 @@ define i8 @load_atomic_i8_acquire(ptr %p) {
 
 define i16 @load_atomic_i16_acquire(ptr %p) {
 ; X64-LABEL: <load_atomic_i16_acquire>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    movzx edi, word ptr [rdi]
+; X64:         movzx edi, word ptr [rdi]
 ; X64-NEXT:    movzx edi, di
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i16_acquire>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldarh w0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldarh w0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i16, ptr %p acquire, align 2
   ret i16 %l
@@ -156,23 +90,12 @@ define i16 @load_atomic_i16_acquire(ptr %p) {
 
 define i32 @load_atomic_i32_acquire(ptr %p) {
 ; X64-LABEL: <load_atomic_i32_acquire>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    mov edi, dword ptr [rdi]
+; X64:         mov edi, dword ptr [rdi]
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i32_acquire>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldar w0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldar w0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i32, ptr %p acquire, align 4
   ret i32 %l
@@ -180,23 +103,12 @@ define i32 @load_atomic_i32_acquire(ptr %p) {
 
 define i64 @load_atomic_i64_acquire(ptr %p) {
 ; X64-LABEL: <load_atomic_i64_acquire>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    mov rdi, qword ptr [rdi]
+; X64:         mov rdi, qword ptr [rdi]
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i64_acquire>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldar x0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldar x0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i64, ptr %p acquire, align 8
   ret i64 %l
@@ -205,24 +117,13 @@ define i64 @load_atomic_i64_acquire(ptr %p) {
 
 define i8 @load_atomic_i8_seq_cst(ptr %p) {
 ; X64-LABEL: <load_atomic_i8_seq_cst>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    movzx edi, byte ptr [rdi]
+; X64:         movzx edi, byte ptr [rdi]
 ; X64-NEXT:    movzx edi, dil
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i8_seq_cst>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldarb w0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldarb w0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i8, ptr %p seq_cst, align 1
   ret i8 %l
@@ -230,24 +131,13 @@ define i8 @load_atomic_i8_seq_cst(ptr %p) {
 
 define i16 @load_atomic_i16_seq_cst(ptr %p) {
 ; X64-LABEL: <load_atomic_i16_seq_cst>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    movzx edi, word ptr [rdi]
+; X64:         movzx edi, word ptr [rdi]
 ; X64-NEXT:    movzx edi, di
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i16_seq_cst>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldarh w0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldarh w0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i16, ptr %p seq_cst, align 2
   ret i16 %l
@@ -255,23 +145,12 @@ define i16 @load_atomic_i16_seq_cst(ptr %p) {
 
 define i32 @load_atomic_i32_seq_cst(ptr %p) {
 ; X64-LABEL: <load_atomic_i32_seq_cst>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    mov edi, dword ptr [rdi]
+; X64:         mov edi, dword ptr [rdi]
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i32_seq_cst>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldar w0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldar w0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i32, ptr %p seq_cst, align 4
   ret i32 %l
@@ -279,23 +158,12 @@ define i32 @load_atomic_i32_seq_cst(ptr %p) {
 
 define i64 @load_atomic_i64_seq_cst(ptr %p) {
 ; X64-LABEL: <load_atomic_i64_seq_cst>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    mov rdi, qword ptr [rdi]
+; X64:         mov rdi, qword ptr [rdi]
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_atomic_i64_seq_cst>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldar x0, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         ldar x0, [x0]
 ; ARM64-NEXT:    ret
   %l = load atomic i64, ptr %p seq_cst, align 8
   ret i64 %l

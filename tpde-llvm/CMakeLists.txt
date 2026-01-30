@@ -22,17 +22,17 @@ set_target_properties(tpde_llvm PROPERTIES
 
 target_link_libraries(tpde_llvm PRIVATE tpde)
 
-# hopscotch-map (disable warnings)
-target_include_directories(tpde_llvm SYSTEM PRIVATE ../deps/hopscotch-map/include)
-
 # Configure LLVM
 set(TPDE_LINK_LLVM_STATIC FALSE CACHE BOOL "Should LLVM be linked statically?")
 
 target_include_directories(tpde_llvm SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})
 target_compile_definitions(tpde_llvm PUBLIC ${LLVM_DEFINITIONS})
+if (NOT LLVM_ENABLE_RTTI)
+    target_compile_options(tpde_llvm PUBLIC -fno-rtti)
+endif ()
 if (TPDE_LINK_LLVM_STATIC)
     llvm_map_components_to_libnames(TPDE_LLVM_LIBS
-        core irreader irprinter jitlink orcjit passes support bitreader bitstreamreader targetparser
+        analysis core irreader irprinter jitlink orcjit passes support bitreader bitstreamreader targetparser
     )
     target_link_libraries(tpde_llvm PUBLIC ${TPDE_LLVM_LIBS})
 else ()
@@ -115,7 +115,7 @@ find_program(TPDE_CLANG NO_CACHE REQUIRED
              VALIDATOR check_clang_version)
 message(STATUS "Found Clang: " ${TPDE_CLANG})
 
-if (TPDE_X64)
+if ("x86_64" IN_LIST TPDE_TARGETS)
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/encode_template_x64.bc
         COMMAND ${TPDE_CLANG} -c -emit-llvm -ffreestanding -fcf-protection=none
@@ -151,9 +151,9 @@ if (TPDE_X64)
         FILES
             ${CMAKE_CURRENT_BINARY_DIR}/encode_template_x64.hpp
     )
-endif ()
+endif()
 
-if (TPDE_A64)
+if ("aarch64" IN_LIST TPDE_TARGETS)
     add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/encode_template_arm64.bc
         COMMAND ${TPDE_CLANG} -c -emit-llvm -ffreestanding -fcf-protection=none
@@ -189,7 +189,7 @@ if (TPDE_A64)
         FILES
             ${CMAKE_CURRENT_BINARY_DIR}/encode_template_arm64.hpp
     )
-endif ()
+endif()
 
 
 # tpde-llc binary

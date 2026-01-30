@@ -51,9 +51,28 @@ struct Relocation {
   i32 addend;    ///< Addend.
 };
 
+/// Section kinds, lowered to file-format specific flags.
+enum class SectionKind : u8 {
+  Text,       ///< Text section, executable code (ELF .text)
+  ReadOnly,   ///< Read-only data section (ELF .rodata)
+  EHFrame,    ///< EH Frame section (ELF .eh_frame)
+  LSDA,       ///< LSDA section (ELF .gcc_except_table)
+  Data,       ///< Writable data section (ELF .data)
+  DataRelRO,  ///< Read-only data section with relocations (ELF .data.rel.ro)
+  BSS,        ///< Zero-initialized data section (ELF .bss)
+  ThreadData, ///< Initialized thread-local data section (ELF .tdata)
+  ThreadBSS,  ///< Zero-initialized thread-local data section (ELF .tbss)
+
+  Max
+};
+
+namespace elf {
+class AssemblerElf;
+} // namespace elf
+
 struct DataSection {
   friend class Assembler;
-  friend class AssemblerElf;
+  friend class elf::AssemblerElf;
 
   /// 256 bytes inline storage is enough for 10 relocations, which is a typical
   /// number for a single function (relevant for COMDAT sections with one
@@ -70,10 +89,10 @@ struct DataSection {
   u32 name = 0;  ///< Name (file-format-specific, can also be index, etc.).
   u32 align = 1; ///< Alignment (bytes).
 
-  /// Section symbol, or signature symbol for SHT_GROUP sections.
-  SymRef sym;
-
 private:
+  /// Section symbol, or signature symbol for SHT_GROUP sections.
+  SymRef sym = {};
+
   SecRef sec_ref;
 
   util::SmallVector<Relocation, 4> relocs;
@@ -97,39 +116,65 @@ public:
   bool locked = false;
 #endif
 
-  DataSection(SecRef ref) noexcept : sec_ref(ref) {}
+  DataSection(SecRef ref) : sec_ref(ref) {}
 
-  SecRef get_ref() const noexcept { return sec_ref; }
+  SecRef get_ref() const { return sec_ref; }
 
   size_t size() const { return is_virtual ? vsize : data.size(); }
 
   template <typename T>
-  void write(const T &t) noexcept {
+  void write(const T &t) {
     assert(!locked);
     assert(!is_virtual);
     size_t off = data.size();
     data.resize_uninitialized(data.size() + sizeof(T));
     std::memcpy(data.data() + off, &t, sizeof(T));
   }
+
+  size_t reloc_count() const {
+    assert(!is_virtual);
+    assert(has_relocs);
+    return relocs.size();
+  }
+
+  /// Moves all offsets of relocations backwards by the specified offset.
+  void adjust_relocation_offsets(const size_t reloc_start_off,
+                                 const u32 offset) {
+    for (size_t i = reloc_start_off; i < relocs.size(); i++) {
+      relocs[i].offset -= offset;
+    }
+  }
 };
 
 /// Assembler base class.
 class Assembler {
 public:
+  enum class SymBinding : u8 {
+    /// Symbol with local linkage, must be defined
+    LOCAL,
+    /// Weak linkage
+    WEAK,
+    /// Global linkage
+    GLOBAL,
+  };
+
   struct TargetInfo {
-    /// The return address register for the CIE.
-    u8 cie_return_addr_register;
-    /// The initial instructions for the CIE.
-    std::span<const u8> cie_instrs;
-    /// Code alignment factor for the CIE, ULEB128, must be one byte.
-    u8 cie_code_alignment_factor;
-    /// Data alignment factor for the CIE, SLEB128, must be one byte.
-    u8 cie_data_alignment_factor;
+    struct SectionFlags {
+      u32 type;
+      u32 flags;
+      u32 name;
+      u8 align = 1;
+      bool has_relocs = true;
+      bool is_bss = false;
+    };
 
     /// The relocation type for 32-bit pc-relative offsets.
     u32 reloc_pc32;
     /// The relocation type for 64-bit absolute addresses.
     u32 reloc_abs64;
+
+    /// Section flags for the different section kinds.
+    std::array<SectionFlags, unsigned(SectionKind::Max)> section_flags;
   };
 
 protected:
@@ -138,51 +183,99 @@ protected:
   util::BumpAllocator<> section_allocator;
   util::SmallVector<util::BumpAllocUniquePtr<DataSection>, 16> sections;
 
-  Assembler(const TargetInfo &target_info) noexcept
-      : target_info(target_info) {}
+  std::array<SecRef, unsigned(SectionKind::Max)> default_sections;
+
+  Assembler(const TargetInfo &target_info) : target_info(target_info) {}
   virtual ~Assembler();
 
 public:
-  virtual void reset() noexcept;
+  virtual void reset();
 
   /// \name Sections
   /// @{
 
-  DataSection &get_section(SecRef ref) noexcept {
+  DataSection &get_section(SecRef ref) {
     assert(ref.valid());
     return *sections[ref.id()];
   }
 
-  const DataSection &get_section(SecRef ref) const noexcept {
+  const DataSection &get_section(SecRef ref) const {
     assert(ref.valid());
     return *sections[ref.id()];
   }
+
+  SecRef create_section(const TargetInfo::SectionFlags &flags);
+
+  SecRef create_section(SectionKind kind) {
+    return create_section(target_info.section_flags[unsigned(kind)]);
+  }
+
+  SecRef get_default_section(SectionKind kind) {
+    SecRef &res = default_sections[unsigned(kind)];
+    if (!res.valid()) {
+      res = create_section(kind);
+    }
+    return res;
+  }
+
+  virtual void rename_section(SecRef, std::string_view name) = 0;
+
+  virtual SymRef section_symbol(SecRef) = 0;
 
   /// @}
+
+  virtual SymRef sym_add_undef(std::string_view, SymBinding) = 0;
+  virtual SymRef sym_predef_func(std::string_view, SymBinding) = 0;
+  virtual SymRef sym_predef_data(std::string_view, SymBinding) = 0;
+  virtual SymRef sym_predef_tls(std::string_view, SymBinding) = 0;
+  /// Define a symbol at the specified location.
+  virtual void sym_def(SymRef, SecRef, u64 pos, u64 size) = 0;
+
+  /// Define symbol and allocate space for data; returns offset into section.
+  u32 sym_def_predef_data(SecRef sec, SymRef sym, u64 size, u32 align);
+
+  /// Define predefined symbol with the specified data.
+  void sym_def_predef_data(
+      SecRef sec, SymRef sym, std::span<const u8> data, u32 align, u32 *off);
+
+  [[nodiscard]] SymRef sym_def_data(SecRef sec,
+                                    std::string_view name,
+                                    std::span<const u8> data,
+                                    u32 align,
+                                    SymBinding binding,
+                                    u32 *off = nullptr) {
+    SymRef sym = sym_predef_data(name, binding);
+    sym_def_predef_data(sec, sym, data, align, off);
+    return sym;
+  }
+
+  /// Define predefined symbol with zero; also supported for BSS sections.
+  void sym_def_predef_zero(
+      SecRef sec_ref, SymRef sym_ref, u32 size, u32 align, u32 *off = nullptr);
+
 
   /// \name Relocations
   /// @{
 
   /// Add relocation. Type is file-format and target-specific.
-  void reloc_sec(
-      SecRef sec, SymRef sym, u32 type, u32 offset, i64 addend) noexcept {
+  void reloc_sec(SecRef sec, SymRef sym, u32 type, u32 offset, i64 addend) {
     assert(i32(addend) == addend && "non-32-bit addends are unsupported");
     get_section(sec).relocs.emplace_back(offset, sym, type, addend);
   }
 
-  void reloc_pc32(SecRef sec, SymRef sym, u32 offset, i64 addend) noexcept {
+  void reloc_pc32(SecRef sec, SymRef sym, u32 offset, i64 addend) {
     reloc_sec(sec, sym, target_info.reloc_pc32, offset, addend);
   }
 
-  void reloc_abs(SecRef sec, SymRef sym, u32 offset, i64 addend) noexcept {
+  void reloc_abs(SecRef sec, SymRef sym, u32 offset, i64 addend) {
     reloc_sec(sec, sym, target_info.reloc_abs64, offset, addend);
   }
 
   /// @}
 
-  virtual void finalize() noexcept {}
+  virtual void finalize() {}
 
-  virtual std::vector<u8> build_object_file() noexcept = 0;
+  virtual std::vector<u8> build_object_file() = 0;
 };
 
 } // namespace tpde

@@ -10,10 +10,11 @@
 #include <args/args.hxx>
 
 #include "TestIR.hpp"
-#include "TestIRCompiler.hpp"
+#include "TestIRAdaptor.hpp"
 #include "TestIRCompilerA64.hpp"
+#include "TestIRCompilerX64.hpp"
 #include "tpde/Analyzer.hpp"
-#include "tpde/CompilerBase.hpp"
+#include "tpde/base.hpp"
 
 enum class Arch {
   x64,
@@ -216,8 +217,8 @@ int main(int argc, char *argv[]) {
   if (run_until.Get() == RunTestUntil::only_analyzer) {
     test::TestIRAdaptor adaptor{&ir};
     // for now just always use x64 todo(salto): respect arch
-    test::TestIRCompilerX64 compiler{&adaptor, no_fixed_assignments, registers};
-    Analyzer<test::TestIRAdaptor, test::TestIRCompilerX64> analyzer{&adaptor, (&compiler)};
+    auto *compiler = test::create_test_ir_compiler_x64(&adaptor, no_fixed_assignments);
+    Analyzer<test::TestIRAdaptor, test::TestIRCompilerX64> analyzer{&adaptor, compiler};
 
     for (auto func : adaptor.funcs()) {
       if (adaptor.func_extern(func)) {
@@ -258,56 +259,48 @@ int main(int argc, char *argv[]) {
 
       if (print_spills) {
          std::cout << "Spills for " << adaptor.func_link_name(func) << "\n";
-         analyzer.print_spills(std::cout);
          std::cout << "End Spills\n";
        }
 
        if (print_pressure) {
           std::cout << "Register Pressure for " << adaptor.func_link_name(func) << "\n";
-          analyzer.print_register_pressure(std::cout);
           std::cout << "End Register Pressure\n";
         }
 
        if (print_domtree) {
           std::cout << "Dominator tree for func " << adaptor.func_link_name(func) << "\n";
-          analyzer.print_domtree(std::cout);
           std::cout << "End Dominator tree\n";
         }
       }
 
-     return 0;
+    test::destroy_test_ir_compiler_x64(compiler);
+    return 0;
   }
 
+  using CompileFn = std::vector<u8> (*)(test::TestIR *, bool);
+  CompileFn compile_fn;
+  switch (arch.Get()) {
+  case Arch::x64: compile_fn = &test::compile_ir_x64; break;
+  case Arch::a64: compile_fn = &test::compile_ir_arm64; break;
+  default: TPDE_UNREACHABLE("invalid architecture");
+  }
 
-  // TODO(ts): multiple arch select
-  if (arch.Get() == Arch::x64) {
-    test::TestIRAdaptor adaptor{&ir};
-    test::TestIRCompilerX64 compiler{&adaptor, no_fixed_assignments, registers};
-    if (!compiler.compile()) {
-      TPDE_LOG_ERR("Failed to compile IR");
+  std::vector<u8> data = compile_fn(&ir, no_fixed_assignments.Get());
+  if (data.empty()) {
+    TPDE_LOG_ERR("Failed to compile IR");
+    return 1;
+  }
+
+  if (obj_out_path && obj_out_path.Get() != "-") {
+    std::ofstream out_file{obj_out_path.Get(), std::ios::binary};
+    if (!out_file.is_open()) {
+      TPDE_LOG_ERR("Failed to open output file");
       return 1;
     }
-
-    const std::vector<u8> data = compiler.assembler.build_object_file();
-    if (obj_out_path && obj_out_path.Get() != "-") {
-      std::ofstream out_file{obj_out_path.Get(), std::ios::binary};
-      if (!out_file.is_open()) {
-        TPDE_LOG_ERR("Failed to open output file");
-        return 1;
-      }
-      out_file.write(reinterpret_cast<const char *>(data.data()), data.size());
-    } else {
-      std::cout.write(reinterpret_cast<const char *>(data.data()), data.size());
-    }
+    out_file.write(reinterpret_cast<const char *>(data.data()), data.size());
   } else {
-    assert(arch.Get() == Arch::a64);
-    if (!test::compile_ir_arm64(
-            &ir, no_fixed_assignments.Get(), obj_out_path.Get(), registers)) {
-      TPDE_LOG_ERR("Failed to compiler IR");
-      return 1;
-    }
+    std::cout.write(reinterpret_cast<const char *>(data.data()), data.size());
   }
-
 
   return 0;
 }

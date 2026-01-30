@@ -4,6 +4,8 @@
 
 ; RUN: tpde-llc --target=x86_64 %s | %objdump | FileCheck %s -check-prefixes=X64
 ; RUN: tpde-llc --target=aarch64 %s | %objdump | FileCheck %s -check-prefixes=ARM64
+; XFAIL: llvm19.1
+; XFAIL: llvm20.1
 
 @t1 = external thread_local global i32, align 4
 
@@ -12,9 +14,7 @@ define void @legacy_store() {
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    sub rsp, 0x30
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    lea rdi, <legacy_store+0x15>
+; X64-NEXT:    lea rdi, <legacy_store+0x9>
 ; X64-NEXT:     R_X86_64_TLSGD t1-0x4
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 __tls_get_addr-0x4
@@ -24,11 +24,10 @@ define void @legacy_store() {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <legacy_store>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
+; ARM64:       <L0>:
+; ARM64-NEXT:    stp x29, x30, [sp, #-0xa0]!
 ; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    adrp x0, 0x0 <.text>
+; ARM64-NEXT:    adrp x0, 0x0 <legacy_store>
 ; ARM64-NEXT:     R_AARCH64_TLSDESC_ADR_PAGE21 t1
 ; ARM64-NEXT:    ldr x1, [x0]
 ; ARM64-NEXT:     R_AARCH64_TLSDESC_LD64_LO12 t1
@@ -40,8 +39,7 @@ define void @legacy_store() {
 ; ARM64-NEXT:    add x0, x1, x0
 ; ARM64-NEXT:    mov w1, #0x0 // =0
 ; ARM64-NEXT:    str w1, [x0]
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
   store i32 0, ptr @t1
   ret void
@@ -52,9 +50,7 @@ define ptr @legacy_gep() {
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    sub rsp, 0x30
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    lea rdi, <legacy_gep+0x15>
+; X64-NEXT:    lea rdi, <legacy_gep+0x9>
 ; X64-NEXT:     R_X86_64_TLSGD t1-0x4
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 __tls_get_addr-0x4
@@ -64,11 +60,9 @@ define ptr @legacy_gep() {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <legacy_gep>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
+; ARM64:         stp x29, x30, [sp, #-0xa0]!
 ; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    adrp x0, 0x0 <.text>
+; ARM64-NEXT:    adrp x0, 0x0 <legacy_store>
 ; ARM64-NEXT:     R_AARCH64_TLSDESC_ADR_PAGE21 t1
 ; ARM64-NEXT:    ldr x1, [x0]
 ; ARM64-NEXT:     R_AARCH64_TLSDESC_LD64_LO12 t1
@@ -79,8 +73,7 @@ define ptr @legacy_gep() {
 ; ARM64-NEXT:    mrs x1, TPIDR_EL0
 ; ARM64-NEXT:    add x0, x1, x0
 ; ARM64-NEXT:    add x0, x0, #0x1
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
   ret ptr getelementptr inbounds (i8, ptr @t1, i64 1)
 }
@@ -91,14 +84,12 @@ define void @legacy_use() {
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    sub rsp, 0x30
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    lea rdi, <legacy_use+0x15>
+; X64-NEXT:    lea rdi, <legacy_use+0x9>
 ; X64-NEXT:     R_X86_64_TLSGD t1-0x4
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 __tls_get_addr-0x4
 ; X64-NEXT:    mov qword ptr [rbp - 0x30], rax
-; X64-NEXT:    lea rdi, <legacy_use+0x29>
+; X64-NEXT:    lea rdi, <legacy_use+0x1d>
 ; X64-NEXT:     R_X86_64_TLSGD t1-0x4
 ; X64-NEXT:    call <L1>
 ; X64-NEXT:     R_X86_64_PLT32 __tls_get_addr-0x4
@@ -113,11 +104,9 @@ define void @legacy_use() {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <legacy_use>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
+; ARM64:         stp x29, x30, [sp, #-0xb0]!
 ; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    adrp x0, 0x0 <.text>
+; ARM64-NEXT:    adrp x0, 0x0 <legacy_store>
 ; ARM64-NEXT:     R_AARCH64_TLSDESC_ADR_PAGE21 t1
 ; ARM64-NEXT:    ldr x1, [x0]
 ; ARM64-NEXT:     R_AARCH64_TLSDESC_LD64_LO12 t1
@@ -127,9 +116,8 @@ define void @legacy_use() {
 ; ARM64-NEXT:     R_AARCH64_TLSDESC_CALL t1
 ; ARM64-NEXT:    mrs x1, TPIDR_EL0
 ; ARM64-NEXT:    add x0, x1, x0
-; ARM64-NEXT:    mov x1, x0
-; ARM64-NEXT:    mov x2, x1
-; ARM64-NEXT:    adrp x0, 0x0 <.text>
+; ARM64-NEXT:    str x0, [x29, #0xa0]
+; ARM64-NEXT:    adrp x0, 0x0 <legacy_store>
 ; ARM64-NEXT:     R_AARCH64_TLSDESC_ADR_PAGE21 t1
 ; ARM64-NEXT:    ldr x1, [x0]
 ; ARM64-NEXT:     R_AARCH64_TLSDESC_LD64_LO12 t1
@@ -141,10 +129,12 @@ define void @legacy_use() {
 ; ARM64-NEXT:    add x0, x1, x0
 ; ARM64-NEXT:    mov x1, x0
 ; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    bl 0x130 <legacy_use+0x50>
+; ARM64-NEXT:    ldr x1, [x29, #0xa8]
+; ARM64-NEXT:    ldr x2, [x29, #0xa0]
+; ARM64-NEXT:  <L0>:
+; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 call_target
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   call void @call_target(ptr null, ptr @t1, ptr @t1)
   ret void

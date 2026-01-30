@@ -112,10 +112,9 @@ void EncodingTargetArm64::get_inst_candidates(
         os << ", " << (mi.getOperand(2).getImm() << shift) << ");\n";
       } else if (mi.getOperand(2).isCPI()) {
         os << ", 0);\n";
-        os << "    derived()->reloc_text(" << ops[2] << ", R_AARCH64_LDST"
-           << (8 << shift)
-           << "_ABS_LO12_NC, "
-              "derived()->text_writer.offset() - 4);\n";
+        os << "    derived()->reloc_text(" << ops[2]
+           << ", tpde::elf::R_AARCH64_LDST" << (8 << shift) << "_ABS_LO12_NC"
+           << ", derived()->text_writer.offset() - 4);\n";
       }
     });
   };
@@ -217,7 +216,7 @@ void EncodingTargetArm64::get_inst_candidates(
       auto dst = format_reg(mi.getOperand(0), ops[0]);
       os << "    ASMD(" << mnem << ", " << dst << ", 0, 0);";
       os << "    derived()->reloc_text(" << ops[1]
-         << ", R_AARCH64_ADR_PREL_PG_HI21, "
+         << ", tpde::elf::R_AARCH64_ADR_PREL_PG_HI21, "
          << "derived()->text_writer.offset() - 4);\n";
     });
   };
@@ -304,6 +303,8 @@ void EncodingTargetArm64::get_inst_candidates(
     handle_adrp("ADRP");
   }
 
+  case_default("MRS", "MRS");
+
   const auto case_mov_shift = [&](std::string_view mnem_llvm,
                                   std::string_view mnem_disarm) {
     if (std::string_view{Name} == mnem_llvm) {
@@ -333,10 +334,10 @@ void EncodingTargetArm64::get_inst_candidates(
   case_mem_unsigned("LDRSBWui", "LDRSBwu", "LDURSBw", 0);
   case_mem_unsigned("LDRSBXui", "LDRSBxu", "LDURSBx", 0);
   case_mem_unsigned("LDRHHui", "LDRHu", "LDURH", 1);
-  case_mem_unsigned("LDRSHWui", "LDRSHwu", "LDURSHw", 0);
-  case_mem_unsigned("LDRSHXui", "LDRSHxu", "LDURSHx", 0);
+  case_mem_unsigned("LDRSHWui", "LDRSHwu", "LDURSHw", 1);
+  case_mem_unsigned("LDRSHXui", "LDRSHxu", "LDURSHx", 1);
   case_mem_unsigned("LDRWui", "LDRwu", "LDURw", 2);
-  case_mem_unsigned("LDRSWui", "LDRSWxu", "LDURSWxu", 0);
+  case_mem_unsigned("LDRSWui", "LDRSWxu", "LDURSWxu", 2);
   case_mem_unsigned("LDRXui", "LDRxu", "LDURx", 3);
   case_mem_unsigned("PRFMui", "PRFMu", "PRFUMu", 3);
   case_mem_unsigned("LDRBui", "LDRbu", "LDURb", 0);
@@ -647,6 +648,9 @@ void EncodingTargetArm64::get_inst_candidates(
   case_default("FDIVv2f32", "FDIV2s");
   case_default("FDIVv4f32", "FDIV4s");
   case_default("FDIVv2f64", "FDIV2d");
+  case_default("FMLAv2f32", "FMLA2s");
+  case_default("FMLAv4f32", "FMLA4s");
+  case_default("FMLAv2f64", "FMLA2d");
   case_default("CMLTv8i8rz", "CMLT8b_zero");
   case_default("CMLTv16i8rz", "CMLT16b_zero");
   case_default("CMLTv4i16rz", "CMLT4h_zero");
@@ -690,6 +694,8 @@ void EncodingTargetArm64::get_inst_candidates(
   case_default("CMGEv4i32", "CMGE4s");
   case_default("CMGEv2i64", "CMGE2d");
   case_default("DUPv16i8lane", "DUP16b");
+  case_default("DUPv8i16lane", "DUP8h");
+  case_default("DUPv4i32lane", "DUP4s");
   case_default("DUPv2i64gpr", "DUP2dx");
   case_default("ADDv8i8", "ADD8b");
   case_default("ADDv16i8", "ADD16b");
@@ -804,6 +810,9 @@ void EncodingTargetArm64::get_inst_candidates(
   case_default("FNEGv2f32", "FNEG2s");
   case_default("FNEGv4f32", "FNEG4s");
   case_default("FNEGv2f64", "FNEG2d");
+  if (Name == "FMOVS0") {
+    handle_noimm("MOVId", ", 0");
+  }
   if (Name == "MOVIv2d_ns") {
     uint64_t imm = 0;
     unsigned op = mi.getOperand(1).getImm();
@@ -1044,12 +1053,6 @@ void EncodingTargetArm64::get_inst_candidates(
   case_default("STLRX", "STLRx");
 
   case_default("BRK", "BRK");
-
-  if (candidates.empty()) {
-    llvm::errs() << "ERROR: unhandled instruction " << Name << "\n";
-    assert(false);
-    exit(1);
-  }
 }
 
 std::optional<std::pair<unsigned, unsigned>>

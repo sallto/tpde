@@ -15,16 +15,6 @@ struct TestCompilerBase : CompilerBase<TestIRAdaptor, Derived, Config> {
   using Base = CompilerBase<TestIRAdaptor, Derived, Config>;
   u64 register_idx = 0;
   explicit TestCompilerBase(TestIRAdaptor *adaptor) : Base{adaptor} {}
-  void analysis_end() {
-    if (this->derived()->recommended_registers.empty()) {
-      return;
-    }
-    this->analyzer.recommended_registers.resize(
-        this->adaptor->cur_highest_val_idx() + 1);
-    for (u32 i = 0; i < this->adaptor->cur_highest_val_idx(); i++) {
-      this->analyzer.recommended_registers[i] =
-          this->derived()->recommended_registers[register_idx++];
-    }
-  }
+  void analysis_end() {};
 };
 } // namespace tpde::test

@@ -77,7 +77,7 @@ struct ValueAssignment {
     };
   };
 
-  u32 size() const noexcept {
+  u32 size() const {
     assert(!variable_ref && "variable-ref has no allocation size");
     return part_count * max_part_size;
   }
@@ -93,7 +93,11 @@ private:
   // Free list 2 holds twice as much as free list 1. Etc.
   static constexpr size_t SlabSize = 16 * 1024;
 
-  static constexpr u32 NumFreeLists = 2;
+  // TODO: define a sensible limit on the maximum number of parts and reduce the
+  // number of free lists. Currently the limit is a little under 2**31; limiting
+  // the number to e.g. 2**16 would allow halving the number of free lists,
+  // where most are unused in the vast majority of cases.
+  static constexpr u32 NumFreeLists = 29;
   static constexpr u32 FirstPartOff = offsetof(ValueAssignment, parts);
 
 public:
@@ -108,9 +112,9 @@ private:
   std::array<ValueAssignment *, NumFreeLists> fixed_free_lists{};
 
 public:
-  AssignmentAllocator() noexcept = default;
+  AssignmentAllocator() = default;
 
-  ValueAssignment *allocate(u32 part_count) noexcept {
+  ValueAssignment *allocate(u32 part_count) {
     if (part_count > NumPartsIncluded) [[unlikely]] {
       return allocate_slow(part_count);
     }
@@ -122,10 +126,9 @@ public:
     return new (alloc) ValueAssignment;
   }
 
-  ValueAssignment *allocate_slow(u32 part_count,
-                                 bool skip_free_list = false) noexcept;
+  ValueAssignment *allocate_slow(u32 part_count, bool skip_free_list = false);
 
-  void deallocate(ValueAssignment *assignment) noexcept {
+  void deallocate(ValueAssignment *assignment) {
     if (assignment->part_count > NumPartsIncluded) [[unlikely]] {
       deallocate_slow(assignment);
       return;
@@ -135,9 +138,9 @@ public:
     util::poison_memory_region(assignment, sizeof(ValueAssignment));
   }
 
-  void deallocate_slow(ValueAssignment *) noexcept;
+  void deallocate_slow(ValueAssignment *);
 
-  void reset() noexcept {
+  void reset() {
     alloc.reset();
     fixed_free_lists = {};
   }

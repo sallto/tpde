@@ -11,6 +11,7 @@
 #include "LLVMAdaptor.hpp"
 #include "LLVMCompilerBase.hpp"
 #include "encode_template_x64.hpp"
+#include "tpde/ELF.hpp"
 #include "tpde/base.hpp"
 #include "tpde/util/misc.hpp"
 #include "tpde/x64/CompilerX64.hpp"
@@ -34,19 +35,12 @@ struct LLVMCompilerX64 : tpde::x64::CompilerX64<LLVMAdaptor,
                                       LLVMCompilerX64,
                                       LLVMCompilerBase,
                                       CompilerConfig>;
-  using EncCompiler = EncodeCompiler<LLVMAdaptor,
-                                     LLVMCompilerX64,
-                                     LLVMCompilerBase,
-                                     CompilerConfig>;
 
   using ScratchReg = typename Base::ScratchReg;
   using ValuePartRef = typename Base::ValuePartRef;
   using ValuePart = typename Base::ValuePart;
   using ValueRef = typename Base::ValueRef;
   using GenericValuePart = typename Base::GenericValuePart;
-  using InstRange = typename Base::InstRange;
-
-  using Assembler = typename Base::Assembler;
 
   using AsmReg = typename Base::AsmReg;
 
@@ -62,46 +56,44 @@ struct LLVMCompilerX64 : tpde::x64::CompilerX64<LLVMAdaptor,
     static_assert(tpde::Compiler<LLVMCompilerX64, tpde::x64::PlatformConfig>);
   }
 
-  void reset() noexcept {
+  void reset() {
     // TODO: move to LLVMCompilerBase
     Base::reset();
-    EncCompiler::reset();
+    EncodeCompiler::reset();
   }
 
-  bool arg_is_int128(const IRValueRef value) const noexcept {
-    return value->getType()->isIntegerTy(128);
+  bool arg_allow_split_reg_stack_passing(IRValueRef value) const {
+    // All types except i128 can be split across registers/stack.
+    return !value->getType()->isIntegerTy(128);
   }
 
-  bool arg_allow_split_reg_stack_passing(
-      const IRValueRef val_idx) const noexcept {
-    // we allow splitting the value if it is an aggregate but not if it is an
-    // i128
-    return !arg_is_int128(val_idx);
+  void prologue_assign_arg(tpde::CCAssigner *cc_assigner,
+                           u32 arg_idx,
+                           IRValueRef arg) {
+    if (arg->getType()->isX86_FP80Ty()) [[unlikely]] {
+      fp80_assign_arg(cc_assigner, arg);
+    } else {
+      Base::prologue_assign_arg(cc_assigner, arg_idx, arg);
+    }
   }
 
-  void finish_func(u32 func_idx) noexcept;
-
-  void load_address_of_var_reference(AsmReg dst,
-                                     tpde::AssignmentPartRef ap) noexcept;
+  void load_address_of_var_reference(AsmReg dst, tpde::AssignmentPartRef ap);
 
   std::optional<CallBuilder>
-      create_call_builder(const llvm::CallBase * = nullptr) noexcept;
+      create_call_builder(const llvm::CallBase * = nullptr);
 
-  bool compile_br(const llvm::Instruction *, const ValInfo &, u64) noexcept;
-  void generate_conditional_branch(Jump jmp,
-                                   IRBlockRef true_target,
-                                   IRBlockRef false_target) noexcept;
-  bool compile_inline_asm(const llvm::CallBase *) noexcept;
-  bool compile_icmp(const llvm::Instruction *, const ValInfo &, u64) noexcept;
-  void compile_i32_cmp_zero(AsmReg reg, llvm::CmpInst::Predicate p) noexcept;
+  bool compile_br(const llvm::Instruction *, const ValInfo &, u64);
+  bool compile_inline_asm(const llvm::CallBase *);
+  bool compile_icmp(const llvm::Instruction *, const ValInfo &, u64);
+  void compile_i32_cmp_zero(AsmReg reg, llvm::CmpInst::Predicate p);
 
-  GenericValuePart create_addr_for_alloca(tpde::AssignmentPartRef ap) noexcept;
+  GenericValuePart create_addr_for_alloca(tpde::AssignmentPartRef ap);
 
   void create_helper_call(std::span<IRValueRef> args,
                           ValueRef *result,
-                          SymRef sym) noexcept;
+                          SymRef sym);
 
-  bool handle_intrin(const llvm::IntrinsicInst *) noexcept;
+  bool handle_intrin(const llvm::IntrinsicInst *);
 
   bool handle_overflow_intrin_128(OverflowOp op,
                                   GenericValuePart &&lhs_lo,
@@ -110,20 +102,102 @@ struct LLVMCompilerX64 : tpde::x64::CompilerX64<LLVMAdaptor,
                                   GenericValuePart &&rhs_hi,
                                   ValuePart &&res_lo,
                                   ValuePart &&res_hi,
-                                  ValuePart &&res_of) noexcept;
+                                  ValuePart &&res_of);
+
+  // x86_fp80 support.
+
+  /// Get memory operand for spill slot of a value, which must have an
+  /// assignment. If write is false, the value is spilled; otherwise, if write
+  /// is true, the value is marked as spilled (stack valid).
+  FeMem spill_slot_op(ValuePart &val, bool write = false) {
+    if (write) {
+      allocate_spill_slot(val.assignment());
+      val.assignment().set_stack_valid();
+    } else {
+      spill(val.assignment());
+    }
+    return FE_MEM(FE_BP, 0, FE_NOREG, val.assignment().frame_off());
+  }
+
+  void fp80_assign_arg(tpde::CCAssigner *, IRValueRef arg);
+  void fp80_push(ValuePart &&value);
+  void fp80_pop(ValuePart &val) { ASM(FSTPm80, spill_slot_op(val, true)); }
+  void fp80_load(GenericValuePart &&addr, ValuePart &&res) {
+    // TODO: use encodeable_with? need to move that to CompilerX64.
+    ASM(FLDm80, FE_MEM(gval_as_reg(addr), 0, FE_NOREG, 0));
+    fp80_pop(res);
+  }
+  void fp80_store(GenericValuePart &&addr, ValuePart &&val) {
+    fp80_push(std::move(val));
+    // TODO: use encodeable_with? need to move that to CompilerX64.
+    ASM(FSTPm80, FE_MEM(gval_as_reg(addr), 0, FE_NOREG, 0));
+  }
+  void fp80_ext_float(ValuePart &&src, ValuePart &&dst) {
+    ASM(FLDm32, spill_slot_op(src, false));
+    fp80_pop(dst);
+  }
+  void fp80_ext_double(ValuePart &&src, ValuePart &&dst) {
+    ASM(FLDm64, spill_slot_op(src, false));
+    fp80_pop(dst);
+  }
+  void fp80_trunc_float(ValuePart &&src, ValuePart &&dst) {
+    fp80_push(std::move(src));
+    ASM(FSTPm32, spill_slot_op(dst, true));
+  }
+  void fp80_trunc_double(ValuePart &&src, ValuePart &&dst) {
+    fp80_push(std::move(src));
+    ASM(FSTPm64, spill_slot_op(dst, true));
+  }
+  void fp80_from_int(bool sign, bool is64, ValuePart &&, ValuePart &&);
+  void fp80_to_int(bool sign, bool is64, ValuePart &&, ValuePart &&);
+  void fp80_add(ValuePart &&lhs, ValuePart &&rhs, ValuePart &&res) {
+    fp80_push(std::move(rhs));
+    fp80_push(std::move(lhs));
+    ASM(FADDPrr, FE_ST(1), FE_ST(0));
+    fp80_pop(res);
+  }
+  void fp80_sub(ValuePart &&lhs, ValuePart &&rhs, ValuePart &&res) {
+    fp80_push(std::move(rhs));
+    fp80_push(std::move(lhs));
+    ASM(FSUBRPrr, FE_ST(1), FE_ST(0));
+    fp80_pop(res);
+  }
+  void fp80_mul(ValuePart &&lhs, ValuePart &&rhs, ValuePart &&res) {
+    fp80_push(std::move(rhs));
+    fp80_push(std::move(lhs));
+    ASM(FMULPrr, FE_ST(1), FE_ST(0));
+    fp80_pop(res);
+  }
+  void fp80_div(ValuePart &&lhs, ValuePart &&rhs, ValuePart &&res) {
+    fp80_push(std::move(rhs));
+    fp80_push(std::move(lhs));
+    ASM(FDIVRPrr, FE_ST(1), FE_ST(0));
+    fp80_pop(res);
+  }
+  void fp80_neg(ValuePart &&val, ValuePart &&res) {
+    fp80_push(std::move(val));
+    ASM(FCHS);
+    fp80_pop(res);
+  }
+  void fp80_muladd(ValuePart &&a,
+                   ValuePart &&b,
+                   ValuePart &&c,
+                   ValuePart &&res) {
+    fp80_push(std::move(c));
+    fp80_push(std::move(b));
+    fp80_push(std::move(a));
+    ASM(FMULPrr, FE_ST(1), FE_ST(0));
+    ASM(FADDPrr, FE_ST(1), FE_ST(0));
+    fp80_pop(res);
+  }
+  void fp80_cmp(llvm::CmpInst::Predicate pred,
+                ValuePart &&lhs,
+                ValuePart &&rhs,
+                ValuePart &&res);
 };
 
-void LLVMCompilerX64::finish_func(u32 func_idx) noexcept {
-  Base::finish_func(func_idx);
-
-  if (llvm::timeTraceProfilerEnabled()) {
-    llvm::timeTraceProfilerEnd(time_entry);
-    time_entry = nullptr;
-  }
-}
-
 void LLVMCompilerX64::load_address_of_var_reference(
-    AsmReg dst, tpde::AssignmentPartRef ap) noexcept {
+    AsmReg dst, tpde::AssignmentPartRef ap) {
   auto *global = this->adaptor->global_list[ap.variable_ref_data()];
   const auto sym = global_sym(global);
   assert(sym.valid());
@@ -146,16 +220,16 @@ void LLVMCompilerX64::load_address_of_var_reference(
   if (!use_local_access(global)) {
     // mov the ptr from the GOT
     ASM(MOV64rm, dst, FE_MEM(FE_IP, 0, FE_NOREG, -1));
-    reloc_text(sym, R_X86_64_GOTPCREL, text_writer.offset() - 4, -4);
+    reloc_text(sym, tpde::elf::R_X86_64_GOTPCREL, text_writer.offset() - 4, -4);
   } else {
     // emit lea with relocation
     ASM(LEA64rm, dst, FE_MEM(FE_IP, 0, FE_NOREG, -1));
-    reloc_text(sym, R_X86_64_PC32, text_writer.offset() - 4, -4);
+    reloc_text(sym, tpde::elf::R_X86_64_PC32, text_writer.offset() - 4, -4);
   }
 }
 
 std::optional<LLVMCompilerX64::CallBuilder>
-    LLVMCompilerX64::create_call_builder(const llvm::CallBase *cb) noexcept {
+    LLVMCompilerX64::create_call_builder(const llvm::CallBase *cb) {
   bool var_arg = cb ? cb->getFunctionType()->isVarArg() : false;
   llvm::CallingConv::ID cc = llvm::CallingConv::C;
   if (cb) {
@@ -174,17 +248,10 @@ std::optional<LLVMCompilerX64::CallBuilder>
 
 bool LLVMCompilerX64::compile_br(const llvm::Instruction *inst,
                                  const ValInfo &,
-                                 u64) noexcept {
+                                 u64) {
   const auto *br = llvm::cast<llvm::BranchInst>(inst);
   if (br->isUnconditional()) {
-    auto spilled = this->spill_before_branch();
-    this->begin_branch_region();
-
-    generate_branch_to_block(
-        Jump::jmp, adaptor->block_lookup_idx(br->getSuccessor(0)), false, true);
-
-    this->end_branch_region();
-    release_spilled_regs(spilled);
+    generate_uncond_branch(adaptor->block_lookup_idx(br->getSuccessor(0)));
     return true;
   }
 
@@ -197,40 +264,12 @@ bool LLVMCompilerX64::compile_br(const llvm::Instruction *inst,
     ASM(TEST8ri, cond_reg, 1);
   }
 
-  generate_conditional_branch(Jump::jne, true_block, false_block);
+  generate_cond_branch(Jump::jne, true_block, false_block);
 
   return true;
 }
 
-void LLVMCompilerX64::generate_conditional_branch(
-    Jump jmp, IRBlockRef true_target, IRBlockRef false_target) noexcept {
-  const auto next_block = this->analyzer.block_ref(this->next_block());
-
-  const auto true_needs_split = this->branch_needs_split(true_target);
-  const auto false_needs_split = this->branch_needs_split(false_target);
-
-  const auto spilled = this->spill_before_branch();
-  this->begin_branch_region();
-
-  if (next_block == true_target ||
-      (next_block != false_target && true_needs_split)) {
-    generate_branch_to_block(
-        invert_jump(jmp), false_target, false_needs_split, false);
-    generate_branch_to_block(Jump::jmp, true_target, false, true);
-  } else if (next_block == false_target) {
-    generate_branch_to_block(jmp, true_target, true_needs_split, false);
-    generate_branch_to_block(Jump::jmp, false_target, false, true);
-  } else {
-    assert(!true_needs_split);
-    this->generate_branch_to_block(jmp, true_target, false, false);
-    this->generate_branch_to_block(Jump::jmp, false_target, false, true);
-  }
-
-  this->end_branch_region();
-  this->release_spilled_regs(spilled);
-}
-
-bool LLVMCompilerX64::compile_inline_asm(const llvm::CallBase *call) noexcept {
+bool LLVMCompilerX64::compile_inline_asm(const llvm::CallBase *call) {
   auto inline_asm = llvm::cast<llvm::InlineAsm>(call->getCalledOperand());
   // TODO: handle inline assembly that actually does something
   if (!inline_asm->getAsmString().empty() || inline_asm->isAlignStack() ||
@@ -256,7 +295,7 @@ bool LLVMCompilerX64::compile_inline_asm(const llvm::CallBase *call) noexcept {
 
 bool LLVMCompilerX64::compile_icmp(const llvm::Instruction *inst,
                                    const ValInfo &val_info,
-                                   u64) noexcept {
+                                   u64) {
   const auto *cmp = llvm::cast<llvm::ICmpInst>(inst);
   auto *cmp_ty = cmp->getOperand(0)->getType();
   if (cmp_ty->isVectorTy()) {
@@ -357,39 +396,67 @@ bool LLVMCompilerX64::compile_icmp(const llvm::Instruction *inst,
       jump = swap_jump(jump);
     }
 
-    if (int_width != 32 && int_width != 64) {
+    if (int_width < 8 || (int_width & (int_width - 1))) {
+      // We could handle comparisons of integers <32 bit against zero with
+      // TESTri. They occur very rarely and are not worth the effort.
       unsigned ext_bits = tpde::util::align_up(int_width, 32);
       lhs_op = std::move(lhs_op).into_extended(is_signed, int_width, ext_bits);
       rhs_op = std::move(rhs_op).into_extended(is_signed, int_width, ext_bits);
+      int_width = ext_bits;
     }
 
-    AsmReg lhs_reg = lhs_op.has_reg() ? lhs_op.cur_reg() : lhs_op.load_to_reg();
-    if (int_width <= 32) {
-      if (rhs_op.is_const()) {
-        if (i32 rhs_val = i32(rhs_op.const_data()[0])) {
-          ASM(CMP32ri, lhs_reg, rhs_val);
-        } else {
-          ASM(TEST32rr, lhs_reg, lhs_reg);
+    // We can do comparisons against small immediates more efficiently.
+    i64 rhs_val = rhs_op.is_const() ? rhs_op.const_data()[0] : 0;
+    if (rhs_op.is_const() && (int_width <= 32 || i32(rhs_val) == rhs_val)) {
+      // Comparison of 8/16/32/64-bit can use CMPmi. Only do so if the value
+      // doesn't reside in a register.
+      if (lhs_op.has_assignment()) {
+        tpde::AssignmentPartRef ap = lhs_op.assignment();
+        if (!ap.register_valid() && ap.stack_valid()) {
+          FeMem mem = FE_MEM(FE_BP, 0, FE_NOREG, ap.frame_off());
+          switch (int_width) {
+          case 8: ASM(CMP8mi, mem, i8(rhs_val)); goto done_compare;
+          case 16: ASM(CMP16mi, mem, i16(rhs_val)); goto done_compare;
+          case 32: ASM(CMP32mi, mem, i32(rhs_val)); goto done_compare;
+          case 64: ASM(CMP64mi, mem, rhs_val); goto done_compare;
+          default: TPDE_UNREACHABLE("impossible int bit width");
+          }
+        }
+      }
+
+      auto lhs_reg = lhs_op.has_reg() ? lhs_op.cur_reg() : lhs_op.load_to_reg();
+      if (rhs_val == 0) {
+        // Comparison of register with zero is TESTrr/TESTri.
+        switch (int_width) {
+        case 8: ASM(TEST8rr, lhs_reg, lhs_reg); break;
+        case 16: ASM(TEST16rr, lhs_reg, lhs_reg); break;
+        case 32: ASM(TEST32rr, lhs_reg, lhs_reg); break;
+        case 64: ASM(TEST64rr, lhs_reg, lhs_reg); break;
+        default: TPDE_UNREACHABLE("impossible int bit width");
         }
       } else {
-        AsmReg rhs_reg =
-            rhs_op.has_reg() ? rhs_op.cur_reg() : rhs_op.load_to_reg();
-        ASM(CMP32rr, lhs_reg, rhs_reg);
+        // Comparison of 8/16/32/64-bit is CMPri.
+        switch (int_width) {
+        case 8: ASM(CMP8ri, lhs_reg, i8(rhs_val)); break;
+        case 16: ASM(CMP16ri, lhs_reg, i16(rhs_val)); break;
+        case 32: ASM(CMP32ri, lhs_reg, i32(rhs_val)); break;
+        case 64: ASM(CMP64ri, lhs_reg, rhs_val); break;
+        default: TPDE_UNREACHABLE("impossible int bit width");
+        }
       }
     } else {
-      if (rhs_op.is_const() &&
-          i32(rhs_op.const_data()[0]) == i64(rhs_op.const_data()[0])) {
-        if (i64 rhs_val = rhs_op.const_data()[0]) {
-          ASM(CMP64ri, lhs_reg, rhs_val);
-        } else {
-          ASM(TEST64rr, lhs_reg, lhs_reg);
-        }
-      } else {
-        AsmReg rhs_reg =
-            rhs_op.has_reg() ? rhs_op.cur_reg() : rhs_op.load_to_reg();
-        ASM(CMP64rr, lhs_reg, rhs_reg);
+      auto lhs_reg = lhs_op.has_reg() ? lhs_op.cur_reg() : lhs_op.load_to_reg();
+      auto rhs_reg = rhs_op.has_reg() ? rhs_op.cur_reg() : rhs_op.load_to_reg();
+      switch (int_width) {
+      case 8: ASM(CMP8rr, lhs_reg, rhs_reg); break;
+      case 16: ASM(CMP16rr, lhs_reg, rhs_reg); break;
+      case 32: ASM(CMP32rr, lhs_reg, rhs_reg); break;
+      case 64: ASM(CMP64rr, lhs_reg, rhs_reg); break;
+      default: TPDE_UNREACHABLE("impossible int bit width");
       }
     }
+
+  done_compare:;
   }
 
   // No need for set_preserve_flags; we don't call helpers that could
@@ -407,7 +474,7 @@ bool LLVMCompilerX64::compile_icmp(const llvm::Instruction *inst,
     }
     auto true_block = adaptor->block_lookup_idx(fuse_br->getSuccessor(0));
     auto false_block = adaptor->block_lookup_idx(fuse_br->getSuccessor(1));
-    generate_conditional_branch(jump, true_block, false_block);
+    generate_cond_branch(jump, true_block, false_block);
     this->adaptor->inst_set_fused(fuse_br, true);
   } else if (fuse_ext) {
     auto [_, res_ref] = result_ref_single(fuse_ext);
@@ -425,8 +492,8 @@ bool LLVMCompilerX64::compile_icmp(const llvm::Instruction *inst,
   return true;
 }
 
-void LLVMCompilerX64::compile_i32_cmp_zero(
-    AsmReg reg, llvm::CmpInst::Predicate pred) noexcept {
+void LLVMCompilerX64::compile_i32_cmp_zero(AsmReg reg,
+                                           llvm::CmpInst::Predicate pred) {
   ASM(TEST64rr, reg, reg);
   switch (pred) {
   case llvm::CmpInst::ICMP_EQ: ASM(SETZ8r, reg); break;
@@ -444,14 +511,14 @@ void LLVMCompilerX64::compile_i32_cmp_zero(
   ASM(MOVZXr32r8, reg, reg);
 }
 
-LLVMCompilerX64::GenericValuePart LLVMCompilerX64::create_addr_for_alloca(
-    tpde::AssignmentPartRef ap) noexcept {
+LLVMCompilerX64::GenericValuePart
+    LLVMCompilerX64::create_addr_for_alloca(tpde::AssignmentPartRef ap) {
   return GenericValuePart::Expr{AsmReg::BP, ap.variable_stack_off()};
 }
 
 void LLVMCompilerX64::create_helper_call(std::span<IRValueRef> args,
                                          ValueRef *result,
-                                         SymRef sym) noexcept {
+                                         SymRef sym) {
   tpde::util::SmallVector<CallArg, 8> arg_vec{};
   for (auto arg : args) {
     arg_vec.push_back(CallArg{arg});
@@ -460,7 +527,7 @@ void LLVMCompilerX64::create_helper_call(std::span<IRValueRef> args,
   generate_call(sym, arg_vec, result);
 }
 
-bool LLVMCompilerX64::handle_intrin(const llvm::IntrinsicInst *inst) noexcept {
+bool LLVMCompilerX64::handle_intrin(const llvm::IntrinsicInst *inst) {
   const auto intrin_id = inst->getIntrinsicID();
   switch (intrin_id) {
   case llvm::Intrinsic::vastart: {
@@ -553,7 +620,7 @@ bool LLVMCompilerX64::handle_overflow_intrin_128(OverflowOp op,
                                                  GenericValuePart &&rhs_hi,
                                                  ValuePart &&res_lo,
                                                  ValuePart &&res_hi,
-                                                 ValuePart &&res_of) noexcept {
+                                                 ValuePart &&res_of) {
   using EncodeFnTy = bool (LLVMCompilerX64::*)(GenericValuePart &&,
                                                GenericValuePart &&,
                                                GenericValuePart &&,
@@ -593,8 +660,190 @@ bool LLVMCompilerX64::handle_overflow_intrin_128(OverflowOp op,
                             res_of);
 }
 
-std::unique_ptr<LLVMCompiler>
-    create_compiler(const llvm::Triple &triple) noexcept {
+void LLVMCompilerX64::fp80_assign_arg(tpde::CCAssigner *cc_assigner,
+                                      IRValueRef arg) {
+  auto [vr, vpr] = result_ref_single(arg);
+  assert(vr.assignment()->part_count == 1);
+  tpde::CCAssignment cca{.align = 16, .bank = tpde::RegBank(-2), .size = 16};
+  cc_assigner->assign_arg(cca);
+  prologue_assign_arg_part(std::move(vpr), cca);
+}
+
+void LLVMCompilerX64::fp80_push(ValuePart &&value) {
+  if (value.has_assignment()) {
+    spill(value.assignment());
+    ASM(FLDm80, FE_MEM(FE_BP, 0, FE_NOREG, value.assignment().frame_off()));
+  } else {
+    assert(value.is_const());
+    std::span<const u64> data = value.const_data();
+    assert(data.size() == 2);
+    if (data[0] == 0 && data[1] == 0) {
+      ASM(FLDZ);
+    } else if (data[0] == 0x8000'0000'0000'0000 && data[1] == 0x3fff) {
+      ASM(FLD1);
+    } else {
+      std::span<const u8> raw{reinterpret_cast<const u8 *>(data.data()), 10};
+      // TODO: deduplicate/pool constants?
+      tpde::SecRef rodata =
+          this->assembler.get_default_section(tpde::SectionKind::ReadOnly);
+      tpde::SymRef sym = this->assembler.sym_def_data(
+          rodata, "", raw, 16, tpde::Assembler::SymBinding::LOCAL);
+      ASM(FLDm80, FE_MEM(FE_IP, 0, FE_NOREG, -1));
+      this->reloc_text(
+          sym, tpde::elf::R_X86_64_PC32, this->text_writer.offset() - 4, -4);
+    }
+  }
+  value.reset(this);
+}
+
+void LLVMCompilerX64::fp80_cmp(llvm::CmpInst::Predicate pred,
+                               ValuePart &&lhs,
+                               ValuePart &&rhs,
+                               ValuePart &&res) {
+  using enum llvm::CmpInst::Predicate;
+  bool swap = false;
+  switch (pred) {
+  case FCMP_OLT: swap = true, pred = FCMP_OGT; break;
+  case FCMP_UGE: swap = true, pred = FCMP_ULE; break;
+  case FCMP_OLE: swap = true, pred = FCMP_OGE; break;
+  case FCMP_UGT: swap = true, pred = FCMP_ULT; break;
+  default: break;
+  }
+
+  fp80_push(std::move(swap ? lhs : rhs));
+  fp80_push(std::move(swap ? rhs : lhs));
+  ASM(FUCOMIPrr, FE_ST(0), FE_ST(1));
+  ASM(FSTPr, FE_ST(0));
+  AsmReg dst = res.alloc_reg(this);
+  ScratchReg tmp{this};
+  switch (pred) {
+  case llvm::CmpInst::FCMP_OEQ:
+    ASM(SETNP8r, tmp.alloc_gp());
+    ASM(SETZ8r, dst);
+    ASM(AND8rr, dst, tmp.cur_reg());
+    break;
+  case llvm::CmpInst::FCMP_UNE:
+    ASM(SETP8r, tmp.alloc_gp());
+    ASM(SETNZ8r, dst);
+    ASM(OR8rr, dst, tmp.cur_reg());
+    break;
+  case llvm::CmpInst::FCMP_OGT: ASM(SETA8r, dst); break;
+  case llvm::CmpInst::FCMP_ULE: ASM(SETBE8r, dst); break;
+  case llvm::CmpInst::FCMP_OGE: ASM(SETNC8r, dst); break;
+  case llvm::CmpInst::FCMP_ULT: ASM(SETC8r, dst); break;
+  case llvm::CmpInst::FCMP_ORD: ASM(SETNP8r, dst); break;
+  case llvm::CmpInst::FCMP_UNO: ASM(SETP8r, dst); break;
+  case llvm::CmpInst::FCMP_ONE: ASM(SETNZ8r, dst); break;
+  case llvm::CmpInst::FCMP_UEQ: ASM(SETZ8r, dst); break;
+  default: TPDE_UNREACHABLE("unexpected fcmp predicate");
+  }
+}
+
+void LLVMCompilerX64::fp80_from_int(bool sign,
+                                    bool is64,
+                                    ValuePart &&src,
+                                    ValuePart &&dst) {
+  FeMem dst_stack_slot = spill_slot_op(dst, true);
+  FeMem src_stack_slot;
+  if (!sign && !is64) {
+    ValuePart tmp = std::move(src).into_extended(this, false, 32, 64);
+    src.reset(this);
+    src = std::move(tmp);
+  }
+  if (src.has_assignment()) {
+    src_stack_slot = spill_slot_op(src, false);
+  } else {
+    // Temporarily reuse the spill slot of dst.
+    if (sign && !is64) {
+      ASM(MOV32mr, dst_stack_slot, src.cur_reg());
+    } else {
+      ASM(MOV64mr, dst_stack_slot, src.cur_reg());
+    }
+    src_stack_slot = dst_stack_slot;
+  }
+  if (sign && !is64) {
+    ASM(FILDm32, src_stack_slot);
+  } else {
+    ASM(FILDm64, src_stack_slot);
+  }
+  if (!sign && is64) {
+    // Add 2**64 if the value is negative.
+    src = std::move(src).into_temporary(this);
+    ASM(SHR64ri, src.cur_reg(), 63);
+    ScratchReg tmp{this};
+    AsmReg tmp_reg = tmp.alloc_gp();
+    ASM(LEA64rm, tmp_reg, FE_MEM(FE_IP, 0, FE_NOREG, -1));
+    // Pair of float: first float is zero, second float is 2**64.
+    static constexpr u64 num = 0x5f80'0000'0000'0000;
+    std::span<const u8> raw{reinterpret_cast<const u8 *>(&num), 8};
+    // TODO: deduplicate/pool constants?
+    tpde::SecRef rodata =
+        this->assembler.get_default_section(tpde::SectionKind::ReadOnly);
+    tpde::SymRef sym = this->assembler.sym_def_data(
+        rodata, "", raw, 8, tpde::Assembler::SymBinding::LOCAL);
+    this->reloc_text(
+        sym, tpde::elf::R_X86_64_PC32, this->text_writer.offset() - 4, -4);
+    ASM(FADDm32, FE_MEM(tmp_reg, 4, src.cur_reg(), 0));
+  }
+  fp80_pop(dst);
+}
+
+void LLVMCompilerX64::fp80_to_int(bool sign,
+                                  bool is64,
+                                  ValuePart &&src,
+                                  ValuePart &&dst) {
+  fp80_push(std::move(src));
+  if (!sign && is64) {
+    ASM(FLDm32, FE_MEM(FE_IP, 0, FE_NOREG, -1));
+    static constexpr u32 num = 0x5f00'0000; // Float 2**63.
+    std::span<const u8> raw{reinterpret_cast<const u8 *>(&num), 4};
+    // TODO: deduplicate/pool constants?
+    tpde::SecRef rodata =
+        this->assembler.get_default_section(tpde::SectionKind::ReadOnly);
+    tpde::SymRef sym = this->assembler.sym_def_data(
+        rodata, "", raw, 4, tpde::Assembler::SymBinding::LOCAL);
+    this->reloc_text(
+        sym, tpde::elf::R_X86_64_PC32, this->text_writer.offset() - 4, -4);
+    AsmReg dst_reg = dst.alloc_reg(this);
+    ASM(XOR32rr, dst_reg, dst_reg);
+    ASM(FUCOMIr, FE_ST(1));
+    ASM(SETBE8r, dst_reg);
+    ASM(FLDZ);
+    ASM(FCMOVBEr, FE_ST(1));
+    ASM(FSTPr, FE_ST(1));
+    ASM(FSUBPrr, FE_ST(1), FE_ST(0));
+  }
+  i32 stcw_slot = allocate_stack_slot(4);
+  {
+    ASM(FSTCWm, FE_MEM(FE_BP, 0, FE_NOREG, stcw_slot));
+    ScratchReg tmp{this};
+    ASM(MOVZXr32m16, tmp.alloc_gp(), FE_MEM(FE_BP, 0, FE_NOREG, stcw_slot));
+    ASM(OR32ri, tmp.cur_reg(), 0xc00);
+    ASM(MOV16mr, FE_MEM(FE_BP, 0, FE_NOREG, stcw_slot + 2), tmp.cur_reg());
+    ASM(FLDCWm, FE_MEM(FE_BP, 0, FE_NOREG, stcw_slot + 2));
+  }
+  if (sign) {
+    if (!is64) {
+      ASM(FISTPm32, spill_slot_op(dst, true));
+    } else {
+      ASM(FISTPm64, spill_slot_op(dst, true));
+    }
+  } else {
+    i32 tmp_slot = allocate_stack_slot(8);
+    ASM(FISTPm64, FE_MEM(FE_BP, 0, FE_NOREG, tmp_slot));
+    if (!is64) {
+      ASM(MOV32rm, dst.alloc_reg(this), FE_MEM(FE_BP, 0, FE_NOREG, tmp_slot));
+    } else {
+      ASM(SHL64ri, dst.cur_reg(), 63);
+      ASM(XOR64rm, dst.cur_reg(), FE_MEM(FE_BP, 0, FE_NOREG, tmp_slot));
+    }
+    free_stack_slot(tmp_slot, 8);
+  }
+  ASM(FLDCWm, FE_MEM(FE_BP, 0, FE_NOREG, stcw_slot));
+  free_stack_slot(stcw_slot, 2);
+}
+
+std::unique_ptr<LLVMCompiler> create_compiler(const llvm::Triple &triple) {
   if (!triple.isOSBinFormatELF()) {
     return nullptr;
   }

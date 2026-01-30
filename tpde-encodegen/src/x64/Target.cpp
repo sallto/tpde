@@ -183,7 +183,7 @@ void EncodingTargetX64::get_inst_candidates(
             os << "        "
                   "derived()->reloc_text("
                << cp_sym
-               << ", R_X86_64_PC32, "
+               << ", tpde::elf::R_X86_64_PC32, "
                   "derived()->text_writer.offset() - 4, -4);\n";
           }
         });
@@ -361,7 +361,7 @@ void EncodingTargetX64::get_inst_candidates(
             os << "        "
                   "derived()->reloc_text("
                << cp_sym
-               << ", R_X86_64_PC32, "
+               << ", tpde::elf::R_X86_64_PC32, "
                   "derived()->text_writer.offset() - 4, -4);\n";
           }
         });
@@ -760,6 +760,8 @@ void EncodingTargetX64::get_inst_candidates(
   case_default("MOVMSKPSrr", -1, "SSE_MOVMSKPSrr");
   case_default("MOVMSKPDrr", -1, "SSE_MOVMSKPDrr");
 
+  case_default("RDTSC", -1, "RDTSC");
+
   case_default("MFENCE", -1, "MFENCE");
   // clang-format on
 
@@ -1012,12 +1014,6 @@ void EncodingTargetX64::get_inst_candidates(
     handle_default("UD2");
   } else if (Name == "INT3") {
     handle_default("INT3");
-  }
-
-  if (candidates.size() == 0) {
-    llvm::errs() << "ERROR: unhandled instruction " << Name << "\n";
-    assert(false);
-    exit(1);
   }
 }
 

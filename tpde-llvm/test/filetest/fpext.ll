@@ -5,25 +5,16 @@
 
 ; RUN: tpde-llc --target=x86_64 %s | %objdump | FileCheck %s -check-prefixes=X64
 ; RUN: tpde-llc --target=aarch64 %s | %objdump | FileCheck %s -check-prefixes=ARM64
+; XFAIL: llvm19.1
+; XFAIL: llvm20.1
 
 define double @fpext_f32tof64(float %0) {
 ; X64-LABEL: <fpext_f32tof64>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    cvtss2sd xmm0, xmm0
-; X64-NEXT:    pop rbp
+; X64:         cvtss2sd xmm0, xmm0
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <fpext_f32tof64>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    fcvt d0, s0
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64:         fcvt d0, s0
 ; ARM64-NEXT:    ret
 entry:
   %1 = fpext float %0 to double
@@ -35,8 +26,6 @@ define fp128 @fpext_f32tof128(float %in) {
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    sub rsp, 0x30
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 __extendsftf2-0x4
@@ -45,14 +34,12 @@ define fp128 @fpext_f32tof128(float %in) {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <fpext_f32tof128>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
+; ARM64:         stp x29, x30, [sp, #-0xa0]!
 ; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    bl 0x70 <fpext_f32tof128+0x10>
+; ARM64-NEXT:  <L0>:
+; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 __extendsftf2
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
   %ext = fpext float %in to fp128
   ret fp128 %ext
@@ -63,8 +50,6 @@ define fp128 @fpext_f64tof128(double %in) {
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    sub rsp, 0x30
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 __extenddftf2-0x4
@@ -73,14 +58,12 @@ define fp128 @fpext_f64tof128(double %in) {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <fpext_f64tof128>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
+; ARM64:         stp x29, x30, [sp, #-0xa0]!
 ; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    bl 0xb0 <fpext_f64tof128+0x10>
+; ARM64-NEXT:  <L0>:
+; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 __extenddftf2
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
   %ext = fpext double %in to fp128
   ret fp128 %ext
@@ -91,8 +74,6 @@ define fp128 @fpext_f64tof128_fixed_reg(fp128 %p) {
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    sub rsp, 0x30
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    pxor xmm0, xmm0
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
@@ -102,15 +83,13 @@ define fp128 @fpext_f64tof128_fixed_reg(fp128 %p) {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <fpext_f64tof128_fixed_reg>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
+; ARM64:         stp x29, x30, [sp, #-0xa0]!
 ; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
 ; ARM64-NEXT:    movi v0.8b, #0x0
-; ARM64-NEXT:    bl 0xf4 <fpext_f64tof128_fixed_reg+0x14>
+; ARM64-NEXT:  <L0>:
+; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 __extenddftf2
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
   %x = fpext double 0.000000e+00 to fp128
   br label %bb

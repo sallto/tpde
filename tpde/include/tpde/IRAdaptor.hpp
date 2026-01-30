@@ -51,6 +51,21 @@ concept IRRange = requires(T r) {
   { r.end() } -> IREndIter<Value, decltype(r.begin())>;
 };
 
+struct RegBank;
+
+template <typename T>
+concept ValueParts = requires(T a) {
+  /// Provides the number of parts for a value
+  { a.count() } -> std::convertible_to<u32>;
+
+  /// Provides the size in bytes of a value part (must be a power of two)
+  { a.size_bytes(ARG(u32)) } -> std::convertible_to<u32>;
+
+  /// Provides the bank for a value part
+  { a.reg_bank(ARG(u32)) } -> std::convertible_to<RegBank>;
+};
+
+
 /// PHI-Nodes are a special case of IRValues and need to be inspected more
 /// thoroughly by the compiler. Therefore, they need to expose their special
 /// properties, namely the number of incoming values, the value and block for
@@ -74,20 +89,6 @@ concept PHIRef = requires(T r) {
   {
     r.incoming_val_for_block(std::declval<IRBlockRef>())
   } -> std::convertible_to<IRValue>;
-};
-
-struct RegBank;
-
-template <typename T>
-concept ValueParts = requires(T a) {
-  /// Provides the number of parts for a value
-  { a.count() } -> std::convertible_to<u32>;
-
-  /// Provides the size in bytes of a value part (must be a power of two)
-  { a.size_bytes(ARG(u32)) } -> std::convertible_to<u32>;
-
-  /// Provides the bank for a value part
-  { a.reg_bank(ARG(u32)) } -> std::convertible_to<RegBank>;
 };
 
 /// The IRAdaptor specifies the interface with which the IR-independent parts of
@@ -290,8 +291,6 @@ concept IRAdaptor = requires(T a) {
     a.val_local_idx(ARG(typename T::IRValueRef))
   } -> std::convertible_to<ValLocalIdx>;
 
-  { a.val_parts(ARG(typename T::IRValueRef)) } -> ValueParts;
-
   // TODO(ts): add separate function to get local idx which is only used in
   // the analyzer if the adaptor wants to lazily assign indices?
 
@@ -301,6 +300,8 @@ concept IRAdaptor = requires(T a) {
   {
     a.val_ignore_in_liveness_analysis(ARG(typename T::IRValueRef))
   } -> std::convertible_to<bool>;
+
+   { a.val_parts(ARG(typename T::IRValueRef)) } -> ValueParts;
 
   /// Indicate whether a value is the result of a PHI node. Used to detect and
   /// resolve dependencies between PHI nodes.
@@ -340,6 +341,7 @@ concept IRAdaptor = requires(T a) {
   /// Whether the instruction has a call. Relevant for better register allocation
   /// if your instruction only generates a call in rare circumstances it is safe to return false here.
   { a.inst_has_call(ARG(typename T::IRInstRef)) } -> std::convertible_to<bool>;
+
 
   /// Whether to skip the instruction during compilation.
   { a.inst_fused(ARG(typename T::IRInstRef)) } -> std::convertible_to<bool>;

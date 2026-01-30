@@ -7,26 +7,15 @@
 
 define float @vr_fmul_v1f32(float %s, ptr %p) {
 ; X64-LABEL: <vr_fmul_v1f32>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    movss xmm1, dword ptr [rdi]
+; X64:         movss xmm1, dword ptr [rdi]
 ; X64-NEXT:    movapd xmm2, xmm1
 ; X64-NEXT:    mulss xmm0, xmm2
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_fmul_v1f32>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldr s1, [x0]
+; ARM64:         ldr s1, [x0]
 ; ARM64-NEXT:    mov v2.16b, v1.16b
 ; ARM64-NEXT:    fmul s0, s0, s2
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
 ; ARM64-NEXT:    ret
   %v = load <1 x float>, ptr %p
   %r = call float @llvm.vector.reduce.fmul(float %s, <1 x float> %v)
@@ -37,8 +26,6 @@ define float @vr_fmul_v4f32(float %s, ptr %p) {
 ; X64-LABEL: <vr_fmul_v4f32>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    movups xmm1, xmmword ptr [rdi]
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm1
 ; X64-NEXT:    movss xmm2, dword ptr [rbp - 0x40]
@@ -53,11 +40,7 @@ define float @vr_fmul_v4f32(float %s, ptr %p) {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_fmul_v4f32>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldr q1, [x0]
+; ARM64:         ldr q1, [x0]
 ; ARM64-NEXT:    mov s2, v1.s[0]
 ; ARM64-NEXT:    fmul s0, s0, s2
 ; ARM64-NEXT:    mov s2, v1.s[1]
@@ -66,8 +49,6 @@ define float @vr_fmul_v4f32(float %s, ptr %p) {
 ; ARM64-NEXT:    fmul s0, s0, s2
 ; ARM64-NEXT:    mov s2, v1.s[3]
 ; ARM64-NEXT:    fmul s0, s0, s2
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
 ; ARM64-NEXT:    ret
   %v = load <4 x float>, ptr %p
   %r = call float @llvm.vector.reduce.fmul(float %s, <4 x float> %v)
@@ -76,11 +57,7 @@ define float @vr_fmul_v4f32(float %s, ptr %p) {
 
 define float @vr_fmul_v5f32(float %s, ptr %p) {
 ; X64-LABEL: <vr_fmul_v5f32>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    movss xmm1, dword ptr [rdi]
+; X64:         movss xmm1, dword ptr [rdi]
 ; X64-NEXT:    movss xmm2, dword ptr [rdi + 0x4]
 ; X64-NEXT:    movss xmm3, dword ptr [rdi + 0x8]
 ; X64-NEXT:    movss xmm4, dword ptr [rdi + 0xc]
@@ -95,15 +72,10 @@ define float @vr_fmul_v5f32(float %s, ptr %p) {
 ; X64-NEXT:    mulss xmm0, xmm6
 ; X64-NEXT:    movapd xmm6, xmm5
 ; X64-NEXT:    mulss xmm0, xmm6
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_fmul_v5f32>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldr s1, [x0]
+; ARM64:         ldr s1, [x0]
 ; ARM64-NEXT:    ldr s2, [x0, #0x4]
 ; ARM64-NEXT:    ldr s3, [x0, #0x8]
 ; ARM64-NEXT:    ldr s4, [x0, #0xc]
@@ -118,8 +90,6 @@ define float @vr_fmul_v5f32(float %s, ptr %p) {
 ; ARM64-NEXT:    fmul s0, s0, s6
 ; ARM64-NEXT:    mov v6.16b, v5.16b
 ; ARM64-NEXT:    fmul s0, s0, s6
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
 ; ARM64-NEXT:    ret
   %v = load <5 x float>, ptr %p
   %r = call float @llvm.vector.reduce.fmul(float %s, <5 x float> %v)
@@ -130,8 +100,6 @@ define float @vr_fmul_v8f32(float %s, ptr %p) {
 ; X64-LABEL: <vr_fmul_v8f32>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    movups xmm1, xmmword ptr [rdi]
 ; X64-NEXT:    movups xmm2, xmmword ptr [rdi + 0x10]
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x50], xmm1
@@ -156,11 +124,7 @@ define float @vr_fmul_v8f32(float %s, ptr %p) {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_fmul_v8f32>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldr q1, [x0]
+; ARM64:         ldr q1, [x0]
 ; ARM64-NEXT:    ldr q2, [x0, #0x10]
 ; ARM64-NEXT:    mov s3, v1.s[0]
 ; ARM64-NEXT:    fmul s0, s0, s3
@@ -178,8 +142,6 @@ define float @vr_fmul_v8f32(float %s, ptr %p) {
 ; ARM64-NEXT:    fmul s0, s0, s3
 ; ARM64-NEXT:    mov s3, v2.s[3]
 ; ARM64-NEXT:    fmul s0, s0, s3
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
 ; ARM64-NEXT:    ret
   %v = load <8 x float>, ptr %p
   %r = call float @llvm.vector.reduce.fmul(float %s, <8 x float> %v)
@@ -188,26 +150,15 @@ define float @vr_fmul_v8f32(float %s, ptr %p) {
 
 define double @vr_fmul_v1f64(double %s, ptr %p) {
 ; X64-LABEL: <vr_fmul_v1f64>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    movsd xmm1, qword ptr [rdi]
+; X64:         movsd xmm1, qword ptr [rdi]
 ; X64-NEXT:    movapd xmm2, xmm1
 ; X64-NEXT:    mulsd xmm0, xmm2
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_fmul_v1f64>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldr d1, [x0]
+; ARM64:         ldr d1, [x0]
 ; ARM64-NEXT:    mov v2.16b, v1.16b
 ; ARM64-NEXT:    fmul d0, d0, d2
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
 ; ARM64-NEXT:    ret
   %v = load <1 x double>, ptr %p
   %r = call double @llvm.vector.reduce.fmul(double %s, <1 x double> %v)
@@ -218,8 +169,6 @@ define double @vr_fmul_v2f64(double %s, ptr %p) {
 ; X64-LABEL: <vr_fmul_v2f64>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:    movups xmm1, xmmword ptr [rdi]
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm1
 ; X64-NEXT:    movsd xmm2, qword ptr [rbp - 0x40]
@@ -230,17 +179,11 @@ define double @vr_fmul_v2f64(double %s, ptr %p) {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_fmul_v2f64>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldr q1, [x0]
+; ARM64:         ldr q1, [x0]
 ; ARM64-NEXT:    mov d2, v1.d[0]
 ; ARM64-NEXT:    fmul d0, d0, d2
 ; ARM64-NEXT:    mov d2, v1.d[1]
 ; ARM64-NEXT:    fmul d0, d0, d2
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
 ; ARM64-NEXT:    ret
   %v = load <2 x double>, ptr %p
   %r = call double @llvm.vector.reduce.fmul(double %s, <2 x double> %v)
@@ -249,11 +192,7 @@ define double @vr_fmul_v2f64(double %s, ptr %p) {
 
 define double @vr_fmul_v5f64(double %s, ptr %p) {
 ; X64-LABEL: <vr_fmul_v5f64>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:    nop dword ptr [rax]
-; X64-NEXT:    movsd xmm1, qword ptr [rdi]
+; X64:         movsd xmm1, qword ptr [rdi]
 ; X64-NEXT:    movsd xmm2, qword ptr [rdi + 0x8]
 ; X64-NEXT:    movsd xmm3, qword ptr [rdi + 0x10]
 ; X64-NEXT:    movsd xmm4, qword ptr [rdi + 0x18]
@@ -268,15 +207,10 @@ define double @vr_fmul_v5f64(double %s, ptr %p) {
 ; X64-NEXT:    mulsd xmm0, xmm6
 ; X64-NEXT:    movapd xmm6, xmm5
 ; X64-NEXT:    mulsd xmm0, xmm6
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_fmul_v5f64>:
-; ARM64:         sub sp, sp, #0xa0
-; ARM64-NEXT:    stp x29, x30, [sp]
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    nop
-; ARM64-NEXT:    ldr d1, [x0]
+; ARM64:         ldr d1, [x0]
 ; ARM64-NEXT:    ldr d2, [x0, #0x8]
 ; ARM64-NEXT:    ldr d3, [x0, #0x10]
 ; ARM64-NEXT:    ldr d4, [x0, #0x18]
@@ -291,8 +225,6 @@ define double @vr_fmul_v5f64(double %s, ptr %p) {
 ; ARM64-NEXT:    fmul d0, d0, d6
 ; ARM64-NEXT:    mov v6.16b, v5.16b
 ; ARM64-NEXT:    fmul d0, d0, d6
-; ARM64-NEXT:    ldp x29, x30, [sp]
-; ARM64-NEXT:    add sp, sp, #0xa0
 ; ARM64-NEXT:    ret
   %v = load <5 x double>, ptr %p
   %r = call double @llvm.vector.reduce.fmul(double %s, <5 x double> %v)

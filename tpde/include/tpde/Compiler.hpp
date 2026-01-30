@@ -39,7 +39,10 @@ concept Compiler = CompilerConfig<Config> && requires(T a) {
   // (func_idx)
   { a.start_func(ARG(u32)) };
 
-  { a.gen_func_prolog_and_args(ARG(CCAssigner *)) };
+  {
+    a.prologue_assign_arg(
+        ARG(CCAssigner *), ARG(u32), ARG(typename T::IRValueRef))
+  };
 
   // This has to call assembler->finish_func
   // (func_idx)
@@ -84,6 +87,7 @@ concept Compiler = CompilerConfig<Config> && requires(T a) {
     a.try_force_fixed_assignment(ARG(typename T::IRValueRef))
   } -> std::convertible_to<bool>;
 
+ 
 
   /// A compiler can provide a data structure that is a non-assignment ValueRef.
   /// This struct is used in a union, so it must be a standard-layout struct and

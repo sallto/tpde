@@ -2,12 +2,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "TestIRCompiler.hpp"
+#include "TestIRCompilerX64.hpp"
+
+#include "TestIR.hpp"
+#include "TestIRAdaptor.hpp"
+#include "tpde/x64/CompilerX64.hpp"
 
 namespace tpde::test {
-using namespace tpde::x64;
 
-bool TestIRCompilerX64::compile_inst(IRInstRef inst_idx, InstRange) noexcept {
+
+bool TestIRCompilerX64::compile_inst(IRInstRef inst_idx, InstRange) {
   const TestIR::Value &value =
       this->analyzer.adaptor->ir->values[static_cast<u32>(inst_idx)];
   assert(value.type == TestIR::Value::Type::normal ||
@@ -17,7 +21,6 @@ bool TestIRCompilerX64::compile_inst(IRInstRef inst_idx, InstRange) noexcept {
     using enum TestIR::Value::Op;
   case add: return compile_add(inst_idx);
   case sub: return compile_sub(inst_idx);
-  case div: return compile_div(inst_idx);
   case condselect: return compile_condselect(inst_idx);
   case terminate:
   case ret: {
@@ -31,53 +34,45 @@ bool TestIRCompilerX64::compile_inst(IRInstRef inst_idx, InstRange) noexcept {
     rb.ret();
     return true;
   }
+  case trap:
+    ASM(UD2);
+    this->release_regs_after_return();
+    return true;
   case alloca: return true;
-  case br: {
-    auto block_idx = ir()->value_operands[value.op_begin_idx];
-    auto spilled = this->spill_before_branch();
-
-    this->generate_branch_to_block(
-        Jump::jmp, static_cast<IRBlockRef>(block_idx), false, true);
-
-    this->release_spilled_regs(spilled);
+  case zerofill: {
+    auto size = ir()->value_operands[value.op_begin_idx];
+    this->text_writer.ensure_space(size);
+    ASM(JMP, this->text_writer.cur_ptr() + size);
+    std::memset(this->text_writer.cur_ptr(), 0, size);
+    this->text_writer.cur_ptr() += size;
     return true;
   }
-  case condbr: {
-    auto val_idx =
-        static_cast<IRValueRef>(ir()->value_operands[value.op_begin_idx]);
-    auto true_block =
-        static_cast<IRBlockRef>(ir()->value_operands[value.op_begin_idx + 1]);
-    auto false_block =
-        static_cast<IRBlockRef>(ir()->value_operands[value.op_begin_idx + 2]);
+  case br: {
+    auto block_idx = ir()->value_operands[value.op_begin_idx];
+    this->generate_uncond_branch(IRBlockRef(block_idx));
+    return true;
+  }
+  case condbr:
+  case tbz: {
+    auto val_idx = IRValueRef(ir()->value_operands[value.op_begin_idx]);
+    auto true_block = IRBlockRef(ir()->value_operands[value.op_begin_idx + 1]);
+    auto false_block = IRBlockRef(ir()->value_operands[value.op_begin_idx + 2]);
 
-    auto [_, val] = this->val_ref_single(val_idx);
-
-    auto true_needs_split = this->branch_needs_split(true_block);
-    auto false_needs_split = this->branch_needs_split(false_block);
-
-    auto val_reg = val.load_to_reg();
-
-    auto spilled = this->spill_before_branch();
-
-    ASM(CMP64ri, val_reg, 0);
-    if (this->analyzer.block_ref(this->next_block()) == true_block) {
-      this->generate_branch_to_block(
-          Jump::je, false_block, false_needs_split, false);
-      this->generate_branch_to_block(Jump::jmp, true_block, false, true);
-    } else if (this->analyzer.block_ref(this->next_block()) == false_block) {
-      this->generate_branch_to_block(
-          Jump::jne, true_block, true_needs_split, false);
-      this->generate_branch_to_block(Jump::jmp, false_block, false, true);
-    } else if (!true_needs_split) {
-      this->generate_branch_to_block(Jump::jne, true_block, false, false);
-      this->generate_branch_to_block(Jump::jmp, false_block, false, true);
+    auto [cond_ref, cond_part] = this->val_ref_single(val_idx);
+    auto cond_reg = cond_part.load_to_reg();
+    Jump cc = Jump::jne;
+    if (value.op == condbr) {
+      ASM(TEST64rr, cond_reg, cond_reg);
     } else {
-      this->generate_branch_to_block(
-          Jump::je, false_block, false_needs_split, false);
-      this->generate_branch_to_block(Jump::jmp, true_block, false, true);
+      u32 bit = ir()->value_operands[value.op_begin_idx + 3];
+      if (bit <= 32) {
+        ASM(TEST32ri, cond_reg, u32{1} << bit);
+      } else {
+        ASM(BT64ri, cond_reg, bit);
+        cc = Jump::jb;
+      }
     }
-
-    this->release_spilled_regs(spilled);
+    this->generate_cond_branch(cc, true_block, false_block);
     return true;
   }
   case call: {
@@ -103,7 +98,7 @@ bool TestIRCompilerX64::compile_inst(IRInstRef inst_idx, InstRange) noexcept {
   return false;
 }
 
-bool TestIRCompilerX64::compile_add(IRInstRef inst_idx) noexcept {
+bool TestIRCompilerX64::compile_add(IRInstRef inst_idx) {
   const TestIR::Value &value = ir()->values[static_cast<u32>(inst_idx)];
 
   const auto lhs_idx =
@@ -115,8 +110,8 @@ bool TestIRCompilerX64::compile_add(IRInstRef inst_idx) noexcept {
   auto [rhs_vr, rhs] = this->val_ref_single(rhs_idx);
   auto [res_vr, res] =
       this->result_ref_single(static_cast<IRValueRef>(inst_idx));
-  AsmReg lhs_reg = lhs.load_to_preferred_reg();
-  AsmReg rhs_reg = rhs.load_to_preferred_reg();
+  AsmReg lhs_reg = lhs.load_to_reg();
+  AsmReg rhs_reg = rhs.load_to_reg();
   AsmReg res_reg = res.alloc_try_reuse(lhs);
 
   if (res_reg == lhs_reg) {
@@ -128,7 +123,7 @@ bool TestIRCompilerX64::compile_add(IRInstRef inst_idx) noexcept {
   return true;
 }
 
-bool TestIRCompilerX64::compile_sub(IRInstRef inst_idx) noexcept {
+bool TestIRCompilerX64::compile_sub(IRInstRef inst_idx) {
   const TestIR::Value &value = ir()->values[static_cast<u32>(inst_idx)];
 
   const auto lhs_idx =
@@ -146,40 +141,7 @@ bool TestIRCompilerX64::compile_sub(IRInstRef inst_idx) noexcept {
       .set_value(std::move(result));
   return true;
 }
-
-bool TestIRCompilerX64::compile_div(IRInstRef inst_idx) noexcept {
-  const TestIR::Value &value = ir()->values[static_cast<u32>(inst_idx)];
-
-  const auto lhs_idx =
-      static_cast<IRValueRef>(ir()->value_operands[value.op_begin_idx]);
-  const auto rhs_idx =
-      static_cast<IRValueRef>(ir()->value_operands[value.op_begin_idx + 1]);
-
-  auto lhs_vr = this->val_ref(lhs_idx);
-  auto [rhs_vr, rhs] = this->val_ref_single(rhs_idx);
-  auto [res_vr, res] = this->result_ref_single(static_cast<IRValueRef>(inst_idx));
-
-  // Reserve RAX and RDX registers (DIV instruction overwrites both)
-  ScratchReg rdx_scratch{this};
-  AsmReg rdx_reg = rdx_scratch.alloc_specific(AsmReg::DX);
-
-
-  // Load dividend into RAX
-  ScratchReg lhs_scratch = lhs_vr.part(0).into_scratch_specific(AsmReg::AX);
-
-  // Zero RDX for unsigned division
-  ASM(XOR64rr, rdx_reg, rdx_reg);
-
-
-  ASM(DIV64r, rhs.load_to_reg());
-
-  // Move quotient from RAX to result
-  res.set_value(std::move(lhs_scratch));
-
-  return true;
-}
-
-bool TestIRCompilerX64::compile_condselect(IRInstRef inst_idx) noexcept {
+bool TestIRCompilerX64::compile_condselect(IRInstRef inst_idx) {
   const TestIR::Value &value = ir()->values[static_cast<u32>(inst_idx)];
 
   const auto lhs_comp_idx =
@@ -229,4 +191,24 @@ bool TestIRCompilerX64::compile_condselect(IRInstRef inst_idx) noexcept {
   res.set_value(std::move(res_tmp));
   return true;
 }
+
+TestIRCompilerX64 *create_test_ir_compiler_x64(
+    TestIRAdaptor *adaptor,
+    bool no_fixed_assignments) {
+  return new TestIRCompilerX64(adaptor, no_fixed_assignments);
+}
+
+void destroy_test_ir_compiler_x64(TestIRCompilerX64 *compiler) {
+  delete compiler;
+}
+
+std::vector<u8> compile_ir_x64(TestIR *ir, bool no_fixed_assignments) {
+  test::TestIRAdaptor adaptor{ir};
+  TestIRCompilerX64 compiler{&adaptor, no_fixed_assignments};
+  if (!compiler.compile()) {
+    return {};
+  }
+  return compiler.assembler.build_object_file();
+}
+
 } // namespace tpde::test

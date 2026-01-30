@@ -243,7 +243,7 @@ llvm::Instruction *LLVMAdaptor::handle_inst_in_block(llvm::Instruction *inst) {
   return nullptr;
 }
 
-bool LLVMAdaptor::switch_func(const IRFuncRef function) noexcept {
+bool LLVMAdaptor::switch_func(const IRFuncRef function) {
   llvm::TimeTraceScope time_scope("TPDE_Prepass", [function]() {
     // getName is expensive, so only call it when time tracing is enabled.
     return std::string(function->getName());
@@ -266,72 +266,6 @@ bool LLVMAdaptor::switch_func(const IRFuncRef function) noexcept {
   block_succ_ranges.clear();
   initial_stack_slot_indices.clear();
   func_has_dynamic_alloca = false;
-
-  // we keep globals around for all function compilation
-  // and assign their value indices at the start of the compilation
-  // TODO(ts): move this to start_compile?
-  if (!globals_init) {
-    globals_init = true;
-    global_lookup.reserve(512);
-    global_list.reserve(512);
-    auto add_global = [&](llvm::GlobalValue *gv) {
-      assert(global_lookup.find(gv) == global_lookup.end());
-      global_lookup.insert_or_assign(gv, global_list.size());
-      global_list.push_back(gv);
-
-      if (gv->isThreadLocal()) [[unlikely]] {
-        // Rewrite all accesses to thread-local variables to go through the
-        // intrinsic llvm.threadlocal.address; other accesses are unsupported.
-        auto handle_thread_local_uses = [](llvm::GlobalValue *gv) -> bool {
-          for (llvm::Use &use : llvm::make_early_inc_range(gv->uses())) {
-            llvm::User *user = use.getUser();
-            auto *intrin = llvm::dyn_cast<llvm::IntrinsicInst>(user);
-            if (intrin && intrin->getIntrinsicID() ==
-                              llvm::Intrinsic::threadlocal_address) {
-              continue;
-            }
-
-            auto *instr = llvm::dyn_cast<llvm::Instruction>(user);
-            if (!instr) [[unlikely]] {
-              return false;
-            }
-
-            llvm::IRBuilder<> irb(instr);
-            use.set(irb.CreateThreadLocalAddress(use.get()));
-          }
-          return true;
-        };
-
-        // We do two passes. The first pass handle the common case, which is
-        // that all users are instructions. For ConstantExpr users (e.g., GEP),
-        // we do a second pass after expanding these (which is expensive).
-        if (!handle_thread_local_uses(gv)) {
-          llvm::convertUsersOfConstantsToInstructions(gv);
-          if (!handle_thread_local_uses(gv)) {
-            TPDE_LOG_ERR("thread-local global with unsupported uses");
-            for (llvm::Use &use : gv->uses()) {
-              std::string user;
-              llvm::raw_string_ostream(user) << *use.getUser();
-              TPDE_LOG_INFO("use: {}", user);
-            }
-            func_unsupported = true;
-          }
-        }
-      }
-    };
-    for (llvm::GlobalVariable &gv : mod->globals()) {
-      add_global(&gv);
-    }
-    for (llvm::GlobalAlias &ga : mod->aliases()) {
-      add_global(&ga);
-    }
-    // Do functions last, handling of global variables/aliases might introduce
-    // another intrinsic declaration for llvm.threadlocal.address.
-    for (llvm::Function &fn : mod->functions()) {
-      add_global(&fn);
-    }
-  }
-
   values.clear();
 
   const size_t arg_count = function->arg_size();
@@ -370,7 +304,11 @@ bool LLVMAdaptor::switch_func(const IRFuncRef function) noexcept {
           auto ins_before = block->getTerminator()->getIterator();
           if (block->begin() != ins_before) {
             // ins_before.getP
+#if LLVM_VERSION_MAJOR >= 22
+            auto *prev_inst = ins_before->getPrevNode();
+#else
             auto *prev_inst = ins_before->getPrevNonDebugInstruction();
+#endif
             if (prev_inst && llvm::isa<llvm::CmpInst>(prev_inst)) {
               // make sure fusing can still happen
               ins_before = prev_inst->getIterator();
@@ -445,16 +383,82 @@ bool LLVMAdaptor::switch_func(const IRFuncRef function) noexcept {
   return !func_unsupported;
 }
 
-void LLVMAdaptor::switch_module(llvm::Module &mod) noexcept {
+bool LLVMAdaptor::switch_module(llvm::Module &mod) {
   if (this->mod) {
     reset();
   }
   this->context = &mod.getContext();
   this->mod = &mod;
   this->mod->setDataLayout(data_layout);
+
+  bool unsupported_global = false;
+
+  global_lookup.reserve(512);
+  global_list.reserve(512);
+  auto add_global = [&](llvm::GlobalValue *gv) {
+    assert(global_lookup.find(gv) == global_lookup.end());
+    global_lookup.insert_or_assign(gv, global_list.size());
+    global_list.push_back(gv);
+
+    if (gv->isThreadLocal()) [[unlikely]] {
+      // Rewrite all accesses to thread-local variables to go through the
+      // intrinsic llvm.threadlocal.address; other accesses are unsupported.
+      auto handle_thread_local_uses = [](llvm::GlobalValue *gv) -> bool {
+        for (llvm::Use &use : llvm::make_early_inc_range(gv->uses())) {
+          llvm::User *user = use.getUser();
+          auto *intrin = llvm::dyn_cast<llvm::IntrinsicInst>(user);
+          if (intrin && intrin->getIntrinsicID() ==
+                            llvm::Intrinsic::threadlocal_address) {
+            continue;
+          }
+
+          auto *instr = llvm::dyn_cast<llvm::Instruction>(user);
+          if (!instr) [[unlikely]] {
+            return false;
+          }
+
+          llvm::IRBuilder<> irb(instr);
+          use.set(irb.CreateThreadLocalAddress(use.get()));
+        }
+        return true;
+      };
+
+      // We do two passes. The first pass handle the common case, which is
+      // that all users are instructions. For ConstantExpr users (e.g., GEP),
+      // we do a second pass after expanding these (which is expensive).
+      if (!handle_thread_local_uses(gv)) {
+        llvm::convertUsersOfConstantsToInstructions(gv);
+        if (!handle_thread_local_uses(gv)) {
+          std::string name;
+          llvm::raw_string_ostream name_os(name);
+          gv->printAsOperand(name_os, true, &mod);
+          TPDE_LOG_ERR("thread-local global with unsupported uses: {}", name);
+          for (llvm::Use &use : gv->uses()) {
+            std::string user;
+            llvm::raw_string_ostream(user) << *use.getUser();
+            TPDE_LOG_INFO("use: {}", user);
+          }
+          unsupported_global = true;
+        }
+      }
+    }
+  };
+  for (llvm::GlobalVariable &gv : mod.globals()) {
+    add_global(&gv);
+  }
+  for (llvm::GlobalAlias &ga : mod.aliases()) {
+    add_global(&ga);
+  }
+  // Do functions last, handling of global variables/aliases might introduce
+  // another intrinsic declaration for llvm.threadlocal.address.
+  for (llvm::Function &fn : mod.functions()) {
+    add_global(&fn);
+  }
+
+  return !unsupported_global;
 }
 
-void LLVMAdaptor::reset() noexcept {
+void LLVMAdaptor::reset() {
   context = nullptr;
   mod = nullptr;
   values.clear();
@@ -470,20 +474,19 @@ void LLVMAdaptor::reset() noexcept {
   complex_type_map.clear();
   initial_stack_slot_indices.clear();
   cur_func = nullptr;
-  globals_init = false;
   blocks.clear();
   block_succ_indices.clear();
   block_succ_ranges.clear();
 }
 
-void LLVMAdaptor::report_incompatible_type(llvm::Type *type) noexcept {
+void LLVMAdaptor::report_incompatible_type(llvm::Type *type) {
   std::string type_name;
   llvm::raw_string_ostream(type_name) << *type;
   TPDE_LOG_ERR("type with incompatible layout at function/call: {}", type_name);
   func_unsupported = true;
 }
 
-void LLVMAdaptor::report_unsupported_type(llvm::Type *type) noexcept {
+void LLVMAdaptor::report_unsupported_type(llvm::Type *type) {
   std::string type_name;
   llvm::raw_string_ostream(type_name) << *type;
   TPDE_LOG_ERR("unsupported type: {}", type_name);
@@ -491,7 +494,7 @@ void LLVMAdaptor::report_unsupported_type(llvm::Type *type) noexcept {
 }
 
 static std::tuple<LLVMBasicValType, u32, bool>
-    lower_vector_type(const llvm::FixedVectorType *type) noexcept {
+    lower_vector_type(const llvm::FixedVectorType *type) {
   auto *el_ty = type->getElementType();
   auto num_elts = type->getNumElements();
 
@@ -611,8 +614,7 @@ static std::tuple<LLVMBasicValType, u32, bool>
   }
 }
 
-LLVMBasicValType
-    LLVMAdaptor::lower_simple_type(const llvm::Type *type) noexcept {
+LLVMBasicValType LLVMAdaptor::lower_simple_type(const llvm::Type *type) {
   constexpr size_t LutBeginInt = llvm::Type::TargetExtTyID + 1;
   static constexpr auto type_lut = []() {
     std::array<LLVMBasicValType, LutBeginInt + 129> tys{};
@@ -645,8 +647,7 @@ LLVMBasicValType
 }
 
 std::pair<unsigned, unsigned>
-    LLVMAdaptor::complex_types_append(llvm::Type *type,
-                                      size_t desc_idx) noexcept {
+    LLVMAdaptor::complex_types_append(llvm::Type *type, size_t desc_idx) {
   auto ty = lower_simple_type(type);
   unsigned num;
   if (ty != LLVMBasicValType::invalid) {
@@ -659,6 +660,13 @@ std::pair<unsigned, unsigned>
       incompatible = true;
     }
     complex_part_types[desc_idx].desc.incompatible_layout |= incompatible;
+  } else if (type->isX86_FP80Ty()) [[unlikely]] {
+    ty = LLVMBasicValType::f80;
+    num = 1;
+    // Mark x86_fp80 inside structs as incompatible for now. This is difficult
+    // to handle: for returns, it would need special handling, and for
+    // parameters, a part of the argument would need to be passed byval.
+    complex_part_types[desc_idx].desc.incompatible_layout |= true;
   }
 
   if (ty != LLVMBasicValType::invalid) {
@@ -742,7 +750,7 @@ std::pair<unsigned, unsigned>
 }
 
 [[gnu::noinline]] std::pair<LLVMBasicValType, unsigned long>
-    LLVMAdaptor::lower_complex_type(llvm::Type *type) noexcept {
+    LLVMAdaptor::lower_complex_type(llvm::Type *type) {
   auto [it, inserted] = complex_type_map.try_emplace(type);
   if (inserted) {
     // Vector types are rather uncommon and non-trivial to handle, so handle
@@ -754,6 +762,9 @@ std::pair<unsigned, unsigned>
         it->second = std::make_pair(ty, num);
         return it->second;
       }
+    } else if (type->isX86_FP80Ty()) [[unlikely]] {
+      it->second = {LLVMBasicValType::f80, 1};
+      return it->second;
     }
 
     unsigned start = complex_part_types.size();
