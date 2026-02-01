@@ -9,33 +9,23 @@
 
 define @tbz(%a, %b) {
 ; X64-LABEL: <tbz>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    bt rdi, 0x2f
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rdi
+; X64:         bt rdi, 0x2f
 ; X64-NEXT:    jae <L0>
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    sub rax, rsi
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x30]
-; X64-NEXT:    lea rcx, [rax + rax]
+; X64-NEXT:    lea rax, [rdi + rdi]
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <tbz>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    str x0, [x29, #0xa0]
-; ARM64-NEXT:    tbnz x0, #0x2f, <L0>
+; ARM64:         tbnz x0, #0x2f, <L0>
 ; ARM64-NEXT:    sub x2, x0, x1
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa0]
 ; ARM64-NEXT:    add x1, x0, x0
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
 entry:
   tbz %a, ^tgt1, ^tgt2, 47
@@ -51,10 +41,7 @@ ret:
 
 define @tbz_small(%a, %b) {
 ; X64-LABEL: <tbz_small>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    bt rdi, 0x2f
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rdi
+; X64:         bt rdi, 0x2f
 ; X64-NEXT:    jae <L1>
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:     ...
@@ -62,27 +49,20 @@ define @tbz_small(%a, %b) {
 ; X64-NEXT:    sub rax, rsi
 ; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x30]
-; X64-NEXT:    lea rcx, [rax + rax]
+; X64-NEXT:    lea rax, [rdi + rdi]
 ; X64-NEXT:  <L2>:
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <tbz_small>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    str x0, [x29, #0xa0]
-; ARM64-NEXT:    tbnz x0, #0x2f, <L1>
+; ARM64:         tbnz x0, #0x2f, <L1>
 ; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:     ...
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    sub x2, x0, x1
 ; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa0]
 ; ARM64-NEXT:    add x1, x0, x0
 ; ARM64-NEXT:  <L2>:
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
 entry:
   tbz %a, ^tgt1, ^tgt2, 47
@@ -100,10 +80,7 @@ ret:
 ; Medium-sized tbz; veener space is allocated but not used
 define @tbz_medium(%a, %b) {
 ; X64-LABEL: <tbz_medium>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    bt rdi, 0x2f
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rdi
+; X64:         bt rdi, 0x2f
 ; X64-NEXT:    jae <L1>
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:     ...
@@ -111,17 +88,12 @@ define @tbz_medium(%a, %b) {
 ; X64-NEXT:    sub rax, rsi
 ; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x30]
-; X64-NEXT:    lea rcx, [rax + rax]
+; X64-NEXT:    lea rax, [rdi + rdi]
 ; X64-NEXT:  <L2>:
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <tbz_medium>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    str x0, [x29, #0xa0]
-; ARM64-NEXT:    tbnz x0, #0x2f, <L3>
+; ARM64:         tbnz x0, #0x2f, <L3>
 ; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:     ...
 ; ARM64-NEXT:  <L0>:
@@ -134,10 +106,8 @@ define @tbz_medium(%a, %b) {
 ; ARM64-NEXT:    sub x2, x0, x1
 ; ARM64-NEXT:    b <L4>
 ; ARM64-NEXT:  <L3>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa0]
 ; ARM64-NEXT:    add x1, x0, x0
 ; ARM64-NEXT:  <L4>:
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
 entry:
   tbz %a, ^tgt1, ^tgt2, 47
@@ -155,10 +125,7 @@ ret:
 ; Large-sized tbz; veener must be used
 define @tbz_large(%a, %b) {
 ; X64-LABEL: <tbz_large>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    bt rdi, 0x2f
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rdi
+; X64:         bt rdi, 0x2f
 ; X64-NEXT:    jae <L1>
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:     ...
@@ -166,17 +133,12 @@ define @tbz_large(%a, %b) {
 ; X64-NEXT:    sub rax, rsi
 ; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x30]
-; X64-NEXT:    lea rcx, [rax + rax]
+; X64-NEXT:    lea rax, [rdi + rdi]
 ; X64-NEXT:  <L2>:
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <tbz_large>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    str x0, [x29, #0xa0]
-; ARM64-NEXT:    tbnz x0, #0x2f, <L0>
+; ARM64:         tbnz x0, #0x2f, <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    b <L4>
@@ -190,10 +152,8 @@ define @tbz_large(%a, %b) {
 ; ARM64-NEXT:    sub x2, x0, x1
 ; ARM64-NEXT:    b <L5>
 ; ARM64-NEXT:  <L4>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa0]
 ; ARM64-NEXT:    add x1, x0, x0
 ; ARM64-NEXT:  <L5>:
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
 entry:
   tbz %a, ^tgt1, ^tgt2, 47
