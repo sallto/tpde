@@ -571,14 +571,14 @@ public:
   }
 
   [[nodiscard]] bool inst_has_call(const IRInstRef inst) const {
-    if (llvm::isa<llvm::InvokeInst>(inst)) {
-      return true;
+    // todo(salto): some are missing
+    if (auto *call = llvm::dyn_cast<llvm::CallInst>(inst)) {
+      if (auto *callee = call->getCalledFunction()) {
+        return !callee->isIntrinsic();
+      }
+      return true; // indirect call
     }
-    if (llvm::isa<llvm::CallInst>(inst)) {
-      // intrinsics don't generate calls most of the time
-      return !llvm::cast<llvm::CallInst>(inst)->getCalledFunction()->isIntrinsic();
-    }
-    return false;
+    return llvm::isa<llvm::InvokeInst>(inst); 
   }
 
   void inst_set_fused(const IRInstRef value, const bool fused) {

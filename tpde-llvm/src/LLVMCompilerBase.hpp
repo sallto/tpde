@@ -2240,10 +2240,8 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_float_binary_op(
     default: TPDE_UNREACHABLE("invalid FloatBinaryOp");
     }
     auto cb = derived()->create_call_builder();
-
-
-    cb->add_arg(this->val_ref(inst->getOperand(0)).part(0), tpde::CCAssignment{});
-    cb->add_arg(this->val_ref(inst->getOperand(1)).part(0), tpde::CCAssignment{});
+    cb->add_arg(lhs.part(0), tpde::CCAssignment{});
+    cb->add_arg(rhs.part(0), tpde::CCAssignment{});
     cb->call(get_libfunc_sym(lf));
     cb->add_ret(res);
     return true;
@@ -2258,8 +2256,8 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_float_binary_op(
     }
 
     auto cb = derived()->create_call_builder();
-    cb->add_arg(this->val_ref(inst->getOperand(0)).part(0), tpde::CCAssignment{});
-    cb->add_arg(this->val_ref(inst->getOperand(1)).part(0), tpde::CCAssignment{});
+    cb->add_arg(lhs.part(0), tpde::CCAssignment{});
+    cb->add_arg(rhs.part(0), tpde::CCAssignment{});
     cb->call(get_libfunc_sym(lf));
     cb->add_ret(res);
     return true;
@@ -2338,6 +2336,7 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_float_binary_op(
     }
   default: return false;
   }
+
   return (derived()->*encode_fn)(lhs.part(0), rhs.part(0), res.part(0));
 }
 
@@ -4259,7 +4258,7 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_invoke(
   // We always spill the call result. Also, generate_call might move values
   // again into registers, which we need to release again.
   // TODO: evaluate when exactly this is required.
-  spilled |= this->spill_before_branch(/*force_spill=*/true);
+  spilled |= this->spill_caller_saved_before_call(0);
 
   // if the unwind block has phi-nodes, we need more code to propagate values
   // to it so do the propagation logic
@@ -4625,7 +4624,6 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_intrin(
       cb1->add_ret(tmp, tpde::CCAssignment{});
 
       auto cb2 = derived()->create_call_builder();
-
       cb2->add_arg(std::move(tmp), tpde::CCAssignment{});
       cb2->add_arg(op3.part(0), tpde::CCAssignment{});
       cb2->call(get_libfunc_sym(LibFunc::addtf3));
@@ -5384,3 +5382,4 @@ JITMapper LLVMCompilerBase<Adaptor, Derived, Config>::compile_and_map(
 }
 
 } // namespace tpde_llvm
+

@@ -1076,11 +1076,10 @@ public:
           continue;
         }
         this->global_assign(move.value_idx, move.dst);
-        if(!ap.register_valid())
-        {
-
-          //derived()->mov(move.dst, move.src, move.size);
+        if(!ap.register_valid() && register_file.is_used(Reg{move.dst}))  {
+          this->evict_reg(Reg{move.dst});
         }
+  
 
         ap.mov(this, move.value_idx, move.dst);
       } else {
@@ -2961,6 +2960,11 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
     assert(phi_assignment && "phi node has no assignment");
 
     ValueRef incoming_ref = val_ref(incoming_val);
+    if(!adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+      const auto incoming_local_idx = adaptor->val_local_idx(incoming_val);
+      if(incoming_local_idx == phi_local_idx)
+      return;
+    }
     const bool incoming_last_ref = incoming_ref.last_ref();
 
     for (u32 part = 0; part < phi_assignment->part_count; ++part) {

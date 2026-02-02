@@ -133,11 +133,7 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
             continue;
           }
           AssignmentPartRef ap{assignment, move.part_idx};
-          if (ap.register_valid() && assignment->pending_free) {
-            ap.set_register_valid(false);
-            reg_file.unmark_used(move.src);
-            continue;
-          }
+          
           compiler->global_assign(move.value_idx, move.dst);
 
           ap.mov(compiler, move.value_idx, move.dst);

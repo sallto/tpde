@@ -8,8 +8,6 @@
 #include <cstring>
 #include <span>
 
-#include "ScratchReg.hpp"
-
 namespace tpde {
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
@@ -17,8 +15,6 @@ class CompilerBase<Adaptor, Derived, Config>::ValuePart {
 private:
   struct ConstantData {
     AsmReg reg = AsmReg::make_invalid();
-    AsmReg global_reg =
-        AsmReg::make_invalid(); // consts never have a valid global reg
     bool has_assignment = false;
     bool owned;
     bool is_const : 1;
@@ -33,8 +29,6 @@ private:
 
   struct ValueData {
     AsmReg reg = AsmReg::make_invalid(); // only valid if fixed/locked
-    AsmReg global_reg = AsmReg::make_invalid();
-
     bool has_assignment = true;
     bool owned;
     ValLocalIdx local_idx;
@@ -72,7 +66,6 @@ public:
     assert(this->assignment().variable_ref() ||
            state.v.assignment->references_left);
     assert(!owned || state.v.assignment->references_left == 1);
-    // todo salto    if ()
   }
 
   ValuePart(const u64 *data, u32 size, RegBank bank)
@@ -212,13 +205,15 @@ public:
   ///   }
   AsmReg alloc_try_reuse(CompilerBase *compiler, ValuePart &ref) {
     assert(ref.has_reg());
-    //todo(salto): for fixed assignments this generates a useless mov.
-    if (ref.can_salvage()) {
-      set_value(compiler, std::move(ref));
-      if (has_assignment()) {
-        lock(compiler);
+    if (!has_assignment() || !assignment().register_valid()) {
+      assert(!has_assignment() || !assignment().fixed_assignment());
+      if (ref.can_salvage()) {
+        set_value(compiler, std::move(ref));
+        if (has_assignment()) {
+          lock(compiler);
+        }
+        return cur_reg();
       }
-      return cur_reg();
     }
     return alloc_reg(compiler);
   }
@@ -495,7 +490,6 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_reg_impl(
   }
 }
 
-
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::ValuePart::execute_moves(
     CompilerBase *compiler, AsmReg old_reg) {
@@ -585,7 +579,7 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
       reg_file.mark_clobbered(reg);
       return reg;
     } else {
-      compiler->evict_reg(reg);
+    compiler->evict_reg(reg);
     }
   }
 
@@ -610,6 +604,7 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
     if (reload) {
       if (old_reg.valid()) {
         compiler->derived()->mov(reg, old_reg, ap.part_size());
+        reg_file.unmark_used(old_reg);
       } else {
         compiler->derived()->reload_to_reg(reg, ap);
       }
@@ -618,6 +613,7 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
     }
   } else {
     reg_file.mark_used(reg, INVALID_VAL_LOCAL_IDX, 0);
+    reg_file.mark_fixed(reg);
 
     if (reload) {
       if (state.c.reg.valid()) {
@@ -770,20 +766,6 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value(
 
   AsmReg new_reg = other.salvage_keep_used(compiler);
   reg_file.update_reg_assignment(new_reg, local_idx(), part());
-  if (compiler->global_register_file.used & (1ull << new_reg.id())) {
-    // find new global register for result
-    /*auto [_, global] = compiler->select_reg(
-      reg_file.reg_bank(new_reg), compiler->global_register_file.used);
-    if (global == AsmReg::make_invalid()) {
-      assert(false); // todo
-    }
-    compiler->global_assign(local_idx(), global);*/
-  } else {
-    // use the same local and global register
-    if (!compiler->global_reg_for(local_idx()).valid()) {
-      compiler->global_assign(local_idx(), new_reg);
-    }
-  }
   ap.set_reg(new_reg);
   ap.set_register_valid(true);
   ap.set_modified(true);
@@ -840,7 +822,9 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value(
   // ScratchReg's reg is fixed and used => unfix, keep used, update assignment
   reg_file.unmark_fixed(value_reg);
   reg_file.update_reg_assignment(value_reg, local_idx(), part());
-  if (compiler->global_register_file.used & (1ull << value_reg.id())) {
+  /*
+  todo(salto): re-enable global register assignment
+    if (compiler->global_register_file.used & (1ull << value_reg.id())) {
     // find new global register for result
     auto [_, global] = compiler->select_reg(reg_file.reg_bank(value_reg), 0);
     if (global != AsmReg::make_invalid()) {
@@ -852,6 +836,7 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::set_value(
       compiler->global_assign(local_idx(), value_reg);
     }
   }
+  */
   ap.set_reg(value_reg);
   ap.set_register_valid(true);
   ap.set_modified(true);
