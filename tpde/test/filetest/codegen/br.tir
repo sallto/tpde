@@ -272,6 +272,61 @@ f:
   ret %f
 }
 
+define @phi_reuse_copy(%cond, %a, %b) {
+; X64-LABEL: <phi_reuse_copy>:
+; X64:         test rdi, rdi
+; X64:         je <L0>
+; X64:         mov [[PHI:r[0-9]+]], {{r[0-9]+}}
+; X64:         jmp <L1>
+; X64:       <L0>:
+; X64:         mov [[PHI]], {{r[0-9]+}}
+; X64:       <L1>:
+; X64:         mov {{r[0-9]+}}, [[PHI]]
+;
+; X64-FIXED-LABEL: <phi_reuse_copy>:
+; X64-FIXED:         test rdi, rdi
+; X64-FIXED:         je <L0>
+; X64-FIXED:         mov [[PHI:r[0-9]+]], {{r[0-9]+}}
+; X64-FIXED:         jmp <L1>
+; X64-FIXED:       <L0>:
+; X64-FIXED:         mov [[PHI]], {{r[0-9]+}}
+; X64-FIXED:       <L1>:
+; X64-FIXED:         mov {{r[0-9]+}}, [[PHI]]
+;
+; ARM64-LABEL: <phi_reuse_copy>:
+; ARM64:         cmp x0, #0x0
+; ARM64:         b.eq <L0>
+; ARM64:         mov [[PHI:x[0-9]+]], {{x[0-9]+}}
+; ARM64:         b <L1>
+; ARM64:       <L0>:
+; ARM64:         mov [[PHI]], {{x[0-9]+}}
+; ARM64:       <L1>:
+; ARM64:         mov {{x[0-9]+}}, [[PHI]]
+;
+; ARM64-FIXED-LABEL: <phi_reuse_copy>:
+; ARM64-FIXED:         cmp x0, #0x0
+; ARM64-FIXED:         b.eq <L0>
+; ARM64-FIXED:         mov [[PHI:x[0-9]+]], {{x[0-9]+}}
+; ARM64-FIXED:         b <L1>
+; ARM64-FIXED:       <L0>:
+; ARM64-FIXED:         mov [[PHI]], {{x[0-9]+}}
+; ARM64-FIXED:       <L1>:
+; ARM64-FIXED:         mov {{x[0-9]+}}, [[PHI]]
+entry:
+  condbr %cond, ^t, ^f
+t:
+  %x = add %a, %b
+  br ^join
+f:
+  %y = sub %a, %b
+  %z = add %y, %a
+  br ^join
+join:
+  %p = phi [^t, %x], [^f, %y]
+  %q = add %p, %z
+  ret %q
+}
+
 
 define @loop1(%a, %b) {
 ; X64-LABEL: <loop1>:
