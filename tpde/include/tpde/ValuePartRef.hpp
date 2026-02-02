@@ -212,6 +212,7 @@ public:
   ///   }
   AsmReg alloc_try_reuse(CompilerBase *compiler, ValuePart &ref) {
     assert(ref.has_reg());
+    //todo(salto): for fixed assignments this generates a useless mov.
     if (ref.can_salvage()) {
       set_value(compiler, std::move(ref));
       if (has_assignment()) {
