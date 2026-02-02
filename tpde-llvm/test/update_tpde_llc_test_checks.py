@@ -124,7 +124,14 @@ def main():
                 )
             else:
                 objdump = commands[-2]
-            if not "objdump" in objdump.split(" ")[0]:
+            objdump_tool_name = objdump.split(" ")[0]
+            if "dwarfdump" in objdump_tool_name:
+                if "--eh-frame" in objdump:
+                    common.debug("Skipping llvm-dwarfdump --eh-frame RUN line: " + l)
+                    continue
+                common.warn("Skipping non-objdump RUN line: " + l)
+                continue
+            if "objdump" not in objdump_tool_name:
                 common.warn("Skipping non-objdump RUN line: " + l)
                 continue
 
