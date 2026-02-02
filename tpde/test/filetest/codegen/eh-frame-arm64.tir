@@ -35,7 +35,7 @@ entry:
 }
 
 define @add2(%a, %b) {
-; EH-LABEL: FDE cie=00000000 pc=00000010...00000170
+; EH-LABEL: FDE cie=00000000 pc=00000010...00000174
 ; EH-NEXT: Format:       DWARF32
 ; EH-NEXT: DW_CFA_remember_state:
 ; EH-NEXT: DW_CFA_advance_loc: 4 to 0x14
@@ -54,7 +54,7 @@ define @add2(%a, %b) {
 ; EH-NEXT: DW_CFA_offset: W26 -136
 ; EH-NEXT: DW_CFA_offset: W27 -128
 ; EH-NEXT: DW_CFA_offset: W28 -120
-; EH-NEXT: DW_CFA_advance_loc1: 320 to 0x16c
+; EH-NEXT: DW_CFA_advance_loc1: 324 to 0x170
 ; EH-NEXT: DW_CFA_restore_state:
 ; EH-EMPTY:
 ; ASM-LABEL: <add2>:
@@ -215,11 +215,11 @@ entry:
 }
 
 define @add3(%a, %b) {
-; EH-LABEL: FDE cie=00000000 pc=00000170...000002b4
+; EH-LABEL: FDE cie=00000000 pc=00000180...000002c8
 ; EH-NEXT: Format:       DWARF32
-; EH-NEXT: DW_CFA_advance_loc: 4 to 0x174
+; EH-NEXT: DW_CFA_advance_loc: 4 to 0x184
 ; EH-NEXT: DW_CFA_def_cfa_offset: +208
-; EH-NEXT: DW_CFA_advance_loc: 24 to 0x18c
+; EH-NEXT: DW_CFA_advance_loc: 24 to 0x19c
 ; EH-NEXT: DW_CFA_def_cfa_register: W29
 ; EH-NEXT: DW_CFA_offset: W29 -208
 ; EH-NEXT: DW_CFA_offset: W30 -200
@@ -385,18 +385,18 @@ entry:
 }
 
 define @add4(%a, %b) {
-; EH-LABEL: FDE cie=00000000 pc=000002c0...000002e0
+; EH-LABEL: FDE cie=00000000 pc=000002d0...000002f0
 ; EH-NEXT: Format:       DWARF32
-; EH-NEXT: DW_CFA_advance_loc: 4 to 0x2c4
+; EH-NEXT: DW_CFA_advance_loc: 4 to 0x2d4
 ; EH-NEXT: DW_CFA_def_cfa_offset: +1184
 ; EH-NEXT: DW_CFA_remember_state:
-; EH-NEXT: DW_CFA_advance_loc: 8 to 0x2cc
+; EH-NEXT: DW_CFA_advance_loc: 8 to 0x2dc
 ; EH-NEXT: DW_CFA_def_cfa_register: W29
 ; EH-NEXT: DW_CFA_offset: W29 -1184
 ; EH-NEXT: DW_CFA_offset: W30 -1176
-; EH-NEXT: DW_CFA_advance_loc: 12 to 0x2d8
+; EH-NEXT: DW_CFA_advance_loc: 12 to 0x2e8
 ; EH-NEXT: DW_CFA_restore_state:
-; EH-NEXT: DW_CFA_advance_loc: 4 to 0x2dc
+; EH-NEXT: DW_CFA_advance_loc: 4 to 0x2ec
 ; EH-NEXT: DW_CFA_def_cfa_offset: +0
 ; EH-EMPTY:
 ; ASM-LABEL: <add4>:
@@ -415,11 +415,11 @@ entry:
 }
 
 define @add5(%a, %b) {
-; EH-LABEL: FDE cie=00000000 pc=000002e0...000002f8
+; EH-LABEL: FDE cie=00000000 pc=000002f0...00000308
 ; EH-NEXT: Format:       DWARF32
-; EH-NEXT: DW_CFA_advance_loc: 4 to 0x2e4
+; EH-NEXT: DW_CFA_advance_loc: 4 to 0x2f4
 ; EH-NEXT: DW_CFA_def_cfa_offset: +1184
-; EH-NEXT: DW_CFA_advance_loc: 8 to 0x2ec
+; EH-NEXT: DW_CFA_advance_loc: 8 to 0x2fc
 ; EH-NEXT: DW_CFA_def_cfa_register: W29
 ; EH-NEXT: DW_CFA_offset: W29 -1184
 ; EH-NEXT: DW_CFA_offset: W30 -1176
@@ -440,11 +440,11 @@ entry:
 }
 
 define @add6(%a, %b) {
-; EH-LABEL: FDE cie=00000000 pc=00000300...00000314
+; EH-LABEL: FDE cie=00000000 pc=00000310...00000324
 ; EH-NEXT: Format:       DWARF32
-; EH-NEXT: DW_CFA_advance_loc: 4 to 0x304
+; EH-NEXT: DW_CFA_advance_loc: 4 to 0x314
 ; EH-NEXT: DW_CFA_def_cfa_offset: +176
-; EH-NEXT: DW_CFA_advance_loc: 4 to 0x308
+; EH-NEXT: DW_CFA_advance_loc: 4 to 0x318
 ; EH-NEXT: DW_CFA_def_cfa_register: W29
 ; EH-NEXT: DW_CFA_offset: W29 -176
 ; EH-NEXT: DW_CFA_offset: W30 -168
@@ -462,16 +462,16 @@ entry:
 }
 
 define @add7(%a, %b) {
-; EH-LABEL: FDE cie=00000000 pc=00000320...00000338
+; EH-LABEL: FDE cie=00000000 pc=00000330...00000348
 ; EH-NEXT: Format:       DWARF32
 ; EH-NEXT: DW_CFA_remember_state:
-; EH-NEXT: DW_CFA_advance_loc: 4 to 0x324
+; EH-NEXT: DW_CFA_advance_loc: 4 to 0x334
 ; EH-NEXT: DW_CFA_def_cfa_offset: +176
-; EH-NEXT: DW_CFA_advance_loc: 4 to 0x328
+; EH-NEXT: DW_CFA_advance_loc: 4 to 0x338
 ; EH-NEXT: DW_CFA_def_cfa_register: W29
 ; EH-NEXT: DW_CFA_offset: W29 -176
 ; EH-NEXT: DW_CFA_offset: W30 -168
-; EH-NEXT: DW_CFA_advance_loc: 12 to 0x334
+; EH-NEXT: DW_CFA_advance_loc: 12 to 0x344
 ; EH-NEXT: DW_CFA_restore_state:
 ; EH-NEXT: DW_CFA_nop:
 ; EH-NEXT: DW_CFA_nop:
