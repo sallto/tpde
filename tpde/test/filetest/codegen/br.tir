@@ -29,17 +29,13 @@ ret:
 
 define @condbr1(%a, %b) {
 ; X64-LABEL: <condbr1>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    test rdi, rdi
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rsi
+; X64:         test rdi, rdi
 ; X64-NEXT:    je <L0>
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x30]
+; X64-NEXT:    mov rax, rsi
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; X64-FIXED-LABEL: <condbr1>:
@@ -55,16 +51,12 @@ define @condbr1(%a, %b) {
 ; X64-FIXED-NEXT:    ret
 ;
 ; ARM64-LABEL: <condbr1>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    cmp x0, #0x0
-; ARM64-NEXT:    str x1, [x29, #0xa0]
+; ARM64:         cmp x0, #0x0
 ; ARM64-NEXT:    b.eq <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa0]
+; ARM64-NEXT:    mov x0, x1
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
 ;
 ; ARM64-FIXED-LABEL: <condbr1>:
@@ -88,15 +80,11 @@ ret2:
 
 define @condbr1_trap(%a, %b) {
 ; X64-LABEL: <condbr1_trap>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    test rdi, rdi
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rsi
+; X64:         test rdi, rdi
 ; X64-NEXT:    je <L0>
 ; X64-NEXT:    ud2
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    pop rbp
+; X64-NEXT:    mov rax, rsi
 ; X64-NEXT:    ret
 ;
 ; X64-FIXED-LABEL: <condbr1_trap>:
@@ -109,15 +97,11 @@ define @condbr1_trap(%a, %b) {
 ; X64-FIXED-NEXT:    ret
 ;
 ; ARM64-LABEL: <condbr1_trap>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    cmp x0, #0x0
-; ARM64-NEXT:    str x1, [x29, #0xa0]
+; ARM64:         cmp x0, #0x0
 ; ARM64-NEXT:    b.eq <L0>
 ; ARM64-NEXT:    brk #0x1
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa0]
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
+; ARM64-NEXT:    mov x0, x1
 ; ARM64-NEXT:    ret
 ;
 ; ARM64-FIXED-LABEL: <condbr1_trap>:
@@ -138,17 +122,13 @@ ret:
 
 define @condbr2(%a, %b) {
 ; X64-LABEL: <condbr2>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    test rdi, rdi
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rdi
+; X64:         test rdi, rdi
 ; X64-NEXT:    jne <L0>
 ; X64-NEXT:    mov rax, rsi
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x30]
+; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; X64-FIXED-LABEL: <condbr2>:
@@ -167,13 +147,11 @@ define @condbr2(%a, %b) {
 ; ARM64:         stp x29, x30, [sp, #-0xb0]!
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    cmp x0, #0x0
-; ARM64-NEXT:    str x0, [x29, #0xa0]
 ; ARM64-NEXT:    b.ne <L0>
+; ARM64-NEXT:    str x0, [x29, #0xa0]
 ; ARM64-NEXT:    mov x0, x1
-; ARM64-NEXT:    b <L1>
+; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa0]
-; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
 ;
@@ -198,20 +176,14 @@ ret1:
 
 define @condbr3(%a, %b, %c) {
 ; X64-LABEL: <condbr3>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    test rdi, rdi
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rdx
+; X64:         test rdi, rdi
 ; X64-NEXT:    jne <L0>
-; X64-NEXT:    mov rax, rsi
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    add rsi, rdx
-; X64-NEXT:    mov rax, rsi
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    sub rdx, rax
 ; X64-NEXT:    mov rax, rdx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; X64-FIXED-LABEL: <condbr3>:
@@ -219,7 +191,6 @@ define @condbr3(%a, %b, %c) {
 ; X64-FIXED-NEXT:    mov rsi, rdx
 ; X64-FIXED-NEXT:    test rdi, rdi
 ; X64-FIXED-NEXT:    jne <L0>
-; X64-FIXED-NEXT:    mov r8, r10
 ; X64-FIXED-NEXT:    jmp <L1>
 ; X64-FIXED-NEXT:  <L0>:
 ; X64-FIXED-NEXT:    add r10, rsi
@@ -230,21 +201,14 @@ define @condbr3(%a, %b, %c) {
 ; X64-FIXED-NEXT:    ret
 ;
 ; ARM64-LABEL: <condbr3>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    cmp x0, #0x0
-; ARM64-NEXT:    str x2, [x29, #0xa0]
+; ARM64:         cmp x0, #0x0
 ; ARM64-NEXT:    b.ne <L0>
-; ARM64-NEXT:    str x1, [x29, #0xa8]
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    add x1, x1, x2
-; ARM64-NEXT:    str x1, [x29, #0xa8]
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa0]
-; ARM64-NEXT:    ldr x1, [x29, #0xa8]
-; ARM64-NEXT:    sub x0, x0, x1
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
+; ARM64-NEXT:    sub x2, x2, x3
+; ARM64-NEXT:    mov x0, x2
 ; ARM64-NEXT:    ret
 ;
 ; ARM64-FIXED-LABEL: <condbr3>:
@@ -252,7 +216,6 @@ define @condbr3(%a, %b, %c) {
 ; ARM64-FIXED-NEXT:    mov x10, x2
 ; ARM64-FIXED-NEXT:    cmp x0, #0x0
 ; ARM64-FIXED-NEXT:    b.ne <L0>
-; ARM64-FIXED-NEXT:    mov x2, x9
 ; ARM64-FIXED-NEXT:    b <L1>
 ; ARM64-FIXED-NEXT:  <L0>:
 ; ARM64-FIXED-NEXT:    add x9, x9, x10
@@ -275,43 +238,63 @@ f:
 define @phi_reuse_copy(%cond, %a, %b) {
 ; X64-LABEL: <phi_reuse_copy>:
 ; X64:         test rdi, rdi
-; X64:         je <L0>
-; X64:         mov [[PHI:r[0-9]+]], {{r[0-9]+}}
-; X64:         jmp <L1>
-; X64:       <L0>:
-; X64:         mov [[PHI]], {{r[0-9]+}}
-; X64:       <L1>:
-; X64:         mov {{r[0-9]+}}, [[PHI]]
+; X64-NEXT:    je <L0>
+; X64-NEXT:    lea rax, [rsi + rdx]
+; X64-NEXT:    jmp <L1>
+; X64-NEXT:  <L0>:
+; X64-NEXT:    mov rcx, rsi
+; X64-NEXT:    sub rcx, rdx
+; X64-NEXT:    lea rdx, [rcx + rsi]
+; X64-NEXT:  <L1>:
+; X64-NEXT:    add rcx, rax
+; X64-NEXT:    mov rax, rcx
+; X64-NEXT:    ret
 ;
 ; X64-FIXED-LABEL: <phi_reuse_copy>:
-; X64-FIXED:         test rdi, rdi
-; X64-FIXED:         je <L0>
-; X64-FIXED:         mov [[PHI:r[0-9]+]], {{r[0-9]+}}
-; X64-FIXED:         jmp <L1>
-; X64-FIXED:       <L0>:
-; X64-FIXED:         mov [[PHI]], {{r[0-9]+}}
-; X64-FIXED:       <L1>:
-; X64-FIXED:         mov {{r[0-9]+}}, [[PHI]]
+; X64-FIXED:         mov r10, rsi
+; X64-FIXED-NEXT:    mov rsi, rdx
+; X64-FIXED-NEXT:    test rdi, rdi
+; X64-FIXED-NEXT:    je <L0>
+; X64-FIXED-NEXT:    lea rdi, [r10 + rsi]
+; X64-FIXED-NEXT:    jmp <L1>
+; X64-FIXED-NEXT:  <L0>:
+; X64-FIXED-NEXT:    mov rax, r10
+; X64-FIXED-NEXT:    sub rax, rsi
+; X64-FIXED-NEXT:    lea rcx, [rax + r10]
+; X64-FIXED-NEXT:    mov r8, rax
+; X64-FIXED-NEXT:  <L1>:
+; X64-FIXED-NEXT:    add r8, rdi
+; X64-FIXED-NEXT:    mov rax, r8
+; X64-FIXED-NEXT:    ret
 ;
 ; ARM64-LABEL: <phi_reuse_copy>:
 ; ARM64:         cmp x0, #0x0
-; ARM64:         b.eq <L0>
-; ARM64:         mov [[PHI:x[0-9]+]], {{x[0-9]+}}
-; ARM64:         b <L1>
-; ARM64:       <L0>:
-; ARM64:         mov [[PHI]], {{x[0-9]+}}
-; ARM64:       <L1>:
-; ARM64:         mov {{x[0-9]+}}, [[PHI]]
+; ARM64-NEXT:    b.eq <L0>
+; ARM64-NEXT:    add x0, x1, x2
+; ARM64-NEXT:    b <L1>
+; ARM64-NEXT:  <L0>:
+; ARM64-NEXT:    sub x3, x1, x2
+; ARM64-NEXT:    add x2, x3, x1
+; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    add x3, x3, x0
+; ARM64-NEXT:    mov x0, x3
+; ARM64-NEXT:    ret
 ;
 ; ARM64-FIXED-LABEL: <phi_reuse_copy>:
-; ARM64-FIXED:         cmp x0, #0x0
-; ARM64-FIXED:         b.eq <L0>
-; ARM64-FIXED:         mov [[PHI:x[0-9]+]], {{x[0-9]+}}
-; ARM64-FIXED:         b <L1>
-; ARM64-FIXED:       <L0>:
-; ARM64-FIXED:         mov [[PHI]], {{x[0-9]+}}
-; ARM64-FIXED:       <L1>:
-; ARM64-FIXED:         mov {{x[0-9]+}}, [[PHI]]
+; ARM64-FIXED:         mov x9, x1
+; ARM64-FIXED-NEXT:    mov x10, x2
+; ARM64-FIXED-NEXT:    cmp x0, #0x0
+; ARM64-FIXED-NEXT:    b.eq <L0>
+; ARM64-FIXED-NEXT:    add x2, x9, x10
+; ARM64-FIXED-NEXT:    b <L1>
+; ARM64-FIXED-NEXT:  <L0>:
+; ARM64-FIXED-NEXT:    sub x0, x9, x10
+; ARM64-FIXED-NEXT:    add x1, x0, x9
+; ARM64-FIXED-NEXT:    mov x3, x0
+; ARM64-FIXED-NEXT:  <L1>:
+; ARM64-FIXED-NEXT:    add x3, x3, x2
+; ARM64-FIXED-NEXT:    mov x0, x3
+; ARM64-FIXED-NEXT:    ret
 entry:
   condbr %cond, ^t, ^f
 t:
@@ -323,33 +306,25 @@ f:
   br ^join
 join:
   %p = phi [^t, %x], [^f, %y]
-  %q = add %p, %z
+  %q = add %p, %x
   ret %q
 }
 
 
 define @loop1(%a, %b) {
 ; X64-LABEL: <loop1>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rsi
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rdi
-; X64-NEXT:  <L0>:
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x38]
+; X64:       <L0>:
 ; X64-NEXT:    test rax, rax
 ; X64-NEXT:    je <L1>
 ; X64-NEXT:    mov rcx, rax
-; X64-NEXT:    mov rdx, qword ptr [rbp - 0x30]
-; X64-NEXT:    sub rcx, rdx
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rcx
-; X64-NEXT:    jmp <L0>
+; X64-NEXT:    sub rcx, rsi
+; X64-NEXT:    mov rax, rcx
+; X64-NEXT:    jmp <loop1>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; X64-FIXED-LABEL: <loop1>:
 ; X64-FIXED:         mov r10, rsi
-; X64-FIXED-NEXT:    mov rsi, rdi
 ; X64-FIXED-NEXT:  <L0>:
 ; X64-FIXED-NEXT:    test rsi, rsi
 ; X64-FIXED-NEXT:    je <L1>
@@ -361,25 +336,17 @@ define @loop1(%a, %b) {
 ; X64-FIXED-NEXT:    ret
 ;
 ; ARM64-LABEL: <loop1>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    str x1, [x29, #0xa0]
-; ARM64-NEXT:    str x0, [x29, #0xa8]
-; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa8]
-; ARM64-NEXT:    cmp x0, #0x0
+; ARM64:       <L0>:
+; ARM64-NEXT:    cmp x2, #0x0
 ; ARM64-NEXT:    b.eq <L1>
-; ARM64-NEXT:    ldr x1, [x29, #0xa0]
-; ARM64-NEXT:    sub x2, x0, x1
-; ARM64-NEXT:    str x2, [x29, #0xa8]
-; ARM64-NEXT:    b <L0>
+; ARM64-NEXT:    sub x0, x2, x1
+; ARM64-NEXT:    mov x2, x0
+; ARM64-NEXT:    b <loop1>
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
 ;
 ; ARM64-FIXED-LABEL: <loop1>:
 ; ARM64-FIXED:         mov x9, x1
-; ARM64-FIXED-NEXT:    mov x2, x0
 ; ARM64-FIXED-NEXT:  <L0>:
 ; ARM64-FIXED-NEXT:    cmp x2, #0x0
 ; ARM64-FIXED-NEXT:    b.eq <L1>
@@ -403,65 +370,46 @@ ret:
 
 define @phi_chain1(%a) {
 ; X64-LABEL: <phi_chain1>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rdi
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rdi
-; X64-NEXT:  <L0>:
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x38]
-; X64-NEXT:    test rax, rax
+; X64:       <L0>:
+; X64-NEXT:    test rcx, rcx
 ; X64-NEXT:    je <L1>
-; X64-NEXT:    mov rcx, qword ptr [rbp - 0x30]
-; X64-NEXT:    lea rdx, [rcx + rax]
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rcx
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rdx
-; X64-NEXT:    jmp <L0>
+; X64-NEXT:    lea rdx, [rax + rcx]
+; X64-NEXT:    mov rcx, rax
+; X64-NEXT:    mov rax, rdx
+; X64-NEXT:    jmp <phi_chain1>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; X64-FIXED-LABEL: <phi_chain1>:
-; X64-FIXED:         mov rsi, rdi
-; X64-FIXED-NEXT:    mov r8, rdi
-; X64-FIXED-NEXT:  <L0>:
+; X64-FIXED:       <L0>:
 ; X64-FIXED-NEXT:    test r8, r8
 ; X64-FIXED-NEXT:    je <L1>
 ; X64-FIXED-NEXT:    lea rax, [rsi + r8]
 ; X64-FIXED-NEXT:    mov r8, rsi
 ; X64-FIXED-NEXT:    mov rsi, rax
-; X64-FIXED-NEXT:    jmp <L0>
+; X64-FIXED-NEXT:    jmp <phi_chain1>
 ; X64-FIXED-NEXT:  <L1>:
 ; X64-FIXED-NEXT:    ret
 ;
 ; ARM64-LABEL: <phi_chain1>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    str x0, [x29, #0xa0]
-; ARM64-NEXT:    str x0, [x29, #0xa8]
-; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa8]
-; ARM64-NEXT:    cmp x0, #0x0
+; ARM64:       <L0>:
+; ARM64-NEXT:    cmp x2, #0x0
 ; ARM64-NEXT:    b.eq <L1>
-; ARM64-NEXT:    ldr x1, [x29, #0xa0]
-; ARM64-NEXT:    add x2, x1, x0
-; ARM64-NEXT:    str x0, [x29, #0xa0]
-; ARM64-NEXT:    str x1, [x29, #0xa8]
-; ARM64-NEXT:    str x2, [x29, #0xa0]
-; ARM64-NEXT:    b <L0>
+; ARM64-NEXT:    add x0, x1, x2
+; ARM64-NEXT:    mov x2, x1
+; ARM64-NEXT:    mov x1, x0
+; ARM64-NEXT:    b <phi_chain1>
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
 ;
 ; ARM64-FIXED-LABEL: <phi_chain1>:
-; ARM64-FIXED:         mov x2, x0
-; ARM64-FIXED-NEXT:    mov x3, x0
-; ARM64-FIXED-NEXT:  <L0>:
+; ARM64-FIXED:       <L0>:
 ; ARM64-FIXED-NEXT:    cmp x3, #0x0
 ; ARM64-FIXED-NEXT:    b.eq <L1>
 ; ARM64-FIXED-NEXT:    add x0, x2, x3
 ; ARM64-FIXED-NEXT:    mov x3, x2
 ; ARM64-FIXED-NEXT:    mov x2, x0
-; ARM64-FIXED-NEXT:    b <L0>
+; ARM64-FIXED-NEXT:    b <phi_chain1>
 ; ARM64-FIXED-NEXT:  <L1>:
 ; ARM64-FIXED-NEXT:    ret
 entry:
@@ -479,67 +427,50 @@ ret:
 
 define @phi_cycle1(%a) {
 ; X64-LABEL: <phi_cycle1>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rdi
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rdi
-; X64-NEXT:  <L0>:
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x38]
-; X64-NEXT:    test rax, rax
+; X64:       <L0>:
+; X64-NEXT:    test rcx, rcx
 ; X64-NEXT:    je <L1>
-; X64-NEXT:    mov rcx, qword ptr [rbp - 0x30]
-; X64-NEXT:    lea rdx, [rcx + rax]
+; X64-NEXT:    lea rdx, [rax + rcx]
 ; X64-NEXT:    mov rdx, rcx
-; X64-NEXT:    mov qword ptr [rbp - 0x30], rax
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rdx
-; X64-NEXT:    jmp <L0>
+; X64-NEXT:    mov rcx, rax
+; X64-NEXT:    mov rax, rdx
+; X64-NEXT:    jmp <phi_cycle1>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; X64-FIXED-LABEL: <phi_cycle1>:
-; X64-FIXED:         mov rsi, rdi
-; X64-FIXED-NEXT:    mov r8, rdi
-; X64-FIXED-NEXT:  <L0>:
+; X64-FIXED:       <L0>:
 ; X64-FIXED-NEXT:    test r8, r8
 ; X64-FIXED-NEXT:    je <L1>
 ; X64-FIXED-NEXT:    lea rax, [rsi + r8]
-; X64-FIXED-NEXT:    mov rax, rsi
-; X64-FIXED-NEXT:    mov rsi, r8
-; X64-FIXED-NEXT:    mov r8, rax
-; X64-FIXED-NEXT:    jmp <L0>
+; X64-FIXED-NEXT:    mov rax, r8
+; X64-FIXED-NEXT:    mov r8, rsi
+; X64-FIXED-NEXT:    mov rsi, rax
+; X64-FIXED-NEXT:    jmp <phi_cycle1>
 ; X64-FIXED-NEXT:  <L1>:
 ; X64-FIXED-NEXT:    ret
 ;
 ; ARM64-LABEL: <phi_cycle1>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    str x0, [x29, #0xa0]
-; ARM64-NEXT:    str x0, [x29, #0xa8]
-; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa8]
-; ARM64-NEXT:    cmp x0, #0x0
+; ARM64:       <L0>:
+; ARM64-NEXT:    cmp x2, #0x0
 ; ARM64-NEXT:    b.eq <L1>
-; ARM64-NEXT:    ldr x1, [x29, #0xa0]
-; ARM64-NEXT:    add x2, x1, x0
-; ARM64-NEXT:    str x0, [x29, #0xa0]
-; ARM64-NEXT:    str x2, [x29, #0xa8]
-; ARM64-NEXT:    b <L0>
+; ARM64-NEXT:    add x0, x1, x2
+; ARM64-NEXT:    mov x0, x2
+; ARM64-NEXT:    mov x2, x1
+; ARM64-NEXT:    mov x1, x0
+; ARM64-NEXT:    b <phi_cycle1>
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
 ;
 ; ARM64-FIXED-LABEL: <phi_cycle1>:
-; ARM64-FIXED:         mov x2, x0
-; ARM64-FIXED-NEXT:    mov x3, x0
-; ARM64-FIXED-NEXT:  <L0>:
+; ARM64-FIXED:       <L0>:
 ; ARM64-FIXED-NEXT:    cmp x3, #0x0
 ; ARM64-FIXED-NEXT:    b.eq <L1>
 ; ARM64-FIXED-NEXT:    add x0, x2, x3
-; ARM64-FIXED-NEXT:    mov x0, x2
-; ARM64-FIXED-NEXT:    mov x2, x3
-; ARM64-FIXED-NEXT:    mov x3, x0
-; ARM64-FIXED-NEXT:    b <L0>
+; ARM64-FIXED-NEXT:    mov x0, x3
+; ARM64-FIXED-NEXT:    mov x3, x2
+; ARM64-FIXED-NEXT:    mov x2, x0
+; ARM64-FIXED-NEXT:    b <phi_cycle1>
 ; ARM64-FIXED-NEXT:  <L1>:
 ; ARM64-FIXED-NEXT:    ret
 entry:
