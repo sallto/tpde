@@ -1228,6 +1228,8 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       }
 
       vp.load_to_specific(&compiler, cca.reg);
+      source_regs |= (1ull << cca.reg.id());
+      compiler.register_file.allocatable &= ~source_regs;
       vp.reset(&compiler);
       return;
     }
@@ -1510,6 +1512,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
   // Phase 9: Reset state
   // assert((compiler.register_file.allocatable & arg_regs) == 0);
   compiler.register_file.allocatable |= arg_regs;
+  compiler.register_file.allocatable |= source_regs;
   pending_args.clear();
   source_regs = 0;
 }
@@ -3028,13 +3031,9 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
         derived()->spill_reg(
             incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
       } else {
-        ScratchReg scratch{this};
-        RegBank bank = incoming_part.bank();
-        AsmReg tmp = scratch.alloc(bank);
-        incoming_part.reload_into_specific_fixed(this, tmp, phi_ap.part_size());
-        derived()->spill_reg(tmp, phi_ap.frame_off(), phi_ap.part_size());
+        ScratchReg scratch = std::move(incoming_part).into_scratch();
+        derived()->spill_reg(scratch.cur_reg(), phi_ap.frame_off(), phi_ap.part_size());
       }
-      phi_ap.set_register_valid(false);
       phi_ap.set_stack_valid();
     }
   };
@@ -3113,6 +3112,21 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
               new_phi_regs |= (1ull << target_regs[part].id());
             } else {
               target_regs[part] = Reg::make_invalid();
+              // Allocate spill slot and move the incoming value into it.
+              if (!phi_ap.stack_valid()) {
+                allocate_spill_slot(phi_ap);
+              }
+              auto incoming_part = incoming_ref.part(part);
+              Reg incoming_reg = incoming_part.cur_reg_unlocked();
+              if (incoming_reg.valid()) {
+                derived()->spill_reg(
+                    incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
+              } else {
+                 ScratchReg scratch = std::move(incoming_part).into_scratch();
+                 derived()->spill_reg(scratch.cur_reg(), phi_ap.frame_off(), phi_ap.part_size());
+              }
+              phi_ap.set_register_valid(false);
+              phi_ap.set_stack_valid();
             }
           }
         }
