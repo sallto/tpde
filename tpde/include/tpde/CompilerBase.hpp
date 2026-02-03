@@ -216,7 +216,7 @@ struct CompilerBase {
                  Reg s,
                  u8 sz,
                  ValLocalIdx val = INVALID_VAL_LOCAL_IDX,
-                 u32 part = 0) 
+                 u32 part = 0)
         : value_idx(val), part_idx(part), dst(d), src(s), size(sz) {}
   };
   using MoveList = util::SmallVector<RegisterMove, 16>;
@@ -305,7 +305,7 @@ struct CompilerBase {
   // TreeRAContext *tree_ra_ctx = nullptr;
   MoveList parallel_copies;
 
-  void global_assign(ValLocalIdx idx, Reg reg)  {
+  void global_assign(ValLocalIdx idx, Reg reg) {
     /*if (global_register_file.is_used(reg) &&
        global_register_file.reg_local_idx(reg) == idx) {
      return;
@@ -320,7 +320,7 @@ struct CompilerBase {
    }*/
   }
 
-  void global_unassign(ValLocalIdx idx)  {
+  void global_unassign(ValLocalIdx idx) {
     /*for (auto reg_id : global_register_file.used_regs()) {
       if (global_register_file.reg_local_idx(Reg{reg_id}) == idx) {
         global_register_file.unmark_used(Reg{reg_id});
@@ -329,7 +329,7 @@ struct CompilerBase {
     }*/
   }
 
-  Reg global_reg_for(ValLocalIdx idx) const  {
+  Reg global_reg_for(ValLocalIdx idx) const {
     /*for (auto reg_id : global_register_file.used_regs()) {
       if (global_register_file.reg_local_idx(Reg{reg_id}) == idx) {
         return Reg{reg_id};
@@ -543,9 +543,8 @@ public:
 
 #ifndef NDEBUG
 private:
-  VIR<Adaptor>::Allocation
-      get_allocation(AssignmentPartRef ap,
-                     const bool reload = false) const  {
+  VIR<Adaptor>::Allocation get_allocation(AssignmentPartRef ap,
+                                          const bool reload = false) const {
     // in reload_to_reg, register_valid can be true but the ap still needs to be
     // loaded
     if (ap.register_valid() && !reload) {
@@ -558,14 +557,12 @@ private:
 
   std::unordered_map<ValLocalIdx, std::vector<Reg>> final_assignments;
   // Value changed its register during codegen
-  void vir_final_assignment(ValLocalIdx local_idx, Reg reg)  {
+  void vir_final_assignment(ValLocalIdx local_idx, Reg reg) {
     final_assignments[local_idx].push_back(reg);
   }
 
   // Record argument move destination for VIR tracking
-  void vir_record_arg_move(ValLocalIdx local_idx,
-                           u32 part_idx,
-                           Reg reg)  {
+  void vir_record_arg_move(ValLocalIdx local_idx, u32 part_idx, Reg reg) {
     auto &vec = final_assignments[local_idx];
     if (vec.size() <= part_idx) {
       vec.resize(part_idx + 1, Reg::make_invalid());
@@ -584,7 +581,7 @@ private:
   void vir_emit_phi(IRValueRef phi_value,
                     ValLocalIdx phi_idx,
                     u32 part_idx,
-                    Reg reg)  {
+                    Reg reg) {
     using VIRType = VIR<Adaptor>;
 
     typename VIRType::Allocation phi_alloc(reg);
@@ -739,7 +736,7 @@ public:
                        typename RegisterFile::RegBitSet constraints,
                        typename RegisterFile::RegBitSet available,
                        typename RegisterFile::RegBitSet forbidden = 0,
-                       AsmReg current_reg = AsmReg::make_invalid()) ;
+                       AsmReg current_reg = AsmReg::make_invalid());
 
 private:
   /// @internal Select register when a value needs to be evicted.
@@ -756,8 +753,8 @@ public:
     Reg res = register_file.find_first_free_excluding(bank, exclusion_mask);
     if (res.valid()) [[likely]] {
       return res;
-    } 
-    
+    }
+
     return select_reg_evict(bank);
   }
 
@@ -777,14 +774,15 @@ public:
   void evict_reg(Reg reg);
 
   /// Lazily free a register using parallel moves when possible.
-  void lazy_free_reg(Reg reg) ;
+  void lazy_free_reg(Reg reg);
 
   /// Free the register. Requires that the contained value is already spilled.
   void free_reg(Reg reg);
 
-  /// Spill all caller-saved registers before a call that may branch. (ex. LLVMIR invoke)
+  /// Spill all caller-saved registers before a call that may branch. (ex.
+  /// LLVMIR invoke)
   typename RegisterFile::RegBitSet spill_caller_saved_before_call(
-    typename RegisterFile::RegBitSet call_arguments) ;
+      typename RegisterFile::RegBitSet call_arguments);
 
   /// @}
 
@@ -868,12 +866,12 @@ public:
 
 #ifndef NDEBUG
   // todo(salto): double check that this is really always ok
-  bool may_change_value_state() const  { return true; }
+  bool may_change_value_state() const { return true; }
 
 #endif
 
 
-  void move_one(u32 i, MoveList &moves, MoveList &result)  {
+  void move_one(u32 i, MoveList &moves, MoveList &result) {
     if (moves[i].src == moves[i].dst) {
       return;
     }
@@ -886,7 +884,8 @@ public:
           break;
         }
         case MoveStatus::MOVING: {
-          auto tmp = derived()->select_reg(register_file.reg_bank(moves[j].src), 0);
+          auto tmp =
+              derived()->select_reg(register_file.reg_bank(moves[j].src), 0);
           // todo(salto): what if no reg is available, shouldn't happen, since
           // phis leave 2 free registers todo(salto): call derived->mov
           result.emplace_back(tmp,
@@ -918,7 +917,7 @@ public:
   See: Silvain Rideau and Xavier Leroy. 2010. Validating register
   allocation and spilling.
   */
-  MoveList sequentialize(MoveList &moves)  {
+  MoveList sequentialize(MoveList &moves) {
     MoveList result;
     for (u32 i = 0; i < moves.size(); ++i) {
       if (moves[i].status == MoveStatus::TO_MOVE) {
@@ -928,7 +927,7 @@ public:
     return result;
   }
 
-  void move_values_to_match(BlockIndex target)  {
+  void move_values_to_match(BlockIndex target) {
     // next block immediately follows the current block and there is no control
     // flow inbetween. We can use the Register state of the current block for
     // the next one.
@@ -995,7 +994,6 @@ public:
             continue;
           }
           for (u32 i = 0; i < assignment->part_count; i++) {
-            
             AssignmentPartRef ap{assignment, i};
             if (ap.fixed_assignment()) {
               // fixed registers do not need to be moved
@@ -1006,8 +1004,7 @@ public:
               // variable refs.
               continue;
             }
-            if(assignment->pending_free)
-            {
+            if (assignment->pending_free) {
               continue;
             }
             spill(ap);
@@ -1061,11 +1058,12 @@ public:
 
     MoveList result = sequentialize(moves);
     // todo(salto): maybe execute the mov in sequentialize directly
-    for (auto move: result) {
+    for (auto move : result) {
       if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
         ValueAssignment *assignment = this->val_assignment(move.value_idx);
-        if (!assignment)
+        if (!assignment) {
           continue;
+        }
         AssignmentPartRef ap{assignment, move.part_idx};
         if (ap.register_valid() && assignment->pending_free) {
           this->derived()->mov(move.dst, move.src, ap.part_size());
@@ -1076,26 +1074,26 @@ public:
           continue;
         }
         this->global_assign(move.value_idx, move.dst);
-        if(!ap.register_valid() && register_file.is_used(Reg{move.dst}))  {
+        if (!ap.register_valid() && register_file.is_used(Reg{move.dst})) {
           this->evict_reg(Reg{move.dst});
         }
-  
+
 
         ap.mov(this, move.value_idx, move.dst);
       } else {
         this->derived()->mov(move.dst, move.src, 8);
         this->register_file.mark_used(
-          Reg{move.dst}, move.value_idx, move.part_idx);
+            Reg{move.dst}, move.value_idx, move.part_idx);
         this->register_file.mark_clobbered(Reg{move.dst});
       }
     }
   }
 
-  typename RegisterFile::RegBitSet
-      move_to_phi_nodes_impl(BlockIndex target, MoveList &moves);
+  typename RegisterFile::RegBitSet move_to_phi_nodes_impl(BlockIndex target,
+                                                          MoveList &moves);
 
   /// Count available registers in a specific bank
-  u32 count_available_registers(RegBank bank) const  {
+  u32 count_available_registers(RegBank bank) const {
     auto free_regs = register_file.allocatable & ~register_file.used &
                      register_file.bank_regs(bank);
     return std::popcount(free_regs);
@@ -1215,6 +1213,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       arg.kind = PendingArg::Kind::REG_TO_REG;
       arg.source_reg = ap.get_reg();
       source_regs |= (1ull << ap.get_reg().id());
+      compiler.register_file.allocatable &= ~source_regs;
     } else if (ap.stack_valid()) {
       arg.kind = PendingArg::Kind::STACK_TO_REG;
       if (!ap.variable_ref()) {
@@ -1239,6 +1238,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       arg.kind = PendingArg::Kind::REG_TO_REG;
       arg.source_reg = src;
       source_regs |= (1ull << src.id());
+            compiler.register_file.allocatable &= ~source_regs;
     }
   }
   // todo(salto): alloca_call
@@ -1380,6 +1380,9 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
 
   // Phase 4: Sequentialize and execute register-to-register moves
   if (!moves.empty()) {
+    // seqeuntalize may need an additional register and one of the arguments can already be freed.
+    // make sure it never uses those registers.
+    compiler.register_file.allocatable &= ~source_regs;
     MoveList ordered = compiler.sequentialize(moves);
     for (auto &move : ordered) {
       // Find the corresponding pending arg to check for extensions
@@ -1545,8 +1548,8 @@ void CompilerBase<Adaptor, Derived, Config>::RetBuilder::add(ValuePart &&vp,
   bool needs_ext = cca.int_ext != 0;
   bool ext_sign = cca.int_ext >> 7;
   unsigned ext_bits = cca.int_ext & 0x3f;
-                                                
-  //todo(salto): avoid spills here
+
+  // todo(salto): avoid spills here
   if (vp.is_in_reg(cca.reg)) {
     if (!vp.can_salvage()) {
       compiler.evict_reg(cca.reg);
@@ -2437,7 +2440,7 @@ void CompilerBase<Adaptor, Derived, Config>::lazy_free_reg(Reg reg) {
   }
 }
 
-template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::free_reg(Reg reg) {
   assert(may_change_value_state());
   assert(!register_file.is_fixed(reg));
@@ -2455,8 +2458,8 @@ void CompilerBase<Adaptor, Derived, Config>::free_reg(Reg reg) {
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
-CompilerBase<Adaptor, Derived, Config>::spill_caller_saved_before_call(
-  typename RegisterFile::RegBitSet call_arguments)  {
+    CompilerBase<Adaptor, Derived, Config>::spill_caller_saved_before_call(
+        typename RegisterFile::RegBitSet call_arguments) {
   using RegBitSet = typename RegisterFile::RegBitSet;
 
   assert(may_change_value_state());
@@ -2465,7 +2468,7 @@ CompilerBase<Adaptor, Derived, Config>::spill_caller_saved_before_call(
   const RegBitSet spillable = register_file.used & caller_saved;
   RegBitSet spilled = {};
 
-  for (auto reg_id: util::BitSetIterator<>{spillable}) {
+  for (auto reg_id : util::BitSetIterator<>{spillable}) {
     const Reg reg{reg_id};
     if (register_file.is_fixed(reg)) {
       continue;
@@ -2476,10 +2479,8 @@ CompilerBase<Adaptor, Derived, Config>::spill_caller_saved_before_call(
       continue;
     }
 
-    AssignmentPartRef ap{
-      val_assignment(register_file.reg_local_idx(reg)),
-      register_file.reg_part(reg)
-    };
+    AssignmentPartRef ap{val_assignment(register_file.reg_local_idx(reg)),
+                         register_file.reg_part(reg)};
     if (!ap.register_valid()) {
       register_file.unmark_used(reg);
       spilled |= (1ull << reg_id);
@@ -2500,10 +2501,10 @@ CompilerBase<Adaptor, Derived, Config>::spill_caller_saved_before_call(
   return spilled;
 }
 
-template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
-CompilerBase<Adaptor, Derived, Config>::spill_before_branch(
-        bool force_spill)  {
+    CompilerBase<Adaptor, Derived, Config>::spill_before_branch(
+        bool force_spill) {
   // since we do not explicitly keep track of register assignments per block,
   // whenever we might branch off to a block that we do not directly compile
   // afterwards (i.e. the register assignments might change in between), we
@@ -2539,14 +2540,14 @@ CompilerBase<Adaptor, Derived, Config>::spill_before_branch(
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 bool CompilerBase<Adaptor, Derived, Config>::repair_argument(
-  ValLocalIdx var,
-  u32 part,
-  u8 size,
-  RegBank bank,
-  typename RegisterFile::RegBitSet constraints,
-  typename RegisterFile::RegBitSet available,
-  typename RegisterFile::RegBitSet forbidden,
-  AsmReg current_reg)  {
+    ValLocalIdx var,
+    u32 part,
+    u8 size,
+    RegBank bank,
+    typename RegisterFile::RegBitSet constraints,
+    typename RegisterFile::RegBitSet available,
+    typename RegisterFile::RegBitSet forbidden,
+    AsmReg current_reg) {
   auto &reg_file = register_file;
   Reg reg = Reg::make_invalid();
   std::unordered_set<ValLocalIdx> operands;
@@ -2559,7 +2560,7 @@ bool CompilerBase<Adaptor, Derived, Config>::repair_argument(
   typename RegisterFile::RegBitSet allowed =
       constraints & (~forbidden); // todo(salto): constraints
   while (reg == Reg::make_invalid() && allowed != 0) {
-    for (u64 candidate: util::BitSetIterator<>(allowed)) {
+    for (u64 candidate : util::BitSetIterator<>(allowed)) {
       if (reg_file.is_used(Reg{candidate}) &&
           (!operands.contains(reg_file.reg_local_idx(Reg{candidate})) &&
            !reg_file.is_fixed(Reg{candidate}))) {
@@ -2606,7 +2607,7 @@ bool CompilerBase<Adaptor, Derived, Config>::repair_argument(
   return false;
 }
 
-template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::release_spilled_regs(
     typename RegisterFile::RegBitSet regs) {
   assert(may_change_value_state());
@@ -2834,8 +2835,8 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
- CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
-    BlockIndex target, MoveList &moves) {
+    CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
+        BlockIndex target, MoveList &moves) {
   // PHI-nodes are always moved to their stack-slot (unless they are fixed)
   //
   // However, we need to take care of PHI-dependencies (cycles and chains)
@@ -2960,10 +2961,11 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
     assert(phi_assignment && "phi node has no assignment");
 
     ValueRef incoming_ref = val_ref(incoming_val);
-    if(!adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+    if (!adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
       const auto incoming_local_idx = adaptor->val_local_idx(incoming_val);
-      if(incoming_local_idx == phi_local_idx)
-      return;
+      if (incoming_local_idx == phi_local_idx) {
+        return;
+      }
     }
     const bool incoming_last_ref = incoming_ref.last_ref();
 
@@ -2985,20 +2987,21 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
           if (!incoming_last_ref) {
             RegBank bank = register_file.reg_bank(target_reg);
             auto exclusion = used_phi_regs | (1ull << target_reg.id());
-            Reg new_reg = register_file.find_first_free_excluding(bank, exclusion);
+            Reg new_reg =
+                register_file.find_first_free_excluding(bank, exclusion);
             if (new_reg.invalid()) {
               new_reg = select_reg(bank, exclusion);
             }
             if (new_reg.valid()) {
-              AssignmentPartRef incoming_ap{
-                  incoming_ref.assignment(), part};
+              AssignmentPartRef incoming_ap{incoming_ref.assignment(), part};
               incoming_ap.mov(this, incoming_ref.local_idx(), new_reg);
             }
           }
           continue;
         }
 
-        if (register_file.is_used(target_reg) && register_file.reg_local_idx(target_reg) != phi_local_idx) {
+        if (register_file.is_used(target_reg) &&
+            register_file.reg_local_idx(target_reg) != phi_local_idx) {
           free_target_reg(target_reg, phi_ap.part_size());
         }
 
@@ -3036,80 +3039,88 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
     }
   };
 
-  const auto allocate_phi = [&](IRValueRef phi,
-                                IRValueRef incoming_val,
-                                bool allocate_to_stack) {
-    ValLocalIdx phi_local_idx = adaptor->val_local_idx(phi);
-    // make sure to initialize the phi
-    ValueRef phi_ref = result_ref(phi); 
-    ValueAssignment *phi_assignment = val_assignment(phi_local_idx);
-    assert(phi_assignment && "phi node has no assignment");
+  const auto allocate_phi =
+      [&](IRValueRef phi, IRValueRef incoming_val, bool allocate_to_stack) {
+        ValueRef phi_ref = result_ref(phi);
+        ValueRef incoming_ref = val_ref(incoming_val);
+        ValLocalIdx phi_local_idx = adaptor->val_local_idx(phi);
+        ValueAssignment *phi_assignment = val_assignment(phi_local_idx);
+        assert(phi_assignment && "phi node has no assignment");
 
 
+        PhiRegList target_regs;
+        target_regs.resize(phi_assignment->part_count, Reg::make_invalid());
+        typename RegisterFile::RegBitSet new_phi_regs = 0;
 
-    ValueRef incoming_ref = val_ref(incoming_val);
-    const bool incoming_last_ref = incoming_ref.last_ref();
+        bool allow_regs = !allocate_to_stack;
+        for (u32 part = 0; part < phi_assignment->part_count; ++part) {
+          AssignmentPartRef phi_ap{phi_assignment, part};
+          ValuePartRef incoming_part = incoming_ref.part(part);
+          RegBank bank = phi_ap.bank();
+          auto exclusion = used_phi_regs | new_phi_regs;
+          Reg selected;
+          if (phi_ap.fixed_assignment()) {
+            TPDE_LOG_TRACE("Phi part {} has fixed assignment to reg {}",
+                           part,
+                           static_cast<u32>(phi_ap.get_reg().id()));
+            selected = phi_ap.get_reg();
+            target_regs[part] = phi_ap.get_reg();
+            new_phi_regs |= (1ull << target_regs[part].id());
+          } else if (!allow_regs) {
+            // not fixed and should be on the stack.
+            continue;
+          } else {
+            selected = register_file.find_first_free_excluding(bank, exclusion);
+          }
 
-    PhiRegList target_regs;
-    target_regs.resize(phi_assignment->part_count, Reg::make_invalid());
-    typename RegisterFile::RegBitSet new_phi_regs = 0;
 
-    bool allow_regs = !allocate_to_stack;
-    for (u32 part = 0; part < phi_assignment->part_count; ++part) {
-      AssignmentPartRef phi_ap{phi_assignment, part};
-      if (phi_ap.fixed_assignment()) {
-        TPDE_LOG_TRACE("Phi part {} has fixed assignment to reg {}",
-                         part,
-                         static_cast<u32>(phi_ap.get_reg().id()));
-        target_regs[part] = phi_ap.get_reg();
-        new_phi_regs |= (1ull << target_regs[part].id());
-        continue;
-      }
+          if (selected.invalid() && incoming_ref.last_ref()) {
+            auto incoming_part = incoming_ref.part(part);
+            Reg incoming_reg = incoming_part.cur_reg_unlocked();
+            if (incoming_reg.valid() &&
+                register_file.reg_bank(incoming_reg) == bank &&
+                ((exclusion & (1ull << incoming_reg.id())) == 0)) {
+              selected = incoming_reg;
+            }
+          }
 
-      if (!allow_regs) {
-        continue;
-      }
+          if (selected.invalid()) {
+            allow_regs = false;
+            continue;
+          }
 
-      RegBank bank = phi_ap.bank();
-      auto exclusion = used_phi_regs | new_phi_regs;
-      Reg selected = register_file.find_first_free_excluding(bank, exclusion);
-
-      if (selected.invalid() && incoming_last_ref) {
-        auto incoming_part = incoming_ref.part(part);
-        Reg incoming_reg = incoming_part.cur_reg_unlocked();
-        if (incoming_reg.valid() &&
-            register_file.reg_bank(incoming_reg) == bank &&
-            ((exclusion & (1ull << incoming_reg.id())) == 0)) {
-          selected = incoming_reg;
+          target_regs[part] = selected;
+          new_phi_regs |= (1ull << selected.id());
+          // move / materialize incoming_part into selected
+          if (incoming_part.has_reg()) {
+            moves.emplace_back(selected,
+                               incoming_part.cur_reg(),
+                               phi_ap.part_size(),
+                               phi_local_idx,
+                               part);
+          } else {
+            incoming_part.reload_into_specific_fixed(
+                this, selected, phi_ap.part_size());
+          }
         }
-      }
 
-      if (selected.invalid()) {
-        allow_regs = false;
-        continue;
-      }
-
-      target_regs[part] = selected;
-      new_phi_regs |= (1ull << selected.id());
-    }
-
-    if (!allow_regs) {
-      new_phi_regs = 0;
-      for (u32 part = 0; part < phi_assignment->part_count; ++part) {
-        AssignmentPartRef phi_ap{phi_assignment, part};
-        if (phi_ap.fixed_assignment()) {
-          target_regs[part] = phi_ap.get_reg();
-          new_phi_regs |= (1ull << target_regs[part].id());
-        } else {
-          target_regs[part] = Reg::make_invalid();
+        if (!allow_regs) {
+          new_phi_regs = 0;
+          for (u32 part = 0; part < phi_assignment->part_count; ++part) {
+            AssignmentPartRef phi_ap{phi_assignment, part};
+            if (phi_ap.fixed_assignment()) {
+              target_regs[part] = phi_ap.get_reg();
+              new_phi_regs |= (1ull << target_regs[part].id());
+            } else {
+              target_regs[part] = Reg::make_invalid();
+            }
+          }
         }
-      }
-    }
 
-    used_phi_regs |= new_phi_regs;
-    used_phi_regs_global |= new_phi_regs;
-    target_phi_regs.insert_or_assign(phi_local_idx, std::move(target_regs));
-  };
+        used_phi_regs |= new_phi_regs;
+        used_phi_regs_global |= new_phi_regs;
+        target_phi_regs.insert_or_assign(phi_local_idx, std::move(target_regs));
+      };
 
   // We check that the block has phi nodes before getting here.
   assert(!nodes.empty() && "block marked has having phi nodes has none");
@@ -3152,23 +3163,23 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
                      static_cast<u32>(nodes[i].phi_local_idx));
     }
   }
- if (target_phi_regs.empty()) {
-  // First, allocate registers for phi nodes that can be allocated to registers
-  for (u32 i = 0; i < nodes.size(); ++i) {
-    NodeEntry &node = nodes[i];
+  if (target_phi_regs.empty()) {
+    // First, allocate registers for phi nodes that can be allocated to
+    // registers
+    for (u32 i = 0; i < nodes.size(); ++i) {
+      NodeEntry &node = nodes[i];
 
-    allocate_phi(node.phi, node.incoming_val, node.allocate_to_stack);
-    
+      allocate_phi(node.phi, node.incoming_val, node.allocate_to_stack);
+    }
+  } else {
+    // Already have an allocation from a previous block. Move phis to correct
+    // registers and stack slots.
+    for (u32 i = 0; i < nodes.size(); ++i) {
+      NodeEntry &node = nodes[i];
+      auto &target_regs = target_phi_regs.at(node.phi_local_idx);
+      move_phi_to_target(node.phi, node.incoming_val, target_regs);
+    }
   }
- } else {
-  // Already have an allocation from a previous block. Move phis to correct registers and stack slots.
-  for (u32 i = 0; i < nodes.size(); ++i) {
-    NodeEntry &node = nodes[i];
-    auto &target_regs = target_phi_regs.at(node.phi_local_idx);
-    move_phi_to_target(
-        node.phi, node.incoming_val, target_regs);
-  }
-}
 
 #ifndef NDEBUG
   // todo(salto): decide if we need the parrarel moves
@@ -3388,7 +3399,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
          "argument registers must also be allocatable");
   this->register_file.allocatable &= ~cc_info.arg_regs;
 
-  
+
   // Begin prologue, prepare for handling arguments.
   derived()->prologue_begin(cc_assigner);
   u32 arg_idx = 0;
@@ -3397,47 +3408,47 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
     // complex mappings of arguments to value parts.
     derived()->prologue_assign_arg(cc_assigner, arg_idx++, arg);
   }
-  #ifndef NDEBUG
-    // After gen_func_prolog_and_args, explicitly capture all function arguments
-    // to ensure they appear first in the verification IR according to calling
-    // convention Iterate through arguments and capture their register assignments
-    for (const IRValueRef arg : adaptor->cur_args()) {
-      ValLocalIdx arg_idx = adaptor->val_local_idx(arg);
-      if (arg_idx == INVALID_VAL_LOCAL_IDX) {
-        continue;
-      }
-  
-      ValueAssignment *assignment = val_assignment(arg_idx);
-      if (!assignment) {
-        continue;
-      }
-  
-      const auto parts = adaptor->val_parts(arg);
-      const u32 part_count = parts.count();
-      for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
-        AssignmentPartRef ap{assignment, part_idx};
-        if (ap.register_valid()) {
-          Reg reg = ap.get_reg();
-          BlockIndex entry_block_idx = static_cast<BlockIndex>(
-              analyzer.block_idx(adaptor->cur_entry_block()));
-          typename VIR<Adaptor>::Allocation alloc(reg);
-          verification_ir.emit_arg(entry_block_idx, arg_idx, part_idx, alloc);
-        } else if (ap.stack_valid()) {
-          // Argument on stack - capture with stack allocation
-          i32 stack_off = ap.frame_off();
-          BlockIndex entry_block_idx = static_cast<BlockIndex>(
-              analyzer.block_idx(adaptor->cur_entry_block()));
-          typename VIR<Adaptor>::Allocation alloc(stack_off);
-          verification_ir.emit_arg(entry_block_idx, arg_idx, part_idx, alloc);
-        }
+#ifndef NDEBUG
+  // After gen_func_prolog_and_args, explicitly capture all function arguments
+  // to ensure they appear first in the verification IR according to calling
+  // convention Iterate through arguments and capture their register assignments
+  for (const IRValueRef arg : adaptor->cur_args()) {
+    ValLocalIdx arg_idx = adaptor->val_local_idx(arg);
+    if (arg_idx == INVALID_VAL_LOCAL_IDX) {
+      continue;
+    }
+
+    ValueAssignment *assignment = val_assignment(arg_idx);
+    if (!assignment) {
+      continue;
+    }
+
+    const auto parts = adaptor->val_parts(arg);
+    const u32 part_count = parts.count();
+    for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
+      AssignmentPartRef ap{assignment, part_idx};
+      if (ap.register_valid()) {
+        Reg reg = ap.get_reg();
+        BlockIndex entry_block_idx = static_cast<BlockIndex>(
+            analyzer.block_idx(adaptor->cur_entry_block()));
+        typename VIR<Adaptor>::Allocation alloc(reg);
+        verification_ir.emit_arg(entry_block_idx, arg_idx, part_idx, alloc);
+      } else if (ap.stack_valid()) {
+        // Argument on stack - capture with stack allocation
+        i32 stack_off = ap.frame_off();
+        BlockIndex entry_block_idx = static_cast<BlockIndex>(
+            analyzer.block_idx(adaptor->cur_entry_block()));
+        typename VIR<Adaptor>::Allocation alloc(stack_off);
+        verification_ir.emit_arg(entry_block_idx, arg_idx, part_idx, alloc);
       }
     }
-  #endif
+  }
+#endif
   // Finish prologue, storing relevant data from the argument cc_assigner.
   derived()->prologue_end(cc_assigner);
-  
+
   this->register_file.allocatable |= cc_info.arg_regs;
-  
+
   // Small allocas get stack slot, larger allocas need dynamic allocations.
   util::SmallVector<std::tuple<IRValueRef, u32, u32>> dyn_allocas;
   for (const IRValueRef alloca : adaptor->cur_static_allocas()) {
@@ -3508,8 +3519,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     const IRBlockRef block, const u32 block_idx) {
-  cur_block_idx =
-      static_cast<BlockIndex>(block_idx);
+  cur_block_idx = static_cast<BlockIndex>(block_idx);
 
   label_place(block_labels[block_idx]);
 #ifndef NDEBUG
@@ -3544,7 +3554,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
         if (reg.valid()) {
           ap.set_reg(reg);
           // we cas savely unmark it used
-          //used_phi_regs_global &= ~(1ull << reg.id());
+          // used_phi_regs_global &= ~(1ull << reg.id());
           ap.set_register_valid(true);
           if (register_file.is_used(reg)) {
             register_file.update_reg_assignment(reg, phi_idx, i);
@@ -3584,12 +3594,15 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           }
           ap.set_reg(reg);
           ap.set_register_valid(true);
-          if (register_file.is_used(reg) && (register_file.reg_local_idx(reg) != state.val_local_idx || register_file.
-                                             reg_part(reg) != i)) {
+          if (register_file.is_used(reg) &&
+              (register_file.reg_local_idx(reg) != state.val_local_idx ||
+               register_file.reg_part(reg) != i)) {
             if (register_file.reg_local_idx(reg) != INVALID_VAL_LOCAL_IDX) {
-              ValueAssignment *other = this->val_assignment(register_file.reg_local_idx(reg));
+              ValueAssignment *other =
+                  this->val_assignment(register_file.reg_local_idx(reg));
               if (other) {
-                auto other_ap = AssignmentPartRef{other, register_file.reg_part(reg)};
+                auto other_ap =
+                    AssignmentPartRef{other, register_file.reg_part(reg)};
                 if (other_ap.register_valid()) {
                   other_ap.set_register_valid(false);
                 }

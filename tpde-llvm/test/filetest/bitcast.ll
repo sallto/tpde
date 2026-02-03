@@ -127,7 +127,6 @@ define void @bitcast_v6i8_v3i16(ptr %src, ptr %dst) {
 ; X64-LABEL: <bitcast_v6i8_v3i16>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]

@@ -51,10 +51,7 @@ define void @ins_v5i1_3(ptr %p, i1 %e) {
 
 define void @ins_v5i1_chain(ptr %p, i1 %e0, i1 %e1, i1 %e2, i1 %e3, i1 %e4) {
 ; X64-LABEL: <ins_v5i1_chain>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    xor eax, eax
+; X64:         xor eax, eax
 ; X64-NEXT:    btr rax, 0x0
 ; X64-NEXT:    mov r10d, esi
 ; X64-NEXT:    and r10d, 0x1
@@ -77,7 +74,6 @@ define void @ins_v5i1_chain(ptr %p, i1 %e0, i1 %e1, i1 %e2, i1 %e3, i1 %e4) {
 ; X64-NEXT:    shl ecx, 0x4
 ; X64-NEXT:    or rax, rcx
 ; X64-NEXT:    mov byte ptr [rdi], al
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ins_v5i1_chain>:
@@ -169,10 +165,7 @@ define void @ins_v16i1_3(ptr %p, i1 %e) {
 
 define void @ins_v16i1_chain(ptr %p, i1 %e0, i1 %e1, i1 %e2, i1 %e3, i1 %e4) {
 ; X64-LABEL: <ins_v16i1_chain>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    xor eax, eax
+; X64:         xor eax, eax
 ; X64-NEXT:    btr rax, 0x0
 ; X64-NEXT:    mov r10d, esi
 ; X64-NEXT:    and r10d, 0x1
@@ -195,7 +188,6 @@ define void @ins_v16i1_chain(ptr %p, i1 %e0, i1 %e1, i1 %e2, i1 %e3, i1 %e4) {
 ; X64-NEXT:    shl ecx, 0x4
 ; X64-NEXT:    or rax, rcx
 ; X64-NEXT:    mov word ptr [rdi], ax
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ins_v16i1_chain>:
@@ -247,7 +239,6 @@ define void @ins_v5i8_0(ptr %p, i8 %e) {
 ; X64-LABEL: <ins_v5i8_0>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
@@ -292,7 +283,6 @@ define void @ins_v5i8_3(ptr %p, i8 %e) {
 ; X64-LABEL: <ins_v5i8_3>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
@@ -346,11 +336,11 @@ define void @ins_v5i8_chain(ptr %p, i8 %e0, i8 %e1, i8 %e2, i8 %e3, i8 %e4) {
 ; X64-NEXT:    xor r12d, r12d
 ; X64-NEXT:    mov byte ptr [rbp - 0x30], al
 ; X64-NEXT:    mov byte ptr [rbp - 0x30], sil
-; X64-NEXT:    mov byte ptr [rbp - 0x2f], bl
+; X64-NEXT:    mov byte ptr [rbp - 0x2f], r10b
 ; X64-NEXT:    mov byte ptr [rbp - 0x2f], dl
-; X64-NEXT:    mov byte ptr [rbp - 0x2e], r10b
+; X64-NEXT:    mov byte ptr [rbp - 0x2e], r11b
 ; X64-NEXT:    mov byte ptr [rbp - 0x2e], cl
-; X64-NEXT:    mov byte ptr [rbp - 0x2d], r11b
+; X64-NEXT:    mov byte ptr [rbp - 0x2d], bl
 ; X64-NEXT:    mov byte ptr [rbp - 0x2d], r8b
 ; X64-NEXT:    mov byte ptr [rbp - 0x2c], r12b
 ; X64-NEXT:    mov byte ptr [rbp - 0x2c], r9b
@@ -412,7 +402,6 @@ define void @ins_v5i8_dyn(ptr %p, i8 %e, i32 %i) {
 ; X64-LABEL: <ins_v5i8_dyn>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x2]
@@ -838,7 +827,6 @@ define <2 x float> @ins_v2f32_const_nosalvage(<2 x float> %v) {
 ; X64-LABEL: <ins_v2f32_const_nosalvage>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    movq qword ptr [rbp - 0x30], xmm0
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    movapd xmm1, xmm0
 ; X64-NEXT:    movq qword ptr [rbp - 0x30], xmm1

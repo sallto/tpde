@@ -39,10 +39,7 @@ define i1 @is_snan_float(float %p) {
 
 define i1 @is_snan_double(double %p) {
 ; X64-LABEL: <is_snan_double>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    xor eax, eax
+; X64:         xor eax, eax
 ; X64-NEXT:    movq rcx, xmm0
 ; X64-NEXT:    movabs rdx, 0x7fffffffffffffff
 ; X64-NEXT:    and rdx, rcx
@@ -55,7 +52,6 @@ define i1 @is_snan_double(double %p) {
 ; X64-NEXT:    and cl, sil
 ; X64-NEXT:    or cl, al
 ; X64-NEXT:    mov eax, ecx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <is_snan_double>:
@@ -201,10 +197,7 @@ define i1 @is_nnorm_float(float %p) {
 
 define i1 @is_nnorm_double(double %p) {
 ; X64-LABEL: <is_nnorm_double>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    xor eax, eax
+; X64:         xor eax, eax
 ; X64-NEXT:    movq rcx, xmm0
 ; X64-NEXT:    movabs rdx, 0x7fffffffffffffff
 ; X64-NEXT:    and rdx, rcx
@@ -218,7 +211,6 @@ define i1 @is_nnorm_double(double %p) {
 ; X64-NEXT:    and cl, dl
 ; X64-NEXT:    or cl, al
 ; X64-NEXT:    mov eax, ecx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <is_nnorm_double>:
@@ -269,10 +261,7 @@ define i1 @is_nsnorm_float(float %p) {
 
 define i1 @is_nsnorm_double(double %p) {
 ; X64-LABEL: <is_nsnorm_double>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    xor eax, eax
+; X64:         xor eax, eax
 ; X64-NEXT:    movq rcx, xmm0
 ; X64-NEXT:    movabs rdx, 0x7fffffffffffffff
 ; X64-NEXT:    and rdx, rcx
@@ -285,7 +274,6 @@ define i1 @is_nsnorm_double(double %p) {
 ; X64-NEXT:    and cl, dl
 ; X64-NEXT:    or cl, al
 ; X64-NEXT:    mov eax, ecx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <is_nsnorm_double>:
@@ -470,10 +458,7 @@ define i1 @is_pnorm_float(float %p) {
 
 define i1 @is_pnorm_double(double %p) {
 ; X64-LABEL: <is_pnorm_double>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    xor eax, eax
+; X64:         xor eax, eax
 ; X64-NEXT:    movq rcx, xmm0
 ; X64-NEXT:    movabs rdx, 0x7fffffffffffffff
 ; X64-NEXT:    and rdx, rcx
@@ -487,7 +472,6 @@ define i1 @is_pnorm_double(double %p) {
 ; X64-NEXT:    and cl, dl
 ; X64-NEXT:    or cl, al
 ; X64-NEXT:    mov eax, ecx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <is_pnorm_double>:
@@ -726,10 +710,7 @@ define i1 @is_snan_psnorm_float(float %p) {
 }
 define i1 @is_snan_psnorm_double(double %p) {
 ; X64-LABEL: <is_snan_psnorm_double>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    xor eax, eax
+; X64:         xor eax, eax
 ; X64-NEXT:    movq rcx, xmm0
 ; X64-NEXT:    movabs rdx, 0x7fffffffffffffff
 ; X64-NEXT:    and rdx, rcx
@@ -747,7 +728,6 @@ define i1 @is_snan_psnorm_double(double %p) {
 ; X64-NEXT:    cmp rax, rdx
 ; X64-NEXT:    setb al
 ; X64-NEXT:    or al, cl
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <is_snan_psnorm_double>:

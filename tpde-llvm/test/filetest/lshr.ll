@@ -255,10 +255,7 @@ entry:
 
 define i128 @lshr_i128_i128(i128 %v, i128 %s) {
 ; X64-LABEL: <lshr_i128_i128>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rcx
+; X64:         mov rax, rcx
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    shr rdi, cl
 ; X64-NEXT:    lea r8, [rsi + rsi]
@@ -274,7 +271,6 @@ define i128 @lshr_i128_i128(i128 %v, i128 %s) {
 ; X64-NEXT:    cmove r9, rsi
 ; X64-NEXT:    mov rax, r8
 ; X64-NEXT:    mov rdx, r9
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <lshr_i128_i128>:

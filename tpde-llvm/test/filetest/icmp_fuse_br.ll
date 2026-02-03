@@ -490,47 +490,37 @@ block2:
 
 define void @cbz_nophi(i32 %param) {
 ; X64-LABEL: <cbz_nophi>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    mov dword ptr [rbp - 0x2c], edi
-; X64-NEXT:  <L0>:
+; X64:       <L0>:
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    shr ecx, 0x0
+; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    lea ecx, [1*rcx]
+; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    lea ecx, [1*rcx]
+; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    lea ecx, [1*rcx]
+; X64-NEXT:    test edi, edi
+; X64-NEXT:    jne <cbz_nophi>
 ; X64-NEXT:    xor eax, eax
-; X64-NEXT:    shr eax, 0x0
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    lea eax, [1*rax]
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    lea eax, [1*rax]
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    lea eax, [1*rax]
-; X64-NEXT:    cmp dword ptr [rbp - 0x2c], 0x0
-; X64-NEXT:    jne <L0>
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov dword ptr [rbp - 0x30], eax
 ; X64-NEXT:    jmp <L1>
 ;
 ; ARM64-LABEL: <cbz_nophi>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    str w0, [x29, #0xa0]
-; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    str w0, [x29, #0xa4]
+; ARM64:       <L0>:
+; ARM64-NEXT:    mov w1, #0x0 // =0
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    lsr w0, w0, #0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    add w0, w0, #0x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    add w0, w0, #0x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    add w0, w0, #0x0
-; ARM64-NEXT:    ldr w0, [x29, #0xa0]
-; ARM64-NEXT:    mov w1, w0
-; ARM64-NEXT:    cbnz w1, <L0>
 ; ARM64-NEXT:    mov w2, #0x0 // =0
-; ARM64-NEXT:    str w2, [x29, #0xa4]
+; ARM64-NEXT:    lsr w2, w2, #0
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    add w2, w2, #0x0
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    add w2, w2, #0x0
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    add w2, w2, #0x0
+; ARM64-NEXT:    mov w2, w0
+; ARM64-NEXT:    cbnz w2, <cbz_nophi>
+; ARM64-NEXT:    mov w1, #0x0 // =0
 ; ARM64-NEXT:    b <L1>
   br label %1
 
@@ -549,45 +539,37 @@ define void @cbz_nophi(i32 %param) {
 
 define void @cbz_phi() {
 ; X64-LABEL: <cbz_phi>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:  <L0>:
+; X64:       <L0>:
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    shr ecx, 0x0
+; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    lea ecx, [1*rcx]
+; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    lea ecx, [1*rcx]
+; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    lea ecx, [1*rcx]
+; X64-NEXT:    test eax, eax
+; X64-NEXT:    jne <cbz_phi>
 ; X64-NEXT:    xor eax, eax
-; X64-NEXT:    shr eax, 0x0
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    lea eax, [1*rax]
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    lea eax, [1*rax]
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    lea eax, [1*rax]
-; X64-NEXT:    cmp dword ptr [rbp - 0x2c], 0x0
-; X64-NEXT:    jne <L0>
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov dword ptr [rbp - 0x2c], eax
 ; X64-NEXT:    jmp <L1>
 ;
 ; ARM64-LABEL: <cbz_phi>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:  <L0>:
+; ARM64:       <L0>:
 ; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    str w0, [x29, #0xa0]
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    lsr w0, w0, #0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    add w0, w0, #0x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    add w0, w0, #0x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    add w0, w0, #0x0
-; ARM64-NEXT:    ldr w0, [x29, #0xa0]
+; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    lsr w1, w1, #0
+; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    add w1, w1, #0x0
+; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    add w1, w1, #0x0
+; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    add w1, w1, #0x0
 ; ARM64-NEXT:    mov w1, w0
-; ARM64-NEXT:    cbnz w1, <L0>
-; ARM64-NEXT:    mov w2, #0x0 // =0
-; ARM64-NEXT:    str w2, [x29, #0xa0]
+; ARM64-NEXT:    cbnz w1, <cbz_phi>
+; ARM64-NEXT:    mov w0, #0x0 // =0
 ; ARM64-NEXT:    b <L1>
   br label %1
 

@@ -3866,10 +3866,7 @@ define void @icmp_sle_v2i64_0(ptr %p, <2 x i64> %a) {
 
 define void @icmp_sle_v1i64(ptr %p, ptr %pa, ptr %pb) {
 ; X64-LABEL: <icmp_sle_v1i64>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov rax, qword ptr [rsi]
+; X64:         mov rax, qword ptr [rsi]
 ; X64-NEXT:    mov rcx, qword ptr [rdx]
 ; X64-NEXT:    mov rdx, rax
 ; X64-NEXT:    mov rsi, rcx
@@ -3878,7 +3875,6 @@ define void @icmp_sle_v1i64(ptr %p, ptr %pa, ptr %pb) {
 ; X64-NEXT:    mov esi, edx
 ; X64-NEXT:    and esi, 0x1
 ; X64-NEXT:    mov byte ptr [rdi], sil
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sle_v1i64>:

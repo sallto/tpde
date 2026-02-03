@@ -574,9 +574,7 @@ entry:
 
 define i32 @urem_i32_no_salvage(i32 %0, i32 %1) {
 ; X64-LABEL: <urem_i32_no_salvage>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    xor edx, edx
+; X64:         xor edx, edx
 ; X64-NEXT:    mov eax, edi
 ; X64-NEXT:    div esi
 ; X64-NEXT:    mov ecx, edx
@@ -584,7 +582,6 @@ define i32 @urem_i32_no_salvage(i32 %0, i32 %1) {
 ; X64-NEXT:    mov eax, edi
 ; X64-NEXT:    div ecx
 ; X64-NEXT:    mov eax, edx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <urem_i32_no_salvage>:
@@ -602,9 +599,7 @@ entry:
 
 define i64 @urem_i64_no_salvage(i64 %0, i64 %1) {
 ; X64-LABEL: <urem_i64_no_salvage>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    xor edx, edx
+; X64:         xor edx, edx
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    div rsi
 ; X64-NEXT:    mov rcx, rdx
@@ -612,7 +607,6 @@ define i64 @urem_i64_no_salvage(i64 %0, i64 %1) {
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    div rcx
 ; X64-NEXT:    mov rax, rdx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <urem_i64_no_salvage>:

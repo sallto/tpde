@@ -7,10 +7,7 @@
 
 define void @udiv_v1i8(ptr %p, ptr %q) {
 ; X64-LABEL: <udiv_v1i8>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    movzx eax, byte ptr [rdi]
+; X64:         movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rsi]
 ; X64-NEXT:    movzx eax, al
 ; X64-NEXT:    movzx ecx, cl
@@ -20,7 +17,6 @@ define void @udiv_v1i8(ptr %p, ptr %q) {
 ; X64-NEXT:    mov eax, esi
 ; X64-NEXT:    div ecx
 ; X64-NEXT:    mov byte ptr [rdi], al
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <udiv_v1i8>:
@@ -45,6 +41,7 @@ define void @udiv_v5i8(ptr %p, ptr %q) {
 ; X64-NEXT:    push rbx
 ; X64-NEXT:    push r12
 ; X64-NEXT:    push r13
+; X64-NEXT:    push r14
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
@@ -144,7 +141,6 @@ define <8 x i8> @udiv_v8i8(<8 x i8> %a, <8 x i8> %b) {
 ; X64-LABEL: <udiv_v8i8>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movq qword ptr [rbp - 0x30], xmm0
 ; X64-NEXT:    movzx eax, byte ptr [rbp - 0x30]
 ; X64-NEXT:    movq qword ptr [rbp - 0x38], xmm1
@@ -290,7 +286,6 @@ define <16 x i8> @udiv_v16i8(<16 x i8> %a, <16 x i8> %b) {
 ; X64-LABEL: <udiv_v16i8>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    movzx eax, byte ptr [rbp - 0x40]
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x50], xmm1
@@ -564,8 +559,7 @@ define void @udiv_v32i8(ptr %p, ptr %q) {
 ; X64-LABEL: <udiv_v32i8>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    sub rsp, 0x88
+; X64-NEXT:    sub rsp, 0x90
 ; X64-NEXT:    movups xmm0, xmmword ptr [rdi]
 ; X64-NEXT:    movups xmm1, xmmword ptr [rdi + 0x10]
 ; X64-NEXT:    movups xmm2, xmmword ptr [rsi]
@@ -1113,7 +1107,6 @@ define <4 x i16> @udiv_v4i16(<4 x i16> %a, <4 x i16> %b) {
 ; X64-LABEL: <udiv_v4i16>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movq qword ptr [rbp - 0x30], xmm0
 ; X64-NEXT:    movzx eax, word ptr [rbp - 0x30]
 ; X64-NEXT:    movq qword ptr [rbp - 0x38], xmm1
@@ -1195,7 +1188,6 @@ define <8 x i16> @udiv_v8i16(<8 x i16> %a, <8 x i16> %b) {
 ; X64-LABEL: <udiv_v8i16>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    movzx eax, word ptr [rbp - 0x40]
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x50], xmm1
@@ -1341,7 +1333,6 @@ define <2 x i32> @udiv_v2i32(<2 x i32> %a, <2 x i32> %b) {
 ; X64-LABEL: <udiv_v2i32>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movq qword ptr [rbp - 0x30], xmm0
 ; X64-NEXT:    mov eax, dword ptr [rbp - 0x30]
 ; X64-NEXT:    movq qword ptr [rbp - 0x38], xmm1
@@ -1383,7 +1374,6 @@ define <4 x i32> @udiv_v4i32(<4 x i32> %a, <4 x i32> %b) {
 ; X64-LABEL: <udiv_v4i32>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    mov eax, dword ptr [rbp - 0x40]
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x50], xmm1
@@ -1449,7 +1439,6 @@ define <2 x i64> @udiv_v2i64(<2 x i64> %a, <2 x i64> %b) {
 ; X64-LABEL: <udiv_v2i64>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    mov rax, qword ptr [rbp - 0x40]
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x50], xmm1

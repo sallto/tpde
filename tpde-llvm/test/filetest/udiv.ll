@@ -422,16 +422,13 @@ entry:
 
 define void @udiv_i32_no_salvage(i32 %0, i32 %1) {
 ; X64-LABEL: <udiv_i32_no_salvage>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    xor edx, edx
+; X64:         xor edx, edx
 ; X64-NEXT:    mov eax, edi
 ; X64-NEXT:    div esi
 ; X64-NEXT:    mov ecx, eax
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov eax, edi
 ; X64-NEXT:    div ecx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <udiv_i32_no_salvage>:
@@ -446,16 +443,13 @@ entry:
 
 define void @udiv_i64_no_salvage(i64 %0, i64 %1) {
 ; X64-LABEL: <udiv_i64_no_salvage>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    xor edx, edx
+; X64:         xor edx, edx
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    div rsi
 ; X64-NEXT:    mov rcx, rax
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    div rcx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <udiv_i64_no_salvage>:
@@ -514,7 +508,7 @@ define i128 @udiv_i128_twice(i128 %0, i128 %1) {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <udiv_i128_twice>:
-; ARM64:         stp x29, x30, [sp, #-0xc0]!
+; ARM64:         stp x29, x30, [sp, #-0xb0]!
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    str x0, [x29, #0xa0]
 ; ARM64-NEXT:    str x1, [x29, #0xa8]
@@ -525,12 +519,10 @@ define i128 @udiv_i128_twice(i128 %0, i128 %1) {
 ; ARM64-NEXT:    mov x3, x1
 ; ARM64-NEXT:    ldr x0, [x29, #0xa0]
 ; ARM64-NEXT:    ldr x1, [x29, #0xa8]
-; ARM64-NEXT:    ldr x2, [x29, #0xb0]
-; ARM64-NEXT:    ldr x3, [x29, #0xb8]
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    bl <L1>
 ; ARM64-NEXT:     R_AARCH64_CALL26 __udivti3
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xc0
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   %t = udiv i128 %0, %1
   %r = udiv i128 %0, %t

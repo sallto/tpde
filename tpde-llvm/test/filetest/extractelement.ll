@@ -141,15 +141,11 @@ define i1 @ext_v16i1_dyn(ptr %p, i32 %i) {
 
 define i8 @ext_v5i8_0(ptr %p) {
 ; X64-LABEL: <ext_v5i8_0>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    movzx eax, byte ptr [rdi]
+; X64:         movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
 ; X64-NEXT:    movzx esi, byte ptr [rdi + 0x3]
 ; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x4]
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ext_v5i8_0>:
@@ -167,16 +163,12 @@ define i8 @ext_v5i8_0(ptr %p) {
 
 define i8 @ext_v5i8_3(ptr %p) {
 ; X64-LABEL: <ext_v5i8_3>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    movzx eax, byte ptr [rdi]
+; X64:         movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
 ; X64-NEXT:    movzx esi, byte ptr [rdi + 0x3]
 ; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x4]
 ; X64-NEXT:    mov eax, esi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ext_v5i8_3>:
@@ -194,10 +186,7 @@ define i8 @ext_v5i8_3(ptr %p) {
 
 define i8 @ext_v5i8_3_twice(ptr %p) {
 ; X64-LABEL: <ext_v5i8_3_twice>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    movzx eax, byte ptr [rdi]
+; X64:         movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
 ; X64-NEXT:    movzx esi, byte ptr [rdi + 0x3]
@@ -205,7 +194,6 @@ define i8 @ext_v5i8_3_twice(ptr %p) {
 ; X64-NEXT:    mov edi, esi
 ; X64-NEXT:    lea edi, [rdi + rsi]
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ext_v5i8_3_twice>:
@@ -229,7 +217,6 @@ define i8 @ext_v5i8_dyn(ptr %p, i32 %i) {
 ; X64-LABEL: <ext_v5i8_dyn>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]

@@ -310,10 +310,7 @@ entry:
 
 define i128 @extract_i128_i1_0_no_salvage(ptr %0) {
 ; X64-LABEL: <extract_i128_i1_0_no_salvage>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov rax, qword ptr [rdi]
+; X64:         mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x10]
 ; X64-NEXT:    mov rsi, rax
@@ -323,7 +320,6 @@ define i128 @extract_i128_i1_0_no_salvage(ptr %0) {
 ; X64-NEXT:    mov byte ptr [rdi + 0x10], dl
 ; X64-NEXT:    mov rax, rsi
 ; X64-NEXT:    mov rdx, r8
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <extract_i128_i1_0_no_salvage>:
@@ -347,10 +343,7 @@ entry:
 
 define i1 @extract_i128_i1_1_no_salvage(ptr %0) {
 ; X64-LABEL: <extract_i128_i1_1_no_salvage>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov rax, qword ptr [rdi]
+; X64:         mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x10]
 ; X64-NEXT:    mov esi, edx
@@ -358,7 +351,6 @@ define i1 @extract_i128_i1_1_no_salvage(ptr %0) {
 ; X64-NEXT:    mov qword ptr [rdi + 0x8], rcx
 ; X64-NEXT:    mov byte ptr [rdi + 0x10], dl
 ; X64-NEXT:    mov eax, esi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <extract_i128_i1_1_no_salvage>:
@@ -460,15 +452,11 @@ define i64 @params({i8, {i8, i8}, i8} %s, i64, [2 x i64] %a, [2 x i64] %b) {
 
 define void @extract_nested_1(ptr %p) {
 ; X64-LABEL: <extract_nested_1>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
 ; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
 ; X64-NEXT:    mov dword ptr [rdi], eax
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <extract_nested_1>:
@@ -486,15 +474,11 @@ define void @extract_nested_1(ptr %p) {
 
 define void @extract_nested_2(ptr %p) {
 ; X64-LABEL: <extract_nested_2>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
 ; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
 ; X64-NEXT:    mov dword ptr [rdi], ecx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <extract_nested_2>:
@@ -512,15 +496,11 @@ define void @extract_nested_2(ptr %p) {
 
 define void @extract_nested_3(ptr %p) {
 ; X64-LABEL: <extract_nested_3>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
 ; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
 ; X64-NEXT:    mov dword ptr [rdi], edx
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <extract_nested_3>:
@@ -538,15 +518,11 @@ define void @extract_nested_3(ptr %p) {
 
 define void @extract_nested_4(ptr %p) {
 ; X64-LABEL: <extract_nested_4>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
 ; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
 ; X64-NEXT:    mov dword ptr [rdi], esi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <extract_nested_4>:
@@ -564,10 +540,7 @@ define void @extract_nested_4(ptr %p) {
 
 define void @extract_nested_5(ptr %p) {
 ; X64-LABEL: <extract_nested_5>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
 ; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
@@ -576,7 +549,6 @@ define void @extract_nested_5(ptr %p) {
 ; X64-NEXT:    mov r10d, dword ptr [rdi + 0x18]
 ; X64-NEXT:    mov dword ptr [rdi], r8d
 ; X64-NEXT:    mov dword ptr [rdi + 0x4], r9d
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <extract_nested_5>:

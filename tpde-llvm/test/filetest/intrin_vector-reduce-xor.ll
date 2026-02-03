@@ -23,10 +23,7 @@ define i8 @vr_xor_v1i8(ptr %p) {
 
 define i8 @vr_xor_v5i8(ptr %p) {
 ; X64-LABEL: <vr_xor_v5i8>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    movzx eax, byte ptr [rdi]
+; X64:         movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
 ; X64-NEXT:    movzx esi, byte ptr [rdi + 0x3]
@@ -41,7 +38,6 @@ define i8 @vr_xor_v5i8(ptr %p) {
 ; X64-NEXT:    mov r9d, r8d
 ; X64-NEXT:    xor edi, r9d
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_xor_v5i8>:
@@ -358,10 +354,7 @@ define i16 @vr_xor_v1i16(ptr %p) {
 
 define i16 @vr_xor_v5i16(ptr %p) {
 ; X64-LABEL: <vr_xor_v5i16>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    movzx eax, word ptr [rdi]
+; X64:         movzx eax, word ptr [rdi]
 ; X64-NEXT:    movzx ecx, word ptr [rdi + 0x2]
 ; X64-NEXT:    movzx edx, word ptr [rdi + 0x4]
 ; X64-NEXT:    movzx esi, word ptr [rdi + 0x6]
@@ -376,7 +369,6 @@ define i16 @vr_xor_v5i16(ptr %p) {
 ; X64-NEXT:    mov r9d, r8d
 ; X64-NEXT:    xor edi, r9d
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_xor_v5i16>:
@@ -581,10 +573,7 @@ define i32 @vr_xor_v4i32(ptr %p) {
 
 define i32 @vr_xor_v5i32(ptr %p) {
 ; X64-LABEL: <vr_xor_v5i32>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
 ; X64-NEXT:    mov esi, dword ptr [rdi + 0xc]
@@ -599,7 +588,6 @@ define i32 @vr_xor_v5i32(ptr %p) {
 ; X64-NEXT:    mov r9d, r8d
 ; X64-NEXT:    xor edi, r9d
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_xor_v5i32>:
@@ -716,10 +704,7 @@ define i64 @vr_xor_v2i64(ptr %p) {
 
 define i64 @vr_xor_v5i64(ptr %p) {
 ; X64-LABEL: <vr_xor_v5i64>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov rax, qword ptr [rdi]
+; X64:         mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
 ; X64-NEXT:    mov rdx, qword ptr [rdi + 0x10]
 ; X64-NEXT:    mov rsi, qword ptr [rdi + 0x18]
@@ -734,7 +719,6 @@ define i64 @vr_xor_v5i64(ptr %p) {
 ; X64-NEXT:    mov r9, r8
 ; X64-NEXT:    xor rdi, r9
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <vr_xor_v5i64>:

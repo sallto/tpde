@@ -238,10 +238,7 @@ entry:
 
 define i128 @shl_i128_i128(i128 %v, i128 %s) {
 ; X64-LABEL: <shl_i128_i128>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rcx
+; X64:         mov rax, rcx
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    shl rsi, cl
 ; X64-NEXT:    mov r8, rdi
@@ -258,7 +255,6 @@ define i128 @shl_i128_i128(i128 %v, i128 %s) {
 ; X64-NEXT:    cmove r9, rdi
 ; X64-NEXT:    mov rax, r9
 ; X64-NEXT:    mov rdx, r8
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <shl_i128_i128>:

@@ -7,16 +7,13 @@
 
 define void @ashr_v1i8(ptr %p, ptr %q) {
 ; X64-LABEL: <ashr_v1i8>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    movzx eax, byte ptr [rdi]
+; X64:         movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rsi]
 ; X64-NEXT:    movsx eax, al
 ; X64-NEXT:    mov edx, ecx
 ; X64-NEXT:    mov ecx, edx
 ; X64-NEXT:    sar eax, cl
 ; X64-NEXT:    mov byte ptr [rdi], al
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ashr_v1i8>:
@@ -134,10 +131,7 @@ define void @ashr_v5i8(ptr %p, ptr %q) {
 
 define void @ashr_v5i8_3(ptr %p) {
 ; X64-LABEL: <ashr_v5i8_3>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    movzx eax, byte ptr [rdi]
+; X64:         movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
 ; X64-NEXT:    movzx esi, byte ptr [rdi + 0x3]
@@ -157,7 +151,6 @@ define void @ashr_v5i8_3(ptr %p) {
 ; X64-NEXT:    mov byte ptr [rdi + 0x2], dl
 ; X64-NEXT:    mov byte ptr [rdi + 0x3], sil
 ; X64-NEXT:    mov byte ptr [rdi + 0x4], r8b
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ashr_v5i8_3>:

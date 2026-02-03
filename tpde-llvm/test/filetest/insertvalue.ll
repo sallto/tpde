@@ -375,16 +375,12 @@ entry:
 
 define void @insert_i128_i1_0(ptr %0, i128 %1) {
 ; X64-LABEL: <insert_i128_i1_0>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov rax, qword ptr [rdi]
+; X64:         mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
 ; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x10]
 ; X64-NEXT:    mov qword ptr [rdi], rsi
 ; X64-NEXT:    mov qword ptr [rdi + 0x8], rdx
 ; X64-NEXT:    mov byte ptr [rdi + 0x10], r8b
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <insert_i128_i1_0>:
@@ -429,10 +425,7 @@ entry:
 
 define void @insert_i128_i1_0_nosalvage(ptr %0, i128 %1) {
 ; X64-LABEL: <insert_i128_i1_0_nosalvage>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov rax, qword ptr [rdi]
+; X64:         mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
 ; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x10]
 ; X64-NEXT:    mov r9d, r8d
@@ -442,7 +435,6 @@ define void @insert_i128_i1_0_nosalvage(ptr %0, i128 %1) {
 ; X64-NEXT:    mov qword ptr [rdi], rsi
 ; X64-NEXT:    mov qword ptr [rdi + 0x8], rdx
 ; X64-NEXT:    mov byte ptr [rdi + 0x10], r9b
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <insert_i128_i1_0_nosalvage>:
@@ -467,10 +459,7 @@ entry:
 
 define void @insert_i128_i1_1_nosalvage(ptr %0, i1 %1) {
 ; X64-LABEL: <insert_i128_i1_1_nosalvage>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov rax, qword ptr [rdi]
+; X64:         mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x10]
 ; X64-NEXT:    mov r8, rax
@@ -481,7 +470,6 @@ define void @insert_i128_i1_1_nosalvage(ptr %0, i1 %1) {
 ; X64-NEXT:    mov qword ptr [rdi], r8
 ; X64-NEXT:    mov qword ptr [rdi + 0x8], r9
 ; X64-NEXT:    mov byte ptr [rdi + 0x10], sil
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <insert_i128_i1_1_nosalvage>:
@@ -507,10 +495,7 @@ entry:
 
 define void @insert_nested_1(ptr %p, i32 %v) {
 ; X64-LABEL: <insert_nested_1>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
 ; X64-NEXT:    mov r8d, dword ptr [rdi + 0xc]
@@ -518,7 +503,6 @@ define void @insert_nested_1(ptr %p, i32 %v) {
 ; X64-NEXT:    mov dword ptr [rdi + 0x4], ecx
 ; X64-NEXT:    mov dword ptr [rdi + 0x8], edx
 ; X64-NEXT:    mov dword ptr [rdi + 0xc], r8d
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <insert_nested_1>:
@@ -539,10 +523,7 @@ define void @insert_nested_1(ptr %p, i32 %v) {
 
 define void @insert_nested_2(ptr %p, i32 %v) {
 ; X64-LABEL: <insert_nested_2>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
 ; X64-NEXT:    mov r8d, dword ptr [rdi + 0xc]
@@ -550,7 +531,6 @@ define void @insert_nested_2(ptr %p, i32 %v) {
 ; X64-NEXT:    mov dword ptr [rdi + 0x4], esi
 ; X64-NEXT:    mov dword ptr [rdi + 0x8], edx
 ; X64-NEXT:    mov dword ptr [rdi + 0xc], r8d
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <insert_nested_2>:
@@ -571,10 +551,7 @@ define void @insert_nested_2(ptr %p, i32 %v) {
 
 define void @insert_nested_3(ptr %p, i32 %v) {
 ; X64-LABEL: <insert_nested_3>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
 ; X64-NEXT:    mov r8d, dword ptr [rdi + 0xc]
@@ -582,7 +559,6 @@ define void @insert_nested_3(ptr %p, i32 %v) {
 ; X64-NEXT:    mov dword ptr [rdi + 0x4], ecx
 ; X64-NEXT:    mov dword ptr [rdi + 0x8], esi
 ; X64-NEXT:    mov dword ptr [rdi + 0xc], r8d
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <insert_nested_3>:
@@ -603,10 +579,7 @@ define void @insert_nested_3(ptr %p, i32 %v) {
 
 define void @insert_nested_4(ptr %p, i32 %v) {
 ; X64-LABEL: <insert_nested_4>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    mov ecx, dword ptr [rdi + 0x4]
 ; X64-NEXT:    mov edx, dword ptr [rdi + 0x8]
 ; X64-NEXT:    mov r8d, dword ptr [rdi + 0xc]
@@ -614,7 +587,6 @@ define void @insert_nested_4(ptr %p, i32 %v) {
 ; X64-NEXT:    mov dword ptr [rdi + 0x4], ecx
 ; X64-NEXT:    mov dword ptr [rdi + 0x8], edx
 ; X64-NEXT:    mov dword ptr [rdi + 0xc], esi
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <insert_nested_4>:
@@ -694,13 +666,10 @@ define void @insert_many_nested() {
 ; X64-NEXT:    xor ecx, ecx
 ; X64-NEXT:    lea rcx, [rcx + 0x4]
 ; X64-NEXT:    mov edx, 0x1
-; X64-NEXT:    mov ebx, 0x9
-; X64-NEXT:    xor esi, esi
-; X64-NEXT:    lea rsi, [rsi + 0x4]
-; X64-NEXT:    lea rsi, [rsi + 0x9]
-; X64-NEXT:    mov edi, 0x1
-; X64-NEXT:    mov r8d, 0x9
-; X64-NEXT:    imul rdi, r8
+; X64-NEXT:    mov esi, 0x9
+; X64-NEXT:    xor edi, edi
+; X64-NEXT:    lea rdi, [rdi + 0x4]
+; X64-NEXT:    lea rdi, [rdi + 0x9]
 ; X64-NEXT:    mov r8d, 0x1
 ; X64-NEXT:    mov r9d, 0x9
 ; X64-NEXT:    xor r10d, r10d
@@ -747,17 +716,20 @@ define void @insert_many_nested() {
 ; X64-NEXT:    xor ecx, ecx
 ; X64-NEXT:    lea rcx, [rcx + 0x4]
 ; X64-NEXT:    mov edx, 0x1
+; X64-NEXT:    mov esi, 0x9
+; X64-NEXT:    xor edi, edi
+; X64-NEXT:    lea rdi, [rdi + 0x4]
+; X64-NEXT:    lea rdi, [rdi + 0x9]
+; X64-NEXT:    mov r8d, 0x1
+; X64-NEXT:    mov r9d, 0x9
+; X64-NEXT:    xor r10d, r10d
+; X64-NEXT:    lea r10, [r10 + 0x4]
+; X64-NEXT:    lea r10, [r10 + 0x51]
+; X64-NEXT:    mov r11d, 0x1
 ; X64-NEXT:    mov ebx, 0x9
-; X64-NEXT:    xor esi, esi
-; X64-NEXT:    lea rsi, [rsi + 0x4]
-; X64-NEXT:    lea rsi, [rsi + 0x9]
-; X64-NEXT:    mov edi, 0x1
-; X64-NEXT:    mov r8d, 0x9
-; X64-NEXT:    xor r9d, r9d
-; X64-NEXT:    lea r9, [r9 + 0x4]
-; X64-NEXT:    lea r9, [r9 + 0x51]
-; X64-NEXT:    mov r10d, 0x1
-; X64-NEXT:    mov r11d, 0x9
+; X64-NEXT:    mov qword ptr [rbp - 0xf0], r11
+; X64-NEXT:    mov qword ptr [rbp - 0xe8], rbx
+; X64-NEXT:    mov qword ptr [rbp - 0xe0], r10
 ; X64-NEXT:    xor r12d, r12d
 ; X64-NEXT:    xor r13d, r13d
 ; X64-NEXT:    xor r14d, r14d
@@ -859,7 +831,7 @@ define void @insert_many_nested() {
 ; ARM64-NEXT:    stp x19, x20, [sp, #0x10]
 ; ARM64-NEXT:    stp x21, x22, [sp, #0x20]
 ; ARM64-NEXT:    stp x23, x24, [sp, #0x30]
-; ARM64-NEXT:    stp x25, x26, [sp, #0x40]
+; ARM64-NEXT:    str x25, [sp, #0x40]
 ; ARM64-NEXT:    mov w0, #0x0 // =0
 ; ARM64-NEXT:    add x0, x0, #0x4
 ; ARM64-NEXT:    mov w1, #0x0 // =0
@@ -946,7 +918,7 @@ define void @insert_many_nested() {
 ; ARM64-NEXT:    ldp x19, x20, [sp, #0x10]
 ; ARM64-NEXT:    ldp x21, x22, [sp, #0x20]
 ; ARM64-NEXT:    ldp x23, x24, [sp, #0x30]
-; ARM64-NEXT:    ldp x25, x26, [sp, #0x40]
+; ARM64-NEXT:    ldr x25, [sp, #0x40]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
   %1 = insertvalue { ptr, i64, i32, i8, i8, i8, i8, [2 x [3 x i64]] } { ptr undef, i64 ptrtoint (ptr getelementptr (i32, ptr null, i32 1) to i64), i32 20180515, i8 2, i8 14, i8 0, i8 0, [2 x [3 x i64]] [[3 x i64] [i64 1, i64 9, i64 ptrtoint (ptr getelementptr (i32, ptr null, i32 1) to i64)], [3 x i64] [i64 1, i64 9, i64 add (i64 ptrtoint (ptr getelementptr (i32, ptr null, i32 1) to i64), i64 9)]] }, ptr null, 0
@@ -966,9 +938,9 @@ define void @insert_chain(ptr %p, i8 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f,
 ; X64-NEXT:    sub rsp, 0xb8
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    lea rax, [rax + 0x4]
-; X64-NEXT:    xor ebx, ebx
-; X64-NEXT:    mov r10d, 0x134d94f
-; X64-NEXT:    mov r11d, 0x3
+; X64-NEXT:    xor r10d, r10d
+; X64-NEXT:    mov r11d, 0x134d94f
+; X64-NEXT:    mov ebx, 0x3
 ; X64-NEXT:    mov r12d, 0x9
 ; X64-NEXT:    xor r13d, r13d
 ; X64-NEXT:    xor r14d, r14d
@@ -989,26 +961,48 @@ define void @insert_chain(ptr %p, i8 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f,
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    mov qword ptr [rbp - 0x70], rax
 ; X64-NEXT:    xor eax, eax
-; X64-NEXT:    movzx r14d, byte ptr [rbp - 0x39]
-; X64-NEXT:    mov r15d, 0x1
-; X64-NEXT:    mov rcx, qword ptr [rbp - 0x38]
-; X64-NEXT:    mov rdx, qword ptr [rbp - 0x30]
-; X64-NEXT:    mov esi, 0x1
-; X64-NEXT:    mov rdi, qword ptr [rbp - 0x50]
-; X64-NEXT:    mov r8, qword ptr [rbp - 0x58]
-; X64-NEXT:    mov r9d, 0x1
+; X64-NEXT:    mov qword ptr [rbp - 0xe0], r10
+; X64-NEXT:    mov dword ptr [rbp - 0xd0], r11d
+; X64-NEXT:    mov byte ptr [rbp - 0xc8], bl
+; X64-NEXT:    mov byte ptr [rbp - 0xc0], r12b
+; X64-NEXT:    mov byte ptr [rbp - 0xb8], r13b
+; X64-NEXT:    mov byte ptr [rbp - 0xb0], r14b
+; X64-NEXT:    mov qword ptr [rbp - 0xa8], r15
+; X64-NEXT:    mov qword ptr [rbp - 0xa0], rcx
+; X64-NEXT:    mov qword ptr [rbp - 0x98], rdx
+; X64-NEXT:    mov qword ptr [rbp - 0x90], rsi
+; X64-NEXT:    mov qword ptr [rbp - 0x88], rdi
+; X64-NEXT:    mov qword ptr [rbp - 0x80], r8
+; X64-NEXT:    mov qword ptr [rbp - 0x78], r9
 ; X64-NEXT:    mov qword ptr [rbp - 0x68], rax
+; X64-NEXT:    movzx r14d, byte ptr [rbp - 0x39]
+; X64-NEXT:    mov byte ptr [rbp - 0xb0], r14b
+; X64-NEXT:    mov r15d, 0x1
+; X64-NEXT:    mov qword ptr [rbp - 0xa8], r15
+; X64-NEXT:    mov rcx, qword ptr [rbp - 0x38]
+; X64-NEXT:    mov qword ptr [rbp - 0xa0], rcx
+; X64-NEXT:    mov rdx, qword ptr [rbp - 0x30]
+; X64-NEXT:    mov qword ptr [rbp - 0x98], rdx
+; X64-NEXT:    mov esi, 0x1
+; X64-NEXT:    mov qword ptr [rbp - 0x90], rsi
+; X64-NEXT:    mov rdi, qword ptr [rbp - 0x50]
+; X64-NEXT:    mov qword ptr [rbp - 0x88], rdi
+; X64-NEXT:    mov r8, qword ptr [rbp - 0x58]
+; X64-NEXT:    mov qword ptr [rbp - 0x80], r8
+; X64-NEXT:    mov r9d, 0x1
+; X64-NEXT:    mov qword ptr [rbp - 0x78], r9
 ; X64-NEXT:    mov rax, qword ptr [rbp + 0x10]
 ; X64-NEXT:    mov qword ptr [rbp - 0x70], rax
 ; X64-NEXT:    mov rax, qword ptr [rbp + 0x18]
-; X64-NEXT:    mov rbx, qword ptr [rbp + 0x20]
 ; X64-NEXT:    mov qword ptr [rbp - 0x68], rax
+; X64-NEXT:    mov r10, qword ptr [rbp + 0x20]
+; X64-NEXT:    mov qword ptr [rbp - 0xe0], r10
 ; X64-NEXT:    mov rax, qword ptr [rbp - 0x48]
-; X64-NEXT:    mov qword ptr [rax], rbx
-; X64-NEXT:    mov rbx, qword ptr [rbp - 0xd8]
-; X64-NEXT:    mov qword ptr [rax + 0x8], rbx
-; X64-NEXT:    mov dword ptr [rax + 0x10], r10d
-; X64-NEXT:    mov byte ptr [rax + 0x14], r11b
+; X64-NEXT:    mov qword ptr [rax], r10
+; X64-NEXT:    mov r10, qword ptr [rbp - 0xd8]
+; X64-NEXT:    mov qword ptr [rax + 0x8], r10
+; X64-NEXT:    mov dword ptr [rax + 0x10], r11d
+; X64-NEXT:    mov byte ptr [rax + 0x14], bl
 ; X64-NEXT:    mov byte ptr [rax + 0x15], r12b
 ; X64-NEXT:    mov byte ptr [rax + 0x16], r13b
 ; X64-NEXT:    mov byte ptr [rax + 0x17], r14b
@@ -1038,7 +1032,7 @@ define void @insert_chain(ptr %p, i8 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f,
 ; ARM64-NEXT:    stp x19, x20, [sp, #0x10]
 ; ARM64-NEXT:    stp x21, x22, [sp, #0x20]
 ; ARM64-NEXT:    stp x23, x24, [sp, #0x30]
-; ARM64-NEXT:    stp x25, x26, [sp, #0x40]
+; ARM64-NEXT:    str x25, [sp, #0x40]
 ; ARM64-NEXT:    add x17, sp, #0xa0
 ; ARM64-NEXT:    ldr x9, [x17]
 ; ARM64-NEXT:    mov w8, #0x0 // =0
@@ -1081,7 +1075,7 @@ define void @insert_chain(ptr %p, i8 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f,
 ; ARM64-NEXT:    ldp x19, x20, [sp, #0x10]
 ; ARM64-NEXT:    ldp x21, x22, [sp, #0x20]
 ; ARM64-NEXT:    ldp x23, x24, [sp, #0x30]
-; ARM64-NEXT:    ldp x25, x26, [sp, #0x40]
+; ARM64-NEXT:    ldr x25, [sp, #0x40]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
   %i1 = insertvalue { ptr, i64, i32, i8, i8, i8, i8, [3 x [3 x i64]] } { ptr undef, i64 ptrtoint (ptr getelementptr (i32, ptr null, i32 1) to i64), i32 20240719, i8 3, i8 9, i8 0, i8 undef, [3 x [3 x i64]] undef }, i8 %a, 6

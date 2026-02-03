@@ -2224,11 +2224,6 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_int_binary_op(
 template <typename Adaptor, typename Derived, typename Config>
 bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_float_binary_op(
     const llvm::Instruction *inst, const ValInfo &val_info, u64 op) {
-      //todo(salto): shorten lifetimes of val_refs
-  auto lhs = this->val_ref(inst->getOperand(0));
-  auto rhs = this->val_ref(inst->getOperand(1));
-  ValueRef res = this->result_ref(inst);
-
   if (val_info.type == LLVMBasicValType::f128) {
     LibFunc lf;
     switch (op) {
@@ -2240,9 +2235,14 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_float_binary_op(
     default: TPDE_UNREACHABLE("invalid FloatBinaryOp");
     }
     auto cb = derived()->create_call_builder();
-    cb->add_arg(lhs.part(0), tpde::CCAssignment{});
-    cb->add_arg(rhs.part(0), tpde::CCAssignment{});
+    {
+      auto lhs = this->val_ref(inst->getOperand(0));
+      auto rhs = this->val_ref(inst->getOperand(1));
+      cb->add_arg(lhs.part(0), tpde::CCAssignment{});
+      cb->add_arg(rhs.part(0), tpde::CCAssignment{});
+    }
     cb->call(get_libfunc_sym(lf));
+    ValueRef res = this->result_ref(inst);
     cb->add_ret(res);
     return true;
   }
@@ -2256,9 +2256,14 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_float_binary_op(
     }
 
     auto cb = derived()->create_call_builder();
-    cb->add_arg(lhs.part(0), tpde::CCAssignment{});
-    cb->add_arg(rhs.part(0), tpde::CCAssignment{});
+    {
+      auto lhs = this->val_ref(inst->getOperand(0));
+      auto rhs = this->val_ref(inst->getOperand(1));
+      cb->add_arg(lhs.part(0), tpde::CCAssignment{});
+      cb->add_arg(rhs.part(0), tpde::CCAssignment{});
+    }
     cb->call(get_libfunc_sym(lf));
+    ValueRef res = this->result_ref(inst);
     cb->add_ret(res);
     return true;
   }
@@ -2316,6 +2321,9 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_float_binary_op(
     break;
   case f80:
     if constexpr (requires { &Derived::fp80_load; }) {
+      auto lhs = this->val_ref(inst->getOperand(0));
+      auto rhs = this->val_ref(inst->getOperand(1));
+      ValueRef res = this->result_ref(inst);
       switch (op) {
       case FloatBinaryOp::add:
         derived()->fp80_add(lhs.part(0), rhs.part(0), res.part(0));
@@ -2337,6 +2345,9 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_float_binary_op(
   default: return false;
   }
 
+  auto lhs = this->val_ref(inst->getOperand(0));
+  auto rhs = this->val_ref(inst->getOperand(1));
+  ValueRef res = this->result_ref(inst);
   return (derived()->*encode_fn)(lhs.part(0), rhs.part(0), res.part(0));
 }
 
@@ -4597,12 +4608,6 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_intrin(
     return true;
   }
   case llvm::Intrinsic::fmuladd: {
-    //todo(salto): shorten lifetimes of ValueRefs
-    ValueRef op1 = this->val_ref(inst->getOperand(0));
-    ValueRef op2 = this->val_ref(inst->getOperand(1));
-    ValueRef op3 = this->val_ref(inst->getOperand(2));
-    ValueRef res = this->result_ref(inst);
-
     using EncodeFnTy = bool (Derived::*)(GenericValuePart &&,
                                          GenericValuePart &&,
                                          GenericValuePart &&,
@@ -4616,30 +4621,46 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_intrin(
     case v4f32: fn = &Derived::encode_fmuladdv4f32; break;
     case v2f64: fn = &Derived::encode_fmuladdv2f64; break;
     case f128: {
-      auto cb1 = derived()->create_call_builder();
-      cb1->add_arg(op1.part(0), tpde::CCAssignment{});
-      cb1->add_arg(op2.part(0), tpde::CCAssignment{});
-      cb1->call(get_libfunc_sym(LibFunc::multf3));
+      auto cb = derived()->create_call_builder();
+      {
+        ValueRef op1 = this->val_ref(inst->getOperand(0));
+        ValueRef op2 = this->val_ref(inst->getOperand(1));
+        cb->add_arg(op1.part(0), tpde::CCAssignment{});
+        cb->add_arg(op2.part(0), tpde::CCAssignment{});
+      }
+      cb->call(get_libfunc_sym(LibFunc::multf3));
       ValuePartRef tmp{this, Config::FP_BANK};
-      cb1->add_ret(tmp, tpde::CCAssignment{});
-
+      cb->add_ret(tmp, tpde::CCAssignment{});
       auto cb2 = derived()->create_call_builder();
-      cb2->add_arg(std::move(tmp), tpde::CCAssignment{});
-      cb2->add_arg(op3.part(0), tpde::CCAssignment{});
+      {
+        ValueRef op3 = this->val_ref(inst->getOperand(2));
+        cb2->add_arg(std::move(tmp), tpde::CCAssignment{});
+        cb2->add_arg(op3.part(0), tpde::CCAssignment{});
+      }
       cb2->call(get_libfunc_sym(LibFunc::addtf3));
+      ValueRef res = this->result_ref(inst);
       cb2->add_ret(res);
       return true;
     }
-    case f80:
+    case f80: {
+      ValueRef op1 = this->val_ref(inst->getOperand(0));
+      ValueRef op2 = this->val_ref(inst->getOperand(1));
+      ValueRef op3 = this->val_ref(inst->getOperand(2));
+      ValueRef res = this->result_ref(inst);
       if constexpr (requires { &Derived::fp80_muladd; }) {
         derived()->fp80_muladd(
             op1.part(0), op2.part(0), op3.part(0), res.part(0));
         return true;
       }
       return false;
+    }
     default: return false;
     }
 
+    ValueRef op1 = this->val_ref(inst->getOperand(0));
+    ValueRef op2 = this->val_ref(inst->getOperand(1));
+    ValueRef op3 = this->val_ref(inst->getOperand(2));
+    ValueRef res = this->result_ref(inst);
     return (derived()->*fn)(op1.part(0), op2.part(0), op3.part(0), res.part(0));
   }
   case llvm::Intrinsic::abs: {
