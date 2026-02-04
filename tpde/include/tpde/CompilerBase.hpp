@@ -3069,6 +3069,9 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
           if (incoming_ref.last_ref()) {
             if (!phi_ap.fixed_assignment()) {
               incoming_part.reload_into_specific_fixed(target_reg, phi_ap.part_size());
+              if(!register_file.is_used(target_reg)){
+                register_file.mark_used(target_reg, phi_local_idx, part);
+              }
               phi_ap.set_reg(target_reg);
               phi_ap.set_register_valid(true);
               phi_ref.part(part).alloc_reg();
