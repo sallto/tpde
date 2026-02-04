@@ -246,7 +246,7 @@ public:
     alloc_specific_impl(compiler, reg, true);
   }
 
-  ScratchReg into_scratch_specific(CompilerBase *compiler, AsmReg reg) {
+  ScratchReg into_scratch_specific(CompilerBase *compiler, AsmReg reg) && {
     ScratchReg res{compiler};
     // todo(salto): make codegen better if this->isinreg(reg)
     res.alloc_specific(reg);
@@ -1043,8 +1043,8 @@ struct CompilerBase<Adaptor, Derived, Config>::ValuePartRef : ValuePart {
     return ValuePart::reload_into_specific_fixed(compiler, reg, size);
   }
 
-  ScratchReg into_scratch_specific(AsmReg reg) noexcept {
-    return ValuePart::into_scratch_specific(compiler, reg);
+  ScratchReg into_scratch_specific(AsmReg reg) &&  {
+     return std::move(*static_cast<ValuePart *>(this)).into_scratch_specific(compiler, reg);
   }
 
   AsmReg reload_into_specific_fixed(CompilerBase *compiler,
