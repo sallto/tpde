@@ -1434,7 +1434,9 @@ define void @alloca_manyregs(i32 %0, ptr %1, ptr %2, ptr %3, i64 %4, i32 %5, ptr
 ; ARM64-NEXT:    add x0, x29, #0x40, lsl #12 // =0x40000
 ; ARM64-NEXT:    ldr x0, [x0, #0x7f0]
 ; ARM64-NEXT:    mov w8, w0
-; ARM64-NEXT:    mov w0, w2
+; ARM64-NEXT:    mov w1, w2
+; ARM64-NEXT:    mov x2, x0
+; ARM64-NEXT:    mov w0, w1
 ; ARM64-NEXT:    b <L0>
   %23 = alloca [66000 x i32], align 4
   br label %24
