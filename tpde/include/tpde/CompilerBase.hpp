@@ -944,6 +944,15 @@ public:
     // register layout
     if (block_state_it != block_regs.end()) {
       for (ValueState &state : block_state_it->second) {
+        // registers must be cleared. Ex. landing pads
+        if (state.val_local_idx == INVALID_VAL_LOCAL_IDX) {
+          for (u32 i = 0; i < state.registers.size(); ++i) {
+            if (state.registers[i].valid()) {
+              this->evict_reg(state.registers[i]);
+            }
+          }
+          continue;
+        }
         ValueAssignment *va = val_assignment(state.val_local_idx);
         // value was already freed, won't be used again
         if (!va) {
@@ -967,7 +976,9 @@ public:
               ap.set_reg(reg);
               cur_reg = reg;
             } else {
-              reload_to_reg(state.registers[i], ap);
+              if (ap.stack_valid()) {
+                reload_to_reg(state.registers[i], ap);
+              }
               continue;
             }
           }
@@ -1068,8 +1079,11 @@ public:
       }
     }
 
+    // prevent any phi registers from being used as temporaries for swap resolution″
+    auto prev_alloc = register_file.allocatable & phi_regs;
     register_file.allocatable &= ~phi_regs;
     MoveList result = sequentialize(moves);
+    register_file.allocatable |= prev_alloc;
     // todo(salto): maybe execute the mov in sequentialize directly
     for (auto move : result) {
       if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
@@ -1089,8 +1103,12 @@ public:
           this->evict_reg(Reg{move.dst});
         }
         this->derived()->mov(move.dst, move.src, ap.part_size());
-        if (ap.register_valid()) {
+        if (ap.register_valid() && register_file.is_used(ap.get_reg())) {
           register_file.unmark_used(ap.get_reg());
+        }
+        if (!register_file.is_used(Reg{move.src}) &&
+            register_file.allocatable & ~(1ull << move.src.id())) {
+          register_file.allocatable |= (1ull << move.src.id());
         }
         ap.set_register_valid(true);
         ap.set_reg(Reg{move.dst});
@@ -1262,7 +1280,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       arg.kind = PendingArg::Kind::REG_TO_REG;
       arg.source_reg = src;
       source_regs |= (1ull << src.id());
-            compiler.register_file.allocatable &= ~source_regs;
+      compiler.register_file.allocatable &= ~source_regs;
     }
   }
   // todo(salto): alloca_call
@@ -1404,8 +1422,8 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
 
   // Phase 4: Sequentialize and execute register-to-register moves
   if (!moves.empty()) {
-    // seqeuntalize may need an additional register and one of the arguments can already be freed.
-    // make sure it never uses those registers.
+    // seqeuntalize may need an additional register and one of the arguments can
+    // already be freed. make sure it never uses those registers.
     compiler.register_file.allocatable &= ~source_regs;
     MoveList ordered = compiler.sequentialize(moves);
     for (auto &move : ordered) {
@@ -1515,7 +1533,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
   }
 
   // Phase 7: Evict remaining clobbered registers
-  typename RegisterFile::RegBitSet skip_evict = arg_regs;
+  typename RegisterFile::RegBitSet skip_evict = 0;
   if (auto *vp = std::get_if<ValuePart>(&target); vp && vp->can_salvage()) {
     assert(vp->cur_reg_unlocked().valid() && "can_salvage implies register");
     skip_evict |= (1ull << vp->cur_reg_unlocked().id());
@@ -2945,27 +2963,38 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
     auto &reg_file = register_file;
     for (auto move : ordered) {
       if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
-        ValueAssignment *assignment = val_assignment(move.value_idx);
+        ValueAssignment *assignment = this->val_assignment(move.value_idx);
         if (!assignment) {
           continue;
         }
         AssignmentPartRef ap{assignment, move.part_idx};
-        if (ap.register_valid() && assignment->pending_free) {
-          ap.set_register_valid(false);
-          reg_file.unmark_used(move.src);
+
+        if (ap.fixed_assignment()) {
+          this->derived()->mov(move.dst, move.src, ap.part_size());
           continue;
         }
-        global_assign(move.value_idx, move.dst);
-
-        ap.mov(this, move.value_idx, move.dst);
-#ifndef NDEBUG
+        this->global_assign(move.value_idx, move.dst);
+        if (register_file.is_used(Reg{move.dst}) &&
+            move.value_idx != register_file.reg_local_idx(Reg{move.dst})) {
+          this->evict_reg(Reg{move.dst});
+        }
+        this->derived()->mov(move.dst, move.src, ap.part_size());
+        if (ap.register_valid()) {
+          register_file.unmark_used(ap.get_reg());
+        }
+        ap.set_register_valid(true);
+        ap.set_reg(Reg{move.dst});
+        this->register_file.mark_used(
+            Reg{move.dst}, move.value_idx, move.part_idx);
+        this->register_file.mark_clobbered(Reg{move.dst});
+        #ifndef NDEBUG
         verification_ir.emit_active_reg_move(move.src, move.dst, move.size);
-#endif
+        #endif
       } else {
-        derived()->mov(move.dst, move.src, 8);
-        reg_file.mark_used(Reg{move.dst}, move.value_idx, move.part_idx);
-        reg_file.mark_clobbered(Reg{move.dst});
-        reg_file.mark_fixed(Reg{move.dst});
+        this->derived()->mov(move.dst, move.src, 8);
+        this->register_file.mark_used(
+            Reg{move.dst}, move.value_idx, move.part_idx);
+        this->register_file.mark_clobbered(Reg{move.dst});
       }
     }
     parallel_copies.clear();
@@ -3021,209 +3050,172 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
 
     for (u32 part = 0; part < phi_assignment->part_count; ++part) {
       AssignmentPartRef phi_ap{phi_assignment, part};
+      auto incoming_part = incoming_ref.part(part);
+      Reg incoming_reg = incoming_part.cur_reg_unlocked();
       Reg target_reg = Reg::make_invalid();
       if (target_regs.size() > part) {
         target_reg = target_regs[part];
       }
 
-      if (target_reg.valid()) {
-        used_phi_regs |= (1ull << target_reg.id());
-        used_phi_regs_global |= (1ull << target_reg.id());
 
-        auto incoming_part = incoming_ref.part(part);
-        Reg incoming_reg = incoming_part.cur_reg_unlocked();
-
-        if (incoming_reg.valid() && incoming_reg == target_reg) {
-          if (!incoming_last_ref) {
-            RegBank bank = register_file.reg_bank(target_reg);
-            auto exclusion = used_phi_regs | (1ull << target_reg.id());
-            Reg new_reg =
-                register_file.find_first_free_excluding(bank, exclusion);
-            if (new_reg.invalid()) {
-              new_reg = select_reg(bank, exclusion);
-            }
-            if (new_reg.valid()) {
-              AssignmentPartRef incoming_ap{incoming_ref.assignment(), part};
-              incoming_ap.mov(this, incoming_ref.local_idx(), new_reg);
-            }
-          }
-          continue;
-        }
-
-        if (register_file.is_used(target_reg) &&
-            register_file.reg_local_idx(target_reg) != phi_local_idx) {
-          free_target_reg(target_reg, phi_ap.part_size());
-        }
-
+      if (phi_ap.fixed_assignment()) {
         if (incoming_reg.valid()) {
-          incoming_part.load_to_reg();
-          moves.emplace_back(target_reg,
-                             incoming_reg,
-                             phi_ap.part_size(),
-                             phi_local_idx,
-                             part);
-        } else if (incoming_part.is_const()) {
-          phi_ref.part(part).set_value(std::move(incoming_part));
+          // we can't move immediately here since incoming could also be a phi that might need our value.
+          moves.emplace_back(
+              target_reg, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
         } else {
-          // todo(salto): maybe find a pawn register and avoid scratch here
-          if (incoming_ref.last_ref()) {
-            if (!phi_ap.fixed_assignment()) {
-              incoming_part.reload_into_specific_fixed(target_reg, phi_ap.part_size());
-              if(!register_file.is_used(target_reg)){
-                register_file.mark_used(target_reg, phi_local_idx, part);
-              }
-              phi_ap.set_reg(target_reg);
-              phi_ap.set_register_valid(true);
-              phi_ref.part(part).alloc_reg();
-            } else {
-              phi_ref.part(part).set_value(std::move(incoming_part));
-            }
-          } else {
-            ScratchReg scratch = std::move(incoming_part).into_scratch();
-            moves.emplace_back(target_reg,
-                               scratch.cur_reg(),
-                               phi_ap.part_size(),
-                               phi_local_idx,
-                               part);
-          }
+          incoming_part.reload_into_specific_fixed(phi_ap.get_reg());
         }
         continue;
       }
-
-      if (!phi_ap.stack_valid()) {
-        allocate_spill_slot(phi_ap);
+      if (!target_reg.valid()) {
+        if (!phi_ap.stack_valid()) {
+          allocate_spill_slot(phi_ap); // todo(salto): should be unreachable
+        }
+        if (incoming_reg.valid()) {
+          derived()->spill_reg(
+              incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
+        } else {
+          ScratchReg scratch = std::move(incoming_part).into_scratch();
+          derived()->spill_reg(
+              scratch.cur_reg(), phi_ap.frame_off(), phi_ap.part_size());
+        }
+        phi_ap.set_stack_valid();
+        continue;
       }
 
-      auto incoming_part = incoming_ref.part(part);
-      Reg incoming_reg = incoming_part.cur_reg_unlocked();
-      if (incoming_reg.valid()) {
-        derived()->spill_reg(
-            incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
+
+      if (incoming_reg.valid() && !incoming_last_ref) {
+        moves.emplace_back(
+            target_reg, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
+      } else if (incoming_reg.valid() && incoming_last_ref) {
+        register_file.allocatable &=
+            ~(1ull << incoming_reg.id()); // todo(salto): undo this
+        moves.emplace_back(
+            target_reg, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
       } else {
-        ScratchReg scratch = std::move(incoming_part).into_scratch();
-        derived()->spill_reg(scratch.cur_reg(), phi_ap.frame_off(), phi_ap.part_size());
+        if (register_file.is_used(target_reg)) {
+          evict_reg(target_reg);
+        }
+        incoming_part.reload_into_specific_fixed(target_reg);
       }
-      phi_ap.set_stack_valid();
+      used_phi_regs |= (1ull << target_reg.id());
+      used_phi_regs_global |= (1ull << target_reg.id());
     }
   };
 
-  const auto allocate_phi =
-      [&](IRValueRef phi, IRValueRef incoming_val, bool allocate_to_stack) {
-        ValueRef phi_ref = result_ref(phi);
-        ValueRef incoming_ref = val_ref(incoming_val);
-        ValLocalIdx phi_local_idx = adaptor->val_local_idx(phi);
-        ValueAssignment *phi_assignment = val_assignment(phi_local_idx);
-        assert(phi_assignment && "phi node has no assignment");
+  const auto allocate_phi = [&](IRValueRef phi,
+                                IRValueRef incoming_val,
+                                bool allocate_to_stack) {
+    ValueRef phi_ref = result_ref(phi);
+    ValueRef incoming_ref = val_ref(incoming_val);
+    ValLocalIdx phi_local_idx = adaptor->val_local_idx(phi);
+    ValueAssignment *phi_assignment = val_assignment(phi_local_idx);
+    assert(phi_assignment && "phi node has no assignment");
 
 
-        PhiRegList target_regs;
-        target_regs.resize(phi_assignment->part_count, Reg::make_invalid());
-        typename RegisterFile::RegBitSet new_phi_regs = 0;
+    PhiRegList target_regs;
+    target_regs.resize(phi_assignment->part_count, Reg::make_invalid());
+    typename RegisterFile::RegBitSet new_phi_regs = 0;
 
-        bool allow_regs = !allocate_to_stack;
-        for (u32 part = 0; part < phi_assignment->part_count; ++part) {
-          AssignmentPartRef phi_ap{phi_assignment, part};
-          ValuePartRef incoming_part = incoming_ref.part(part);
+    bool allow_regs = !allocate_to_stack;
+    for (u32 part = 0; part < phi_assignment->part_count; ++part) {
+      AssignmentPartRef phi_ap{phi_assignment, part};
+      ValuePartRef incoming_part = incoming_ref.part(part);
+      Reg incoming_reg = incoming_part.cur_reg_unlocked();
+      RegBank bank = phi_ap.bank();
+      auto exclusion = used_phi_regs | new_phi_regs;
+      Reg selected;
+      if (phi_ap.fixed_assignment()) {
+        TPDE_LOG_TRACE("Phi part {} has fixed assignment to reg {}",
+                       part,
+                       static_cast<u32>(phi_ap.get_reg().id()));
+        selected = phi_ap.get_reg();
+        target_regs[part] = phi_ap.get_reg();
+        new_phi_regs |= (1ull << target_regs[part].id());
+        if (incoming_reg.valid()) {
+          // we can't move immediately here since incoming could also be a phi that might need our value.
+          moves.emplace_back(
+              selected, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
+        } else {
+          incoming_part.reload_into_specific_fixed(selected);
+        }
+        continue;
+      }
+      if (!allow_regs) {
+        // not fixed and should be on the stack.
+        continue;
+      }
+
+      // if our incoming is dead after the phi we can reuse the register
+      if (incoming_ref.last_ref() && incoming_reg.valid()  && !register_file.is_fixed(incoming_reg)) {
+        selected = incoming_reg;
+      } else {
+        selected = register_file.find_first_free_excluding(bank, exclusion);
+      }
+
+      // if (selected.invalid() && incoming_ref.last_ref()) {
+      //   if (incoming_reg.valid() &&
+      //       register_file.reg_bank(incoming_reg) == bank &&
+      //       ((exclusion & (1ull << incoming_reg.id())) == 0)) {
+      //     selected = incoming_reg;
+      //   }
+      // }
+
+      if (selected.invalid()) {
+        allow_regs = false;
+        continue;
+      }
+
+      if (incoming_reg.valid() && !incoming_ref.last_ref()) {
+        moves.emplace_back(
+            selected, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
+      } else if (incoming_reg.valid() && incoming_ref.last_ref()) {
+        register_file.allocatable &=
+            ~(1ull << incoming_reg.id()); // todo(salto): undo this
+        moves.emplace_back(
+            selected, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
+      } else {
+        incoming_part.reload_into_specific_fixed(selected);
+      }
+
+      target_regs[part] = selected;
+      new_phi_regs |= (1ull << selected.id());
+    }
+
+    if (!allow_regs) {
+      new_phi_regs = 0;
+      for (u32 part = 0; part < phi_assignment->part_count; ++part) {
+        AssignmentPartRef phi_ap{phi_assignment, part};
+        if (phi_ap.fixed_assignment()) {
+          target_regs[part] = phi_ap.get_reg();
+          new_phi_regs |= (1ull << target_regs[part].id());
+        } else {
+          target_regs[part] = Reg::make_invalid();
+          // Allocate spill slot and move the incoming value into it.
+          if (!phi_ap.stack_valid()) {
+            allocate_spill_slot(phi_ap);
+          }
+          auto incoming_part = incoming_ref.part(part);
           Reg incoming_reg = incoming_part.cur_reg_unlocked();
-          RegBank bank = phi_ap.bank();
-          auto exclusion = used_phi_regs | new_phi_regs;
-          Reg selected;
-          if (phi_ap.fixed_assignment()) {
-            TPDE_LOG_TRACE("Phi part {} has fixed assignment to reg {}",
-                           part,
-                           static_cast<u32>(phi_ap.get_reg().id()));
-            selected = phi_ap.get_reg();
-            target_regs[part] = phi_ap.get_reg();
-            new_phi_regs |= (1ull << target_regs[part].id());
-          } else if (!allow_regs) {
-            // not fixed and should be on the stack.
-            continue;
-          } else {
-            selected = register_file.find_first_free_excluding(bank, exclusion);
-          }
-
-
-          if (selected.invalid() && incoming_ref.last_ref()) {
-
-            if (incoming_reg.valid() &&
-                register_file.reg_bank(incoming_reg) == bank &&
-                ((exclusion & (1ull << incoming_reg.id())) == 0)) {
-              selected = incoming_reg;
-            }
-          }
-
-          if (selected.invalid()) {
-            allow_regs = false;
-            continue;
-          }
-
-          target_regs[part] = selected;
-          new_phi_regs |= (1ull << selected.id());
-       
-
-          // move / materialize incoming_part into selected
           if (incoming_reg.valid()) {
-            incoming_part.load_to_reg();
-            moves.emplace_back(selected,
-                               incoming_part.cur_reg(),
-                               phi_ap.part_size(),
-                               phi_local_idx,
-                               part);
-          } else if (incoming_part.is_const()) {
-            phi_ref.part(part).set_value(std::move(incoming_part));
+            derived()->spill_reg(
+                incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
           } else {
-            // todo(salto): maybe find a pawn register and avoid scratch here
-            if (incoming_ref.last_ref()) {
-              if (!phi_ap.fixed_assignment()) {
-                ScratchReg scratch =
-                    std::move(incoming_part).into_scratch_specific(selected);
-                phi_ref.part(part).set_value(std::move(scratch));
-              } else {
-                phi_ref.part(part).set_value(std::move(incoming_part));
-              }
-            } else {
-              ScratchReg scratch = std::move(incoming_part).into_scratch();
-              moves.emplace_back(selected,
-                                 scratch.cur_reg(),
-                                 phi_ap.part_size(),
-                                 phi_local_idx,
-                                 part);
-            }
+            ScratchReg scratch = std::move(incoming_part).into_scratch();
+            derived()->spill_reg(
+                scratch.cur_reg(), phi_ap.frame_off(), phi_ap.part_size());
           }
+          phi_ap.set_register_valid(false);
+          phi_ap.set_stack_valid();
         }
+      }
+    }
 
-        if (!allow_regs) {
-          new_phi_regs = 0;
-          for (u32 part = 0; part < phi_assignment->part_count; ++part) {
-            AssignmentPartRef phi_ap{phi_assignment, part};
-            if (phi_ap.fixed_assignment()) {
-              target_regs[part] = phi_ap.get_reg();
-              new_phi_regs |= (1ull << target_regs[part].id());
-            } else {
-              target_regs[part] = Reg::make_invalid();
-              // Allocate spill slot and move the incoming value into it.
-              if (!phi_ap.stack_valid()) {
-                allocate_spill_slot(phi_ap);
-              }
-              auto incoming_part = incoming_ref.part(part);
-              Reg incoming_reg = incoming_part.cur_reg_unlocked();
-              if (incoming_reg.valid()) {
-                derived()->spill_reg(
-                    incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
-              } else {
-                 ScratchReg scratch = std::move(incoming_part).into_scratch();
-                 derived()->spill_reg(scratch.cur_reg(), phi_ap.frame_off(), phi_ap.part_size());
-              }
-              phi_ap.set_register_valid(false);
-              phi_ap.set_stack_valid();
-            }
-          }
-        }
-
-        used_phi_regs |= new_phi_regs;
-        used_phi_regs_global |= new_phi_regs;
-        target_phi_regs.insert_or_assign(phi_local_idx, std::move(target_regs));
-      };
+    used_phi_regs |= new_phi_regs;
+    used_phi_regs_global |= new_phi_regs;
+    target_phi_regs.insert_or_assign(phi_local_idx, std::move(target_regs));
+  };
 
   // We check that the block has phi nodes before getting here.
   assert(!nodes.empty() && "block marked has having phi nodes has none");
@@ -3682,6 +3674,15 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     }
     if (state_it != block_regs.end()) {
       for (ValueState &state : state_it->second) {
+        if (state.val_local_idx == INVALID_VAL_LOCAL_IDX) {
+          for (u32 i = 0; i < state.registers.size(); i++) {
+            auto reg = state.registers[i];
+            if (reg.valid() && register_file.is_used(reg)) {
+              this->evict_reg(reg);
+            }
+          }
+          continue;
+        }
         ValueAssignment *assignment = this->val_assignment(state.val_local_idx);
         if (!assignment) {
           continue;

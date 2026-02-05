@@ -94,9 +94,10 @@ public:
 
   bool has_assignment() const { return state.a.mode < 4; }
 
+  /// @brief  Return wether this value will be destroyed after this use.
   bool last_ref() {
     return !has_assignment() ||
-           state.a.assignment->references_left <= 1; // todo(salto) ==1?
+           (state.a.assignment->references_left <= 1 && !state.a.assignment->delay_free); // todo(salto) ==1?
   }
 
   [[nodiscard]] ValueAssignment *assignment() const {

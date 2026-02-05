@@ -4299,17 +4299,17 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_invoke(
                                         /* split */ false,
                                         /* last_inst */ false);
   } else {
+    this->release_spilled_regs(spilled);
     // allow fall-through
     derived()->generate_branch_to_block(Derived::Jump::jmp,
                                         normal_block_ref,
                                         /* split */ false,
                                         /* last_inst */ true);
-    for (auto reg: Derived::LANDING_PAD_RES_REGS) {
-      if (this->register_file.is_used(reg)) {
-        this->evict_reg(reg);
-      }
-    }
-    this->release_spilled_regs(spilled);
+    auto &target_regs =
+        this->block_regs[this->analyzer.block_idx(unwind_block_ref)];
+    target_regs.emplace_back(this->INVALID_VAL_LOCAL_IDX, 1);
+    target_regs.back().push_back(Derived::LANDING_PAD_RES_REGS[0], 0);
+    target_regs.back().push_back(Derived::LANDING_PAD_RES_REGS[1], 1);
   }
 
   const auto is_cleanup = landing_pad->isCleanup();

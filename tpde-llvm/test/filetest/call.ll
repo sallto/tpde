@@ -2017,3 +2017,36 @@ define double @fn_many_args_floatdouble(double %p0, float %p1, double %p2, float
   %r = call double @fn_many_args_double(double %p2, float %p3, double %p4, float %p5, double %p6, float %p7, double %p8, float %p9, double %p10, float 0.0, double 0.0)
   ret double %p10
 }
+
+@.str.1 = external constant [3 x i8]
+
+define i32 @call_ensure_arg_invalidated(ptr %data) {
+; X64-LABEL: <call_ensure_arg_invalidated>:
+; X64:         push rbp
+; X64-NEXT:    mov rbp, rsp
+; X64-NEXT:    sub rsp, 0x30
+; X64-NEXT:    mov rdi, qword ptr <call_ensure_arg_invalidated+0x7>
+; X64-NEXT:     R_X86_64_GOTPCREL .str.1-0x4
+; X64-NEXT:    xor eax, eax
+; X64-NEXT:    xor r10d, r10d
+; X64-NEXT:    call r10
+; X64-NEXT:    add rsp, 0x30
+; X64-NEXT:    pop rbp
+; X64-NEXT:    ret
+;
+; ARM64-LABEL: <call_ensure_arg_invalidated>:
+; ARM64:         stp x29, x30, [sp, #-0xb0]!
+; ARM64-NEXT:    mov x29, sp
+; ARM64-NEXT:    adrp x0, 0x0 <call_void_void>
+; ARM64-NEXT:     R_AARCH64_ADR_GOT_PAGE .str.1
+; ARM64-NEXT:    ldr x0, [x0]
+; ARM64-NEXT:     R_AARCH64_LD64_GOT_LO12_NC .str.1
+; ARM64-NEXT:    mov w16, #0x0 // =0
+; ARM64-NEXT:    blr x16
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
+; ARM64-NEXT:    ret
+entry:
+  %data.addr = alloca ptr, align 8
+  %call1 = call i32 (ptr, ...) null(ptr @.str.1)
+  ret i32 %call1
+}
