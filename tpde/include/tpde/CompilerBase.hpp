@@ -1050,9 +1050,14 @@ public:
             continue;
           }
 
-          if (!ap.modified() || ap.variable_ref()) {
-            // No need to spill values that were already spilled or are variable
-            // refs.
+          if(ap.variable_ref()){
+            // cheap to 'spill' so don't worry about it across blocks
+            evict(ap);
+            continue;
+          }
+
+          if (!ap.modified()) {
+            // No need to save values that were already spilled
             continue;
           }
 
