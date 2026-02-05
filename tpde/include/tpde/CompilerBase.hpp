@@ -2418,6 +2418,9 @@ void CompilerBase<Adaptor, Derived, Config>::spill(AssignmentPartRef ap) {
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::evict(AssignmentPartRef ap) {
+  TPDE_LOG_TRACE("Evicting reg {} ccontaining value {}",
+                 ap.get_reg().id(),
+                 static_cast<u32>(register_file.reg_local_idx(ap.get_reg())));
   assert(may_change_value_state());
   assert(ap.register_valid());
   derived()->spill(ap);
@@ -3657,6 +3660,18 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           // used_phi_regs_global &= ~(1ull << reg.id());
           ap.set_register_valid(true);
           if (register_file.is_used(reg)) {
+            if(register_file.reg_local_idx(reg) != INVALID_VAL_LOCAL_IDX && register_file.reg_local_idx(reg) != phi_idx) {
+              ValueAssignment *other =
+                  this->val_assignment(register_file.reg_local_idx(reg));
+              if (other) {
+                auto other_ap =
+                    AssignmentPartRef{other, register_file.reg_part(reg)};
+                if (other_ap.register_valid()) {
+                  assert(other_ap.stack_valid() && "can't spill during phi resoulution");
+                  other_ap.set_register_valid(false);
+                }
+              }
+            }
             register_file.update_reg_assignment(reg, phi_idx, i);
           } else {
             register_file.mark_used(reg, phi_idx, i);
@@ -3683,7 +3698,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           for (u32 i = 0; i < state.registers.size(); i++) {
             auto reg = state.registers[i];
             if (reg.valid() && register_file.is_used(reg)) {
-              this->evict_reg(reg);
+              this->evict_reg(reg); 
             }
           }
           continue;
