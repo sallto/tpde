@@ -1337,8 +1337,9 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     std::variant<SymRef, ValuePart> target) {
   assert(!compiler.stack.is_leaf_function && "leaf func must not have calls");
   compiler.stack.generated_call = true;
-  compiler.spill_caller_saved_before_call(arg_regs);
+  auto spilled=compiler.spill_caller_saved_before_call(arg_regs);
 
+  /*
   // Phase 1: Update evicted sources - check if any REG_TO_* sources were
   // spilled
   for (auto &arg : pending_args) {
@@ -1369,7 +1370,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
       // Moved to different register
       arg.source_reg = ap.get_reg();
     }
-  }
+  }*/
 
   // Phase 2: Execute byval copies
   for (auto &arg : pending_args) {
@@ -1553,6 +1554,8 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
 
   // Phase 8: Execute call
   derived()->call_impl(std::move(target));
+
+  compiler.release_spilled_regs(spilled);
 
   // Phase 9: Reset state
   // assert((compiler.register_file.allocatable & arg_regs) == 0);
