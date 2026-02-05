@@ -1451,7 +1451,7 @@ continue;
         for (u32 i = 0; i < slot_count; ++i) {
           const IRBlockRef incoming_block = phi_ref.incoming_block_for_slot(i);
           const u32 incoming_idx = adaptor->block_info(incoming_block);
-          if (block_loop_map[incoming_idx] != loop_idx) {
+          if (incoming_idx >= block_loop_map.size() || block_loop_map[incoming_idx] != loop_idx) {
             continue;
           }
           const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(i);
