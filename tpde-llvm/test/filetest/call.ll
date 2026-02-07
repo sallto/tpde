@@ -1259,7 +1259,7 @@ define i32 @alloca_call(i32 %a1, i32 %a2, i32 %a3, i32 %a4) {
 ; X64-NEXT:    lea rsi, [rbp - 0x138b0]
 ; X64-NEXT:    mov dword ptr [rbp - 0x138b8], ecx
 ; X64-NEXT:    mov dword ptr [rbp - 0x138bc], edx
-; X64-NEXT:    mov edi, dword ptr [rbp - 0x138b4]
+; X64-NEXT:    mov edi, esi
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 alloca_call_tgt-0x4
@@ -1284,8 +1284,7 @@ define i32 @alloca_call(i32 %a1, i32 %a2, i32 %a3, i32 %a4) {
 ; ARM64-NEXT:    str w2, [x16, #0x924]
 ; ARM64-NEXT:    add x16, x29, #0x13, lsl #12 // =0x13000
 ; ARM64-NEXT:    str w3, [x16, #0x928]
-; ARM64-NEXT:    add x0, x29, #0x13, lsl #12 // =0x13000
-; ARM64-NEXT:    ldr w0, [x0, #0x920]
+; ARM64-NEXT:    mov w0, w1
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 alloca_call_tgt
@@ -1345,8 +1344,7 @@ define i8 @call_fn_v_i8sext_i8sext_i8sext(i8 %a, i8 %b, i8 %c, i8 %d) {
 ; X64-NEXT:    mov byte ptr [rbp - 0x29], cl
 ; X64-NEXT:    movsx rdi, dil
 ; X64-NEXT:    movsx rsi, dl
-; X64-NEXT:    movzx edx, byte ptr [rbp - 0x29]
-; X64-NEXT:    movsx rdx, dl
+; X64-NEXT:    movsx rdx, cl
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_v_i8sext_i8sext_i8sext-0x4
@@ -1361,8 +1359,7 @@ define i8 @call_fn_v_i8sext_i8sext_i8sext(i8 %a, i8 %b, i8 %c, i8 %d) {
 ; ARM64-NEXT:    strb w3, [x29, #0xa0]
 ; ARM64-NEXT:    sxtb x0, w0
 ; ARM64-NEXT:    sxtb x1, w2
-; ARM64-NEXT:    ldrb w2, [x29, #0xa0]
-; ARM64-NEXT:    sxtb x2, w2
+; ARM64-NEXT:    sxtb x2, w3
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fn_v_i8sext_i8sext_i8sext
@@ -1382,8 +1379,7 @@ define i8 @call_fn_v_i8zext_i8zext_i8zext(i8 %a, i8 %b, i8 %c, i8 %d) {
 ; X64-NEXT:    mov byte ptr [rbp - 0x29], cl
 ; X64-NEXT:    movzx edi, dil
 ; X64-NEXT:    movzx esi, dl
-; X64-NEXT:    movzx edx, byte ptr [rbp - 0x29]
-; X64-NEXT:    movzx edx, dl
+; X64-NEXT:    movzx edx, cl
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_v_i8zext_i8zext_i8zext-0x4
@@ -1398,8 +1394,7 @@ define i8 @call_fn_v_i8zext_i8zext_i8zext(i8 %a, i8 %b, i8 %c, i8 %d) {
 ; ARM64-NEXT:    strb w3, [x29, #0xa0]
 ; ARM64-NEXT:    ubfx x0, x0, #0, #8
 ; ARM64-NEXT:    ubfx x1, x2, #0, #8
-; ARM64-NEXT:    ldrb w2, [x29, #0xa0]
-; ARM64-NEXT:    ubfx x2, x2, #0, #8
+; ARM64-NEXT:    ubfx x2, x3, #0, #8
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fn_v_i8zext_i8zext_i8zext

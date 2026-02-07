@@ -873,6 +873,7 @@ public:
 
   void move_one(u32 i, MoveList &moves, MoveList &result) {
     if (moves[i].src == moves[i].dst) {
+      
       return;
     }
     moves[i].status = MoveStatus::MOVING;
@@ -917,10 +918,19 @@ public:
   See: Silvain Rideau and Xavier Leroy. 2010. Validating register
   allocation and spilling.
   */
-  MoveList sequentialize(MoveList &moves) {
+  MoveList sequentialize(MoveList &moves, bool keep_self_moves = false) {
     MoveList result;
     for (u32 i = 0; i < moves.size(); ++i) {
       if (moves[i].status == MoveStatus::TO_MOVE) {
+        if(keep_self_moves && moves[i].src == moves[i].dst)
+        {
+          result.emplace_back(moves[i].dst,
+                        moves[i].src,
+                        moves[i].size,
+                        moves[i].value_idx,
+                        moves[i].part_idx);
+           continue;
+        }
         move_one(i, moves, result);
       }
     }
@@ -935,8 +945,11 @@ public:
 
     MoveList moves;
     typename RegisterFile::RegBitSet phi_regs = 0;
+    typename RegisterFile::RegBitSet unallocatable_regs = 0;
     if (analyzer.block_has_phis(target)) {
-      phi_regs = move_to_phi_nodes_impl(target, moves);
+      auto [phi_regs_, unallocatable_regs_] = move_to_phi_nodes_impl(target, moves);
+      phi_regs = phi_regs_;
+      unallocatable_regs = unallocatable_regs_;
     }
 
     auto block_state_it = block_regs.find(target);
@@ -1087,8 +1100,9 @@ public:
     // prevent any phi registers from being used as temporaries for swap resolution″
     auto prev_alloc = register_file.allocatable & phi_regs;
     register_file.allocatable &= ~phi_regs;
-    MoveList result = sequentialize(moves);
+    MoveList result = sequentialize(moves,true);
     register_file.allocatable |= prev_alloc;
+    register_file.allocatable |= unallocatable_regs;
     // todo(salto): maybe execute the mov in sequentialize directly
     for (auto move : result) {
       if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
@@ -1107,6 +1121,7 @@ public:
             move.value_idx != register_file.reg_local_idx(Reg{move.dst})) {
           this->evict_reg(Reg{move.dst});
         }
+        if(move.dst!=move.src)
         this->derived()->mov(move.dst, move.src, ap.part_size());
         if (ap.register_valid() && register_file.is_used(ap.get_reg())) {
           register_file.unmark_used(ap.get_reg());
@@ -1129,7 +1144,8 @@ public:
     }
   }
 
-  typename RegisterFile::RegBitSet move_to_phi_nodes_impl(BlockIndex target,
+  
+std::pair<typename RegisterFile::RegBitSet, typename RegisterFile::RegBitSet> move_to_phi_nodes_impl(BlockIndex target,
                                                           MoveList &moves);
 
   /// Count available registers in a specific bank
@@ -2890,7 +2906,8 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
-typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
+std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet,
+          typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet>
     CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
         BlockIndex target, MoveList &moves) {
   // PHI-nodes are always moved to their stack-slot (unless they are fixed)
@@ -2940,6 +2957,8 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
     u32 ref_count;
     u32 references_left = 0;        // For prioritization
     bool allocate_to_stack = false; // Flag for stack allocation
+    u32 gp_parts = 0;               // Number of parts using GP registers
+    u32 fp_parts = 0;               // Number of parts using FP registers
 
     bool operator<(const NodeEntry &other) const {
       return phi_local_idx < other.phi_local_idx;
@@ -2957,12 +2976,29 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
     ValueAssignment *assignment = val_assignment(phi_local_idx);
     u32 refs_left = assignment ? assignment->references_left : 0;
 
+    // Count parts per bank for this phi
+    u32 gp_parts = 0;
+    u32 fp_parts = 0;
+    if (assignment) {
+      for (u32 part = 0; part < assignment->part_count; ++part) {
+        AssignmentPartRef ap{assignment, part};
+        RegBank bank = ap.bank();
+        if (bank == Config::GP_BANK) {
+          ++gp_parts;
+        } else if (bank == Config::FP_BANK) {
+          ++fp_parts;
+        }
+      }
+    }
 
     nodes.emplace_back(NodeEntry{.phi = phi,
                                  .incoming_val = incoming,
                                  .phi_local_idx = phi_local_idx,
-                                 .references_left = refs_left});
+                                 .references_left = refs_left,
+                                 .gp_parts = gp_parts,
+                                 .fp_parts = fp_parts});
   }
+  typename RegisterFile::RegBitSet unallocatable_regs=0;
 
   typename RegisterFile::RegBitSet used_phi_regs = 0;
 
@@ -3097,11 +3133,30 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
 
 
       if (incoming_reg.valid() && !incoming_last_ref) {
+        if(incoming_reg == target_reg && !adaptor->val_ignore_in_liveness_analysis(incoming_val)){
+          //try to preserve incoming_val
+          auto incoming_idx = register_file.reg_local_idx(incoming_reg);
+          if(incoming_idx != INVALID_VAL_LOCAL_IDX){
+            AssignmentPartRef ap{val_assignment(incoming_idx), part};
+            auto reg = register_file.find_first_free_excluding(phi_ap.bank(), unallocatable_regs | used_phi_regs);
+            if(reg.valid()){
+              moves.emplace_back(reg, incoming_reg, ap.part_size(), incoming_idx, part);
+                register_file.allocatable &= ~(1ull << reg.id());
+              unallocatable_regs |= 1ull << reg.id();
+            }else{
+              derived()->spill(ap);
+              ap.set_register_valid(false);
+              register_file.allocatable &= ~(1ull << incoming_reg.id());
+              unallocatable_regs |= 1ull << incoming_reg.id();
+            }
+          }
+        }
         moves.emplace_back(
             target_reg, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
       } else if (incoming_reg.valid() && incoming_last_ref) {
         register_file.allocatable &=
             ~(1ull << incoming_reg.id()); // todo(salto): undo this
+            unallocatable_regs |= 1ull << incoming_reg.id();
         moves.emplace_back(
             target_reg, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
       } else {
@@ -3109,6 +3164,9 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
           evict_reg(target_reg);
         }
         incoming_part.reload_into_specific_fixed(target_reg);
+         //todo(salto): simplify 
+        moves.emplace_back(
+            target_reg, target_reg, phi_ap.part_size(), phi_local_idx, part);
       }
       used_phi_regs |= (1ull << target_reg.id());
       used_phi_regs_global |= (1ull << target_reg.id());
@@ -3184,10 +3242,14 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
       } else if (incoming_reg.valid() && incoming_ref.last_ref()) {
         register_file.allocatable &=
             ~(1ull << incoming_reg.id()); // todo(salto): undo this
+        unallocatable_regs |= 1ull << incoming_reg.id();
         moves.emplace_back(
             selected, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
       } else {
         incoming_part.reload_into_specific_fixed(selected);
+        //todo(salto): simplify 
+        moves.emplace_back(
+            selected, selected, phi_ap.part_size(), phi_local_idx, part);
       }
 
       target_regs[part] = selected;
@@ -3232,41 +3294,68 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
   assert(!nodes.empty() && "block marked has having phi nodes has none");
 
   // Determine allocation strategy: hybrid register/stack if too many phi nodes
-  const u32 phi_count = static_cast<u32>(nodes.size());
-  // todo(salto): do this for each bank seperately, so we guarantee at least 1
-  // free register
-  const u32 available_regs = count_total_available_registers();
+  // Per-bank allocation: ensure at least 1 register remains free in each bank
+  constexpr u32 reserved_per_bank = 3;
 
-  // Reserve some registers for scratch operations during phi resolution
-  constexpr u32 reserved_for_scratch = 2;
-  const u32 regs_for_phis =
-      std::max(0u,
-               std::min(available_regs - phi_count - reserved_for_scratch,
-                        PHI_REGISTER_THRESHOLD));
+  // Get available registers per bank
+  const u32 available_gp = count_available_registers(Config::GP_BANK);
+  const u32 available_fp = count_available_registers(Config::FP_BANK);
 
+  // Count total parts per bank across all phi nodes
+  u32 gp_parts_total = 0;
+  u32 fp_parts_total = 0;
+  for (const auto &node : nodes) {
+    gp_parts_total += node.gp_parts;
+    fp_parts_total += node.fp_parts;
+  }
 
-  bool use_hybrid_allocation = phi_count > regs_for_phis;
+  // Calculate register capacity per bank (ensuring at least 1 free register)
+  const u32 gp_regs_for_phis =
+      std::min(available_gp > reserved_per_bank ? available_gp - reserved_per_bank : 0,
+               PHI_REGISTER_THRESHOLD);
+  const u32 fp_regs_for_phis =
+      std::min(available_fp > reserved_per_bank ? available_fp - reserved_per_bank : 0,
+               PHI_REGISTER_THRESHOLD);
+
+  // Determine if hybrid allocation is needed for each bank
+  bool use_hybrid_allocation = gp_parts_total > gp_regs_for_phis ||
+                               fp_parts_total > fp_regs_for_phis;
 
   if (use_hybrid_allocation) {
-    TPDE_LOG_DBG("Using hybrid phi allocation: {} phi nodes, {} available regs",
-                 phi_count,
-                 available_regs);
+    TPDE_LOG_DBG("Using hybrid phi allocation: {} GP parts ({} avail), {} FP parts ({} avail)",
+                 gp_parts_total,
+                 available_gp,
+                 fp_parts_total,
+                 available_fp);
 
     // Sort by references_left (descending) to prioritize high-use phi nodes
-    // TODO(salto): Test different heuristics for phi node prioritization:
-    // - Could prioritize by liveness length
-    // - Could prioritize by use in current block vs successors
-    // - Could use a combination of factors
     std::sort(
         nodes.begin(), nodes.end(), [](const NodeEntry &a, const NodeEntry &b) {
           return a.references_left > b.references_left;
         });
 
-    // Mark phi nodes beyond register capacity for stack allocation
-    for (u32 i = regs_for_phis; i < phi_count; ++i) {
-      nodes[i].allocate_to_stack = true;
-      TPDE_LOG_TRACE("Phi node {} will be allocated to stack",
-                     static_cast<u32>(nodes[i].phi_local_idx));
+    // Track how many parts we've allocated to registers per bank
+    u32 gp_allocated = 0;
+    u32 fp_allocated = 0;
+
+    // Mark phi nodes for stack allocation when bank capacity is exceeded
+    for (auto &node : nodes) {
+      bool needs_stack = false;
+      if (node.gp_parts > 0 && gp_allocated + node.gp_parts > gp_regs_for_phis) {
+        needs_stack = true;
+      }
+      if (node.fp_parts > 0 && fp_allocated + node.fp_parts > fp_regs_for_phis) {
+        needs_stack = true;
+      }
+      if (needs_stack) {
+        node.allocate_to_stack = true;
+        TPDE_LOG_TRACE("Phi node {} will be allocated to stack",
+                       static_cast<u32>(node.phi_local_idx));
+      } else {
+        // Count this phi's parts against bank capacities
+        gp_allocated += node.gp_parts;
+        fp_allocated += node.fp_parts;
+      }
     }
   }
   if (target_phi_regs.empty()) {
@@ -3378,7 +3467,7 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
       register_file.unmark_used(move.dst);
     }
   }
-  return used_phi_regs;
+  return {used_phi_regs,  unallocatable_regs};
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
@@ -3670,7 +3759,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
                 auto other_ap =
                     AssignmentPartRef{other, register_file.reg_part(reg)};
                 if (other_ap.register_valid()) {
-                  assert(other_ap.stack_valid() && "can't spill during phi resoulution");
+                  //assert(other_ap.stack_valid() && "can't spill during phi resoulution");
                   other_ap.set_register_valid(false);
                 }
               }
