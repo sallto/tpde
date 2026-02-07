@@ -975,6 +975,11 @@ public:
           AssignmentPartRef ap{va, i};
           auto cur_reg = ap.get_reg();
           if (!state.registers[i].valid()) {
+            if (ap.register_valid() && !ap.fixed_assignment()) {
+              assert(cur_reg.valid());
+              // not valid in target but currently valid
+              evict(ap);
+            }
             continue;
           }
           if (!ap.register_valid()) {
@@ -991,6 +996,10 @@ public:
             } else {
               if (ap.stack_valid()) {
                 reload_to_reg(state.registers[i], ap);
+                ap.set_register_valid(true);
+                ap.set_reg(state.registers[i]);
+                register_file.mark_used(
+                    state.registers[i], state.val_local_idx, i);
               }
               continue;
             }
@@ -1248,7 +1257,8 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
 
   // Register destination
   arg.target_reg = cca.reg;
-  arg_regs |= (1ull << cca.reg.id());
+  bool needs_ext = cca.int_ext != 0;
+
 
   if (vp.is_const()) {
     arg.kind = PendingArg::Kind::CONST_TO_REG;
@@ -1280,15 +1290,69 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       if (!ap.variable_ref()) {
         arg.frame_off = ap.frame_off();
       }
+      if (ap.assignment()->pending_free ||
+          ap.assignment()->references_left <= 1) {
+        if (source_regs & (1ull << cca.reg.id())) {
+          // our target is a already used source register.
+          auto temp = compiler.register_file.find_first_free_excluding(
+              cca.bank, source_regs);
+          TPDE_LOG_TRACE("Target reg {} is already used as source, using temp {}", cca.reg.id(),
+                   temp.id());
+          if (!temp.valid()) {
+            temp = compiler.select_reg(cca.bank, source_regs);
+          }
+          compiler.mov(temp, cca.reg, 8);
+          source_regs |= (1ull << temp.id());
+          for (auto &pending_arg : pending_args) {
+            if (pending_arg.kind == PendingArg::Kind::REG_TO_REG &&
+                pending_arg.source_reg == cca.reg) {
+              pending_arg.source_reg = temp;
+            }
+          }
+        }
+
+        // load immediately since we could lose our stack slot.
+        if (compiler.register_file.is_used(cca.reg)) {
+          compiler.evict_reg(cca.reg);
+        }
+        vp.reload_into_specific_fixed(&compiler, cca.reg);
+        arg_regs |= (1ull << cca.reg.id());
+        source_regs |= (1ull << cca.reg.id());
+        compiler.register_file.allocatable &= ~source_regs;
+        if (needs_ext) {
+          compiler.generate_raw_intext(
+              cca.reg, cca.reg, cca.int_ext >> 7, cca.int_ext & 0x3f, 64);
+        }
+        return;
+      }
     } else {
       // var-refs and sret
       // todo(salto): test unlikely
+      if (source_regs & (1ull << cca.reg.id())) {
+        // our target is a already used source register.
+        auto temp = compiler.register_file.find_first_free_excluding(cca.bank,
+                                                                     source_regs);
+        TPDE_LOG_TRACE("Target var-ref/sret reg {} is already used as source, using temp {}", cca.reg.id(),
+                   temp.id());
+        if (!temp.valid()) {
+          temp = compiler.select_reg(cca.bank, source_regs);
+        }
+        compiler.mov(temp, cca.reg, 8);
+        source_regs |= (1ull << temp.id());
+        for (auto &pending_arg : pending_args) {
+          if (pending_arg.kind == PendingArg::Kind::REG_TO_REG &&
+              pending_arg.source_reg == cca.reg) {
+            pending_arg.source_reg = temp;
+          }
+        }
+      }
+
       //  not worth optimizing
       if (compiler.register_file.is_used(cca.reg)) {
         compiler.evict_reg(cca.reg);
       }
-
       vp.load_to_specific(&compiler, cca.reg);
+      arg_regs |= (1ull << cca.reg.id());
       source_regs |= (1ull << cca.reg.id());
       compiler.register_file.allocatable &= ~source_regs;
       vp.reset(&compiler);
@@ -1429,9 +1493,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
       }
 
       // Already in place - just mark clobbered
-      if (compiler.register_file.is_used(arg.target_reg)) {
-        compiler.evict_reg(arg.target_reg);
-      }
+      
       compiler.register_file.mark_clobbered(arg.target_reg);
       compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
       continue;
@@ -1492,9 +1554,10 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     }
 
     // Evict target register if used
-    if (compiler.register_file.is_used(arg.target_reg)) {
-      compiler.evict_reg(arg.target_reg);
-    }
+    // if (compiler.register_file.is_used(arg.target_reg)) {
+    //  compiler.evict_reg(arg.target_reg);
+    //}
+    assert(!compiler.register_file.is_used(arg.target_reg));
 
     if (arg.local_idx != INVALID_VAL_LOCAL_IDX) {
       if (ValueAssignment *va = compiler.val_assignment(arg.local_idx);
@@ -2562,9 +2625,8 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
       continue;
     }
 
-    derived()->spill(ap);
-    ap.set_register_valid(false);
-    register_file.unmark_used(reg);
+    evict_reg(AsmReg{reg_id});
+    register_file.mark_clobbered(Reg{reg_id});
     spilled |= (1ull << reg_id);
   }
 
@@ -2604,7 +2666,20 @@ typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet
   //     return RegBitSet{};
   //   }
   // }
+
   using RegBitSet = typename RegisterFile::RegBitSet;
+  if (force_spill) {
+    RegBitSet spilled = 0;
+    for (auto reg_id : register_file.used_regs()) {
+      const Reg reg{reg_id};
+      if (register_file.is_fixed(reg)) {
+        continue;
+      }
+      evict_reg(reg);
+      spilled |= (1ull << reg_id);
+    }
+    return spilled;
+  }
   return RegBitSet{};
 }
 
@@ -2793,7 +2868,7 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
   ScratchReg tmp_scratch{this};
   tmp_scratch.alloc_specific(tmp_reg);
 
-  const auto spilled = this->spill_before_branch();
+  const auto spilled = this->spill_before_branch(true);
   this->begin_branch_region();
 
   tpde::util::SmallVector<tpde::Label, 64> case_labels;

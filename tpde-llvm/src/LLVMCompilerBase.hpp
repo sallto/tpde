@@ -4192,6 +4192,7 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_fcmp(
 template <typename Adaptor, typename Derived, typename Config>
 bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_switch(
     const llvm::Instruction *inst, const ValInfo &, u64) {
+  //todo(salto): switches currently spill everything
   const auto *switch_inst = llvm::cast<llvm::SwitchInst>(inst);
   llvm::Value *cond = switch_inst->getCondition();
   u32 width = cond->getType()->getIntegerBitWidth();
