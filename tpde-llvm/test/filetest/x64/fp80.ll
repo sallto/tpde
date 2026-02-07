@@ -58,11 +58,11 @@ define void @call_args(x86_fp80 %a, x86_fp80 %b) {
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    sub rsp, 0x50
-; X64-NEXT:    movaps xmm0, xmmword ptr <call_args+0x7>
+; X64-NEXT:    movaps xmm8, xmmword ptr <call_args+0x7>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
-; X64-NEXT:    movdqa xmmword ptr [rsp], xmm0
-; X64-NEXT:    movapd xmm0, xmmword ptr [rbp + 0x10]
-; X64-NEXT:    movdqa xmmword ptr [rsp + 0x10], xmm0
+; X64-NEXT:    movdqa xmmword ptr [rsp], xmm8
+; X64-NEXT:    movapd xmm8, xmmword ptr [rbp + 0x10]
+; X64-NEXT:    movdqa xmmword ptr [rsp + 0x10], xmm8
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 call_args-0x4

@@ -20,16 +20,16 @@ define i32 @invoke_manyargs() personality ptr @__gxx_personality_v0 {
 ; X64-NEXT:    mov dword ptr [rsp], eax
 ; X64-NEXT:    mov eax, 0x8
 ; X64-NEXT:    mov dword ptr [rsp + 0x8], eax
-; X64-NEXT:    mov eax, 0x9
-; X64-NEXT:    mov dword ptr [rsp + 0x10], eax
-; X64-NEXT:    mov eax, 0xa
-; X64-NEXT:    mov dword ptr [rsp + 0x18], eax
 ; X64-NEXT:    mov edi, 0x1
 ; X64-NEXT:    mov esi, 0x2
 ; X64-NEXT:    mov edx, 0x3
 ; X64-NEXT:    mov ecx, 0x4
 ; X64-NEXT:    mov r8d, 0x5
 ; X64-NEXT:    mov r9d, 0x6
+; X64-NEXT:    mov eax, 0x9
+; X64-NEXT:    mov dword ptr [rsp + 0x10], eax
+; X64-NEXT:    mov eax, 0xa
+; X64-NEXT:    mov dword ptr [rsp + 0x18], eax
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 mayThrow-0x4
@@ -50,11 +50,6 @@ define i32 @invoke_manyargs() personality ptr @__gxx_personality_v0 {
 ; ARM64-LABEL: <invoke_manyargs>:
 ; ARM64:         stp x29, x30, [sp, #-0xa0]!
 ; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    sub sp, sp, #0x10
-; ARM64-NEXT:    mov x0, #0x9 // =9
-; ARM64-NEXT:    str w0, [sp]
-; ARM64-NEXT:    mov x0, #0xa // =10
-; ARM64-NEXT:    str w0, [sp, #0x8]
 ; ARM64-NEXT:    mov x0, #0x1 // =1
 ; ARM64-NEXT:    mov x1, #0x2 // =2
 ; ARM64-NEXT:    mov x2, #0x3 // =3
@@ -63,6 +58,11 @@ define i32 @invoke_manyargs() personality ptr @__gxx_personality_v0 {
 ; ARM64-NEXT:    mov x5, #0x6 // =6
 ; ARM64-NEXT:    mov x6, #0x7 // =7
 ; ARM64-NEXT:    mov x7, #0x8 // =8
+; ARM64-NEXT:    sub sp, sp, #0x10
+; ARM64-NEXT:    mov x16, #0x9 // =9
+; ARM64-NEXT:    str w16, [sp]
+; ARM64-NEXT:    mov x16, #0xa // =10
+; ARM64-NEXT:    str w16, [sp, #0x8]
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 mayThrow

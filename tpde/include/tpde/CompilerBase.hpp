@@ -450,6 +450,10 @@ public:
     PendingArgList pending_args{};
     // Track source registers to detect eviction
     RegisterFile::RegBitSet source_regs{};
+    // Number of high-level call arguments added for this call.
+    u32 arg_value_count = 0;
+    // Fallback mode for high argument pressure: emit pending arg work eagerly.
+    bool immediate_emit_mode = false;
 
   public:
     CallBuilderBase(Derived &compiler, CCAssigner &assigner)
@@ -481,6 +485,9 @@ public:
 
     /// Generate the function call (evict registers, call, reset stack frame).
     void call(std::variant<SymRef, ValuePart>);
+
+  public:
+    void flush_pending_args();
 
     /// Assign next return value part to vp.
     void add_ret(ValuePart &vp, CCAssignment cca);
@@ -1243,6 +1250,9 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     bool needs_ext = cca.int_ext != 0;
     bool ext_sign = cca.int_ext >> 7;
     unsigned ext_bits = cca.int_ext & 0x3f;
+    const auto abi_arg_regs = assigner.get_ccinfo().arg_regs;
+    auto blocked_arg_regs = compiler.register_file.allocatable & abi_arg_regs;
+    compiler.register_file.allocatable &= ~abi_arg_regs;
 
     if (needs_ext) {
       auto ext = std::move(vp).into_extended(&compiler, ext_sign, ext_bits, 64);
@@ -1251,12 +1261,14 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     } else {
       derived()->add_arg_stack(vp, cca);
     }
+    compiler.register_file.allocatable |= blocked_arg_regs;
     vp.reset(&compiler);
     return;
   }
 
   // Register destination
   arg.target_reg = cca.reg;
+  arg_regs |= (1ull << cca.reg.id());
   bool needs_ext = cca.int_ext != 0;
 
 
@@ -1371,6 +1383,9 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
   // todo(salto): alloca_call
 
   pending_args.push_back(arg);
+  if (immediate_emit_mode) {
+    flush_pending_args();
+  }
   vp.reset(&compiler);
 }
 
@@ -1378,6 +1393,12 @@ template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 template <typename CBDerived>
 void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     CBDerived>::add_arg(const CallArg &arg, u32 part_count) {
+  ++arg_value_count;
+  if (!immediate_emit_mode && arg_value_count > 8) {
+    immediate_emit_mode = true;
+    flush_pending_args();
+  }
+
   ValueRef vr = compiler.val_ref(arg.value);
 
   if (arg.flag == CallArg::Flag::byval) {
@@ -1409,6 +1430,165 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
                            .align = u8(part_idx == 0 ? align : 1),
                        });
   }
+}
+
+template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template <typename CBDerived>
+void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
+    CBDerived>::flush_pending_args() {
+  if (pending_args.empty()) {
+    return;
+  }
+
+  // Phase 2: Execute byval copies
+  for (auto &arg : pending_args) {
+    if (arg.kind != PendingArg::Kind::BYVAL) {
+      continue;
+    }
+
+    ValuePart vp{arg.bank};
+    if (arg.local_idx != INVALID_VAL_LOCAL_IDX) {
+      ValueAssignment *va = compiler.val_assignment(arg.local_idx);
+      if (va) {
+        vp = ValuePart{arg.local_idx, va, arg.part_idx, false};
+      }
+    }
+
+    CCAssignment cca{
+        .byval = true,
+        .size = arg.byval_size,
+        .stack_off = arg.stack_off,
+    };
+    derived()->add_arg_byval(vp, cca);
+    vp.reset(&compiler);
+  }
+
+  // Phase 3: Build parallel move list for register-to-register moves
+  MoveList moves;
+  for (auto &arg : pending_args) {
+    if (arg.kind != PendingArg::Kind::REG_TO_REG) {
+      continue;
+    }
+    if (arg.source_reg == arg.target_reg) {
+      if (arg.int_ext != 0) {
+        bool ext_sign = arg.int_ext >> 7;
+        unsigned ext_bits = arg.int_ext & 0x3f;
+        compiler.generate_raw_intext(
+            arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
+      }
+
+      compiler.register_file.mark_clobbered(arg.target_reg);
+      compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
+      continue;
+    }
+
+    RegisterMove move{
+        arg.target_reg, arg.source_reg, arg.size, arg.local_idx, arg.part_idx};
+    moves.push_back(move);
+  }
+
+  // Phase 4: Sequentialize and execute register-to-register moves
+  if (!moves.empty()) {
+    compiler.register_file.allocatable &= ~source_regs;
+    MoveList ordered = compiler.sequentialize(moves);
+    for (auto &move : ordered) {
+      u8 int_ext = 0;
+      for (const auto &arg : pending_args) {
+        if (arg.kind == PendingArg::Kind::REG_TO_REG &&
+            arg.target_reg == move.dst) {
+          int_ext = arg.int_ext;
+          break;
+        }
+      }
+
+      if (compiler.register_file.is_used(move.dst)) {
+        compiler.evict_reg(move.dst);
+      }
+
+      if (int_ext != 0) {
+        bool ext_sign = int_ext >> 7;
+        unsigned ext_bits = int_ext & 0x3f;
+        compiler.generate_raw_intext(move.dst, move.src, ext_sign, ext_bits, 64);
+      } else {
+        compiler.mov(move.dst, move.src, move.size);
+      }
+#ifndef NDEBUG
+      if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
+        compiler.verification_ir.emit_call_arg_move(
+            move.src, move.dst, move.size);
+        compiler.vir_record_arg_move(move.value_idx, move.part_idx, move.dst);
+      }
+#endif
+      compiler.register_file.mark_clobbered(move.dst);
+      compiler.register_file.allocatable &= ~(u64{1} << move.dst.id());
+    }
+  }
+
+  // Phase 5: Execute stack-to-register loads
+  for (auto &arg : pending_args) {
+    if (arg.kind != PendingArg::Kind::STACK_TO_REG) {
+      continue;
+    }
+
+    if (compiler.register_file.is_used(arg.target_reg)) {
+      compiler.evict_reg(arg.target_reg);
+    }
+
+    if (arg.local_idx != INVALID_VAL_LOCAL_IDX) {
+      if (ValueAssignment *va = compiler.val_assignment(arg.local_idx);
+          va && va->variable_ref && va->stack_variable) {
+        AssignmentPartRef ap{va, arg.part_idx};
+        compiler.reload_to_reg(arg.target_reg, ap);
+      } else {
+        compiler.load_from_stack(arg.target_reg, arg.frame_off, arg.size);
+      }
+    } else {
+      compiler.load_from_stack(arg.target_reg, arg.frame_off, arg.size);
+    }
+
+    if (arg.int_ext != 0) {
+      bool ext_sign = arg.int_ext >> 7;
+      unsigned ext_bits = arg.int_ext & 0x3f;
+      compiler.generate_raw_intext(
+          arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
+    }
+
+    compiler.register_file.mark_clobbered(arg.target_reg);
+    compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
+  }
+
+  // Phase 6: Materialize constants to registers
+  for (auto &arg : pending_args) {
+    if (arg.kind != PendingArg::Kind::CONST_TO_REG) {
+      continue;
+    }
+
+    if (compiler.register_file.is_used(arg.target_reg)) {
+      compiler.evict_reg(arg.target_reg);
+    }
+
+    ValuePart vp{arg.bank};
+    if (arg.const_inline) {
+      vp = ValuePart{arg.const_data, arg.size, arg.bank};
+    } else {
+      vp = ValuePart{arg.const_ptr, arg.size, arg.bank};
+    }
+
+    vp.reload_into_specific_fixed(&compiler, arg.target_reg);
+
+    if (arg.int_ext != 0) {
+      bool ext_sign = arg.int_ext >> 7;
+      unsigned ext_bits = arg.int_ext & 0x3f;
+      compiler.generate_raw_intext(
+          arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
+    }
+
+    vp.reset(&compiler);
+    compiler.register_file.mark_clobbered(arg.target_reg);
+    compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
+  }
+
+  pending_args.clear();
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
@@ -1452,170 +1632,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     }
   }*/
 
-  // Phase 2: Execute byval copies
-  for (auto &arg : pending_args) {
-    if (arg.kind != PendingArg::Kind::BYVAL) {
-      continue;
-    }
-
-    // Create ValuePart for source
-    ValuePart vp{arg.bank};
-    if (arg.local_idx != INVALID_VAL_LOCAL_IDX) {
-      ValueAssignment *va = compiler.val_assignment(arg.local_idx);
-      if (va) {
-        vp = ValuePart{arg.local_idx, va, arg.part_idx, false};
-      }
-    }
-
-    CCAssignment cca{
-        .byval = true,
-        .size = arg.byval_size,
-        .stack_off = arg.stack_off,
-    };
-    derived()->add_arg_byval(vp, cca);
-    vp.reset(&compiler);
-  }
-
-  // Phase 3: Build parallel move list for register-to-register moves
-  MoveList moves;
-  for (auto &arg : pending_args) {
-    if (arg.kind != PendingArg::Kind::REG_TO_REG) {
-      continue;
-    }
-    if (arg.source_reg == arg.target_reg) {
-      if (arg.int_ext != 0) {
-        // todo(salto): can there be a case where we need the upper bits of reg
-        // for a different arg?
-        bool ext_sign = arg.int_ext >> 7;
-        unsigned ext_bits = arg.int_ext & 0x3f;
-        compiler.generate_raw_intext(
-            arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
-      }
-
-      // Already in place - just mark clobbered
-      
-      compiler.register_file.mark_clobbered(arg.target_reg);
-      compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
-      continue;
-    }
-
-    RegisterMove move{
-        arg.target_reg, arg.source_reg, arg.size, arg.local_idx, arg.part_idx};
-    moves.push_back(move);
-  }
-
-  // Phase 4: Sequentialize and execute register-to-register moves
-  if (!moves.empty()) {
-    // seqeuntalize may need an additional register and one of the arguments can
-    // already be freed. make sure it never uses those registers.
-    compiler.register_file.allocatable &= ~source_regs;
-    MoveList ordered = compiler.sequentialize(moves);
-    for (auto &move : ordered) {
-      // Find the corresponding pending arg to check for extensions
-      u8 int_ext = 0;
-      for (const auto &arg : pending_args) {
-        if (arg.kind == PendingArg::Kind::REG_TO_REG &&
-            arg.target_reg == move.dst) {
-          int_ext = arg.int_ext;
-          break;
-        }
-      }
-
-      if (compiler.register_file.is_used(move.dst)) {
-        compiler.evict_reg(move.dst);
-      }
-
-
-      if (int_ext != 0) {
-        bool ext_sign = int_ext >> 7;
-        unsigned ext_bits = int_ext & 0x3f;
-        compiler.generate_raw_intext(
-            move.dst, move.src, ext_sign, ext_bits, 64);
-      } else {
-        compiler.mov(move.dst, move.src, move.size);
-      }
-#ifndef NDEBUG
-      // Emit the move for VIR tracking and record final location
-      if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
-        compiler.verification_ir.emit_call_arg_move(
-            move.src, move.dst, move.size);
-        compiler.vir_record_arg_move(move.value_idx, move.part_idx, move.dst);
-      }
-#endif
-      compiler.register_file.mark_clobbered(move.dst);
-      compiler.register_file.allocatable &= ~(u64{1} << move.dst.id());
-    }
-  }
-
-  // Phase 5: Execute stack-to-register loads
-  for (auto &arg : pending_args) {
-    if (arg.kind != PendingArg::Kind::STACK_TO_REG) {
-      continue;
-    }
-
-    // Evict target register if used
-    // if (compiler.register_file.is_used(arg.target_reg)) {
-    //  compiler.evict_reg(arg.target_reg);
-    //}
-    assert(!compiler.register_file.is_used(arg.target_reg));
-
-    if (arg.local_idx != INVALID_VAL_LOCAL_IDX) {
-      if (ValueAssignment *va = compiler.val_assignment(arg.local_idx);
-          va && va->variable_ref && va->stack_variable) {
-        AssignmentPartRef ap{va, arg.part_idx};
-        compiler.reload_to_reg(arg.target_reg, ap);
-      } else {
-        compiler.load_from_stack(arg.target_reg, arg.frame_off, arg.size);
-      }
-    } else {
-      compiler.load_from_stack(arg.target_reg, arg.frame_off, arg.size);
-    }
-
-    // Handle extension if needed
-    if (arg.int_ext != 0) {
-      bool ext_sign = arg.int_ext >> 7;
-      unsigned ext_bits = arg.int_ext & 0x3f;
-      compiler.generate_raw_intext(
-          arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
-    }
-
-    compiler.register_file.mark_clobbered(arg.target_reg);
-    compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
-  }
-
-  // Phase 6: Materialize constants to registers
-  for (auto &arg : pending_args) {
-    if (arg.kind != PendingArg::Kind::CONST_TO_REG) {
-      continue;
-    }
-
-    // Evict target register if used
-    if (compiler.register_file.is_used(arg.target_reg)) {
-      compiler.evict_reg(arg.target_reg);
-    }
-
-    // Create constant ValuePart and load to register
-    ValuePart vp{arg.bank};
-    if (arg.const_inline) {
-      vp = ValuePart{arg.const_data, arg.size, arg.bank};
-    } else {
-      vp = ValuePart{arg.const_ptr, arg.size, arg.bank};
-    }
-
-    vp.reload_into_specific_fixed(&compiler, arg.target_reg);
-
-    // Handle extension if needed
-    if (arg.int_ext != 0) {
-      bool ext_sign = arg.int_ext >> 7;
-      unsigned ext_bits = arg.int_ext & 0x3f;
-      compiler.generate_raw_intext(
-          arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
-    }
-
-    vp.reset(&compiler);
-    compiler.register_file.mark_clobbered(arg.target_reg);
-    compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
-  }
+  flush_pending_args();
 
   // Phase 7: Evict remaining clobbered registers
   typename RegisterFile::RegBitSet skip_evict = 0;
@@ -1639,9 +1656,11 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
   // Phase 9: Reset state
   // assert((compiler.register_file.allocatable & arg_regs) == 0);
   compiler.register_file.allocatable |= arg_regs;
-  compiler.register_file.allocatable |= source_regs;
+  compiler.register_file.allocatable |= (source_regs & ~arg_regs);
   pending_args.clear();
   source_regs = 0;
+  arg_value_count = 0;
+  immediate_emit_mode = false;
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>

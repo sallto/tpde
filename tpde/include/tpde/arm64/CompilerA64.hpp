@@ -639,7 +639,21 @@ void CompilerA64<Adaptor, Derived, BaseTy, Config>::CallBuilder::add_arg_stack(
     ValuePart &vp, CCAssignment &cca) {
   set_stack_used();
 
-  auto reg = vp.has_reg() ? vp.cur_reg() : vp.load_to_reg(&this->compiler);
+  AsmReg reg = vp.has_reg() ? vp.cur_reg() : AsmReg::make_invalid();
+  if (cca.bank == Config::GP_BANK) {
+    const u64 abi_arg_regs = this->assigner.get_ccinfo().arg_regs;
+    const bool reg_is_abi_arg = reg.valid() && ((abi_arg_regs >> reg.id()) & 1);
+    if (!reg.valid()) {
+      reg = vp.reload_into_specific_fixed(&this->compiler, AsmReg::R16);
+    } else if (reg_is_abi_arg) {
+      // store through R16, the permanent scratch register, to avoid clobbering an argument register that
+      this->compiler.mov(AsmReg::R16, reg, cca.size);
+      reg = AsmReg::R16;
+    }
+  }
+  if (!reg.valid()) {
+    reg = vp.load_to_reg(&this->compiler);
+  }
   if (this->compiler.register_file.reg_bank(reg) == Config::GP_BANK) {
     switch (cca.size) {
     case 1: ASMC(&this->compiler, STRBu, reg, DA_SP, cca.stack_off); break;
