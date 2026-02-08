@@ -388,14 +388,15 @@ bool LLVMCompilerArm64::compile_icmp(const llvm::Instruction *inst,
         // Generate CBZ/CBNZ if possible. However, lhs_reg might be the register
         // corresponding to a PHI node, which gets modified before the branch.
         // We have to detect this case and generate a copy into a separate
-        // register. This case is not easy to detect here, though. Therefore,
-        // for now we always copy the value into a register that we own.
-        // TODO: copy only when lhs_reg belongs to an overwritten PHI node.
-        {
-          // Avoid holding the scratch over the branch boundary.
-          // todo(salto): i think this can be removed
+        // register. This will only happen if the target already has a PHI allocation for target_idx, 
+        // (otherwise the resolution routine will find a free register)
+        // If lhs_reg is used somewhere as a phi, we move it to the permananet scratch which will not be used for phis.
           ScratchReg res_scratch{this};
-          if (!lhs_op.can_salvage()) {
+          if(this->used_phi_regs_global & (1ULL << lhs_reg.id())) {
+            res_scratch.alloc_specific(permanent_scratch_reg);
+            this->mov(permanent_scratch_reg, lhs_reg, int_width <= 32 ? 4 : 8);
+            lhs_reg = permanent_scratch_reg;
+          }else if (!lhs_op.can_salvage()) {
             AsmReg src_reg = lhs_reg;
             lhs_reg = res_scratch.alloc_gp();
             this->mov(lhs_reg, src_reg, int_width <= 32 ? 4 : 8);
@@ -406,7 +407,7 @@ bool LLVMCompilerArm64::compile_icmp(const llvm::Instruction *inst,
           rhs_op.reset();
           lhs.reset();
           rhs.reset();
-        }
+        
 
         auto jump_kind = jump == Jump::Jeq ? Jump::Cbz : Jump::Cbnz;
         Jump cbz{jump_kind, lhs_reg, int_width <= 32};

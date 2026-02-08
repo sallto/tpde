@@ -578,8 +578,8 @@ define void @cbz_phi() {
 ; ARM64-NEXT:    add w1, w1, #0x0
 ; ARM64-NEXT:    mov w1, #0x0 // =0
 ; ARM64-NEXT:    add w1, w1, #0x0
-; ARM64-NEXT:    mov w1, w0
-; ARM64-NEXT:    cbnz w1, <L0>
+; ARM64-NEXT:    mov w16, w0
+; ARM64-NEXT:    cbnz w16, <L0>
 ; ARM64-NEXT:    str w0, [x29, #0xa0]
 ; ARM64-NEXT:    mov w0, #0x0 // =0
 ; ARM64-NEXT:    b <L1>
