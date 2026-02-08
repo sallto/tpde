@@ -571,7 +571,8 @@ public:
   }
 
   [[nodiscard]] bool inst_has_call(const IRInstRef inst) const {
-    // todo(salto): some are missing
+    // todo(salto): could be cheaply expanded with bool has_multi_part.
+    // many intrinsics only generate calls for multi part values
     if (auto *call = llvm::dyn_cast<llvm::CallInst>(inst)) {
       if (auto *callee = call->getCalledFunction()) {
         return !callee->isIntrinsic();
