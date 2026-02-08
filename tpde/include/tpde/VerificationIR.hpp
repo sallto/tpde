@@ -449,6 +449,23 @@ struct VerificationIR {
     return current_block_idx;
   }
 
+private:
+  BlockInfo &get_or_create_block(BlockIndex block_idx) noexcept {
+    auto it = std::find_if(
+        blocks.begin(), blocks.end(), [block_idx](const BlockInfo &bi) {
+          return bi.block_idx == block_idx;
+        });
+    if (it == blocks.end()) {
+      BlockInfo block_info;
+      block_info.block_idx = block_idx;
+      blocks.push_back(std::move(block_info));
+      return blocks.back();
+    }
+    return *it;
+  }
+
+public:
+
   void set_branch_condition(util::SmallVector<Operand, 4> ops) noexcept {
     current_branch_condition = std::move(ops);
   }
@@ -495,9 +512,7 @@ struct VerificationIR {
             static_cast<BlockIndex>(static_cast<u32>(to_block) | 0x80000000u);
         split_blocks[key] = split_idx;
         current_split_block = split_idx;
-        BlockInfo bi;
-        bi.block_idx = split_idx;
-        blocks.push_back(std::move(bi));
+        get_or_create_block(split_idx);
       } else {
         current_split_block = it->second;
       }
@@ -521,19 +536,7 @@ struct VerificationIR {
       block_idx = current_split_block;
     }
     InstOp inst_op{inst_id, std::move(uses), std::move(defs)};
-
-    // Find or create block info
-    auto it = std::find_if(
-        blocks.begin(), blocks.end(), [block_idx](const BlockInfo &bi) {
-          return bi.block_idx == block_idx;
-        });
-    if (it == blocks.end()) {
-      BlockInfo block_info;
-      block_info.block_idx = block_idx;
-      blocks.push_back(std::move(block_info));
-      it = blocks.end() - 1;
-    }
-    it->entries.push_back(std::move(inst_op));
+    get_or_create_block(block_idx).entries.push_back(std::move(inst_op));
   }
 
   /// Emit edit operation (uses get_edit_block())
@@ -546,19 +549,7 @@ struct VerificationIR {
     from.part_idx = part_idx;
     BlockIndex edit_block = get_edit_block();
     Edit edit{kind, from, to, val_idx, size};
-
-    // Find or create block info
-    auto it = std::find_if(
-        blocks.begin(), blocks.end(), [edit_block](const BlockInfo &bi) {
-          return bi.block_idx == edit_block;
-        });
-    if (it == blocks.end()) {
-      BlockInfo block_info;
-      block_info.block_idx = edit_block;
-      blocks.push_back(std::move(block_info));
-      it = blocks.end() - 1;
-    }
-    it->entries.push_back(std::move(edit));
+    get_or_create_block(edit_block).entries.push_back(std::move(edit));
   }
 
   /// Emit register-to-register move (uses get_edit_block())
@@ -583,19 +574,7 @@ private:
   void emit_reg_move_impl(Reg src, Reg dst, u32 size) noexcept {
     BlockIndex edit_block = get_edit_block();
     Edit edit{EditKind::RegMove, src, dst, size};
-
-    // Find or create block info
-    auto it = std::find_if(
-        blocks.begin(), blocks.end(), [edit_block](const BlockInfo &bi) {
-          return bi.block_idx == edit_block;
-        });
-    if (it == blocks.end()) {
-      BlockInfo block_info;
-      block_info.block_idx = edit_block;
-      blocks.push_back(std::move(block_info));
-      it = blocks.end() - 1;
-    }
-    it->entries.push_back(std::move(edit));
+    get_or_create_block(edit_block).entries.push_back(std::move(edit));
   }
 
 public:
@@ -608,17 +587,7 @@ public:
     defs.push_back({val_idx, alloc});
     InstOp inst_op{val_idx, {}, std::move(defs)};
     inst_op.is_argument = true;
-    auto it = std::find_if(
-        blocks.begin(), blocks.end(), [entry_block_idx](const BlockInfo &bi) {
-          return bi.block_idx == entry_block_idx;
-        });
-    if (it == blocks.end()) {
-      BlockInfo bi;
-      bi.block_idx = entry_block_idx;
-      blocks.push_back(std::move(bi));
-      it = blocks.end() - 1;
-    }
-    it->entries.push_back(std::move(inst_op));
+    get_or_create_block(entry_block_idx).entries.push_back(std::move(inst_op));
   }
 
   void emit_phi(ValLocalIdx phi_idx,
@@ -630,17 +599,7 @@ public:
     defs.push_back({phi_idx, phi_alloc});
     InstOp inst_op{phi_idx, {}, std::move(defs)};
     inst_op.phi_incomings = std::move(incomings);
-    auto it =
-        std::find_if(blocks.begin(), blocks.end(), [this](const BlockInfo &bi) {
-          return bi.block_idx == current_block_idx;
-        });
-    if (it == blocks.end()) {
-      BlockInfo bi;
-      bi.block_idx = current_block_idx;
-      blocks.push_back(std::move(bi));
-      it = blocks.end() - 1;
-    }
-    it->entries.push_back(std::move(inst_op));
+    get_or_create_block(current_block_idx).entries.push_back(std::move(inst_op));
   }
 
   template <typename IncomingData>
@@ -662,17 +621,7 @@ public:
                    BlockIndex target) noexcept {
     InstOp inst_op{inst_id, std::move(uses), {}};
     inst_op.branch_target = target;
-    auto it =
-        std::find_if(blocks.begin(), blocks.end(), [this](const BlockInfo &bi) {
-          return bi.block_idx == current_block_idx;
-        });
-    if (it == blocks.end()) {
-      BlockInfo bi;
-      bi.block_idx = current_block_idx;
-      blocks.push_back(std::move(bi));
-      it = blocks.end() - 1;
-    }
-    it->entries.push_back(std::move(inst_op));
+    get_or_create_block(current_block_idx).entries.push_back(std::move(inst_op));
   }
 
   void capture_branch(const char *jump_type,
@@ -712,31 +661,21 @@ public:
     inst_op.jump_type = jump_type ? jump_type : "jmp";
 
     // Find or create block info for the SOURCE block
-    auto it = std::find_if(blocks.begin(),
-                           blocks.end(),
-                           [this, current_block](const BlockInfo &bi) {
-                             return bi.block_idx == current_block;
-                           });
-    if (it == blocks.end()) {
-      BlockInfo block_info;
-      block_info.block_idx = current_block;
-      blocks.push_back(std::move(block_info));
-      it = blocks.end() - 1;
-    }
+    auto &block_info = get_or_create_block(current_block);
 
     // Check if a branch already exists and replace it
     auto branch_it =
-        std::find_if(it->entries.begin(),
-                     it->entries.end(),
+        std::find_if(block_info.entries.begin(),
+                     block_info.entries.end(),
                      [branch_target](const BlockEntry &entry) {
                        return entry.kind == BlockEntryKind::Inst &&
-                              entry.inst.branch_target == branch_target;
+                               entry.inst.branch_target == branch_target;
                      });
-    if (branch_it != it->entries.end()) {
+    if (branch_it != block_info.entries.end()) {
       // Replace existing branch with the one from x64 (which has jump type)
       branch_it->inst = std::move(inst_op);
     } else {
-      it->entries.push_back(std::move(inst_op));
+      block_info.entries.push_back(std::move(inst_op));
     }
     if (is_split) {
       current_split_block = edit_block;

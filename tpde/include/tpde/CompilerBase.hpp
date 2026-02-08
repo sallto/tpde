@@ -455,6 +455,10 @@ public:
     // Fallback mode for high argument pressure: emit pending arg work eagerly.
     bool immediate_emit_mode = false;
 
+  private:
+    void apply_int_ext_if_needed(AsmReg dst, AsmReg src, u8 int_ext);
+    void lock_arg_reg(AsmReg reg);
+
   public:
     CallBuilderBase(Derived &compiler, CCAssigner &assigner)
         : compiler(compiler), assigner(assigner) {}
@@ -582,6 +586,15 @@ public:
     final_assignments[INVALID_VAL_LOCAL_IDX].push_back(reg);
   }
   void vir_emit_def(Reg reg) { verification_ir.materialize_constant(reg); }
+
+  void vir_emit_intext_edit(u32 from, u32 to) {
+    verification_ir.emit_edit(VIR<Adaptor>::EditKind::Move,
+                              from,
+                              to,
+                              INVALID_VAL_LOCAL_IDX,
+                              0,
+                              to);
+  }
 
 private:
   /// Emit PHI node assignment (debug-only)
@@ -779,6 +792,9 @@ public:
 
   /// Evict the value from the register, spilling if needed, and free register.
   void evict_reg(Reg reg);
+
+  /// Mark any assignment tracked in reg as no longer register-valid.
+  void invalidate_register_owner(Reg reg);
 
   /// Lazily free a register using parallel moves when possible.
   void lazy_free_reg(Reg reg);
@@ -1225,6 +1241,26 @@ namespace tpde {
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 template <typename CBDerived>
 void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
+    CBDerived>::apply_int_ext_if_needed(AsmReg dst, AsmReg src, u8 int_ext) {
+  if (int_ext == 0) {
+    return;
+  }
+  const bool ext_sign = int_ext >> 7;
+  const unsigned ext_bits = int_ext & 0x3f;
+  compiler.generate_raw_intext(dst, src, ext_sign, ext_bits, 64);
+}
+
+template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template <typename CBDerived>
+void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
+    CBDerived>::lock_arg_reg(AsmReg reg) {
+  compiler.register_file.mark_clobbered(reg);
+  compiler.register_file.allocatable &= ~(u64{1} << reg.id());
+}
+
+template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template <typename CBDerived>
+void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     CBDerived>::add_arg(ValuePart &&vp, CCAssignment cca) {
   if (!cca.byval && cca.bank == RegBank{}) {
     cca.bank = vp.bank();
@@ -1332,8 +1368,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
         source_regs |= (1ull << cca.reg.id());
         compiler.register_file.allocatable &= ~source_regs;
         if (needs_ext) {
-          compiler.generate_raw_intext(
-              cca.reg, cca.reg, cca.int_ext >> 7, cca.int_ext & 0x3f, 64);
+          apply_int_ext_if_needed(cca.reg, cca.reg, cca.int_ext);
         }
         return;
       }
@@ -1470,15 +1505,8 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       continue;
     }
     if (arg.source_reg == arg.target_reg) {
-      if (arg.int_ext != 0) {
-        bool ext_sign = arg.int_ext >> 7;
-        unsigned ext_bits = arg.int_ext & 0x3f;
-        compiler.generate_raw_intext(
-            arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
-      }
-
-      compiler.register_file.mark_clobbered(arg.target_reg);
-      compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
+      apply_int_ext_if_needed(arg.target_reg, arg.target_reg, arg.int_ext);
+      lock_arg_reg(arg.target_reg);
       continue;
     }
 
@@ -1505,12 +1533,10 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
         compiler.evict_reg(move.dst);
       }
 
-      if (int_ext != 0) {
-        bool ext_sign = int_ext >> 7;
-        unsigned ext_bits = int_ext & 0x3f;
-        compiler.generate_raw_intext(move.dst, move.src, ext_sign, ext_bits, 64);
-      } else {
+      if (int_ext == 0) {
         compiler.mov(move.dst, move.src, move.size);
+      } else {
+        apply_int_ext_if_needed(move.dst, move.src, int_ext);
       }
 #ifndef NDEBUG
       if (move.value_idx != INVALID_VAL_LOCAL_IDX) {
@@ -1519,8 +1545,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
         compiler.vir_record_arg_move(move.value_idx, move.part_idx, move.dst);
       }
 #endif
-      compiler.register_file.mark_clobbered(move.dst);
-      compiler.register_file.allocatable &= ~(u64{1} << move.dst.id());
+      lock_arg_reg(move.dst);
     }
   }
 
@@ -1546,15 +1571,8 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       compiler.load_from_stack(arg.target_reg, arg.frame_off, arg.size);
     }
 
-    if (arg.int_ext != 0) {
-      bool ext_sign = arg.int_ext >> 7;
-      unsigned ext_bits = arg.int_ext & 0x3f;
-      compiler.generate_raw_intext(
-          arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
-    }
-
-    compiler.register_file.mark_clobbered(arg.target_reg);
-    compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
+    apply_int_ext_if_needed(arg.target_reg, arg.target_reg, arg.int_ext);
+    lock_arg_reg(arg.target_reg);
   }
 
   // Phase 6: Materialize constants to registers
@@ -1576,16 +1594,10 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
 
     vp.reload_into_specific_fixed(&compiler, arg.target_reg);
 
-    if (arg.int_ext != 0) {
-      bool ext_sign = arg.int_ext >> 7;
-      unsigned ext_bits = arg.int_ext & 0x3f;
-      compiler.generate_raw_intext(
-          arg.target_reg, arg.target_reg, ext_sign, ext_bits, 64);
-    }
+    apply_int_ext_if_needed(arg.target_reg, arg.target_reg, arg.int_ext);
 
     vp.reset(&compiler);
-    compiler.register_file.mark_clobbered(arg.target_reg);
-    compiler.register_file.allocatable &= ~(u64{1} << arg.target_reg.id());
+    lock_arg_reg(arg.target_reg);
   }
 
   pending_args.clear();
@@ -2552,6 +2564,24 @@ void CompilerBase<Adaptor, Derived, Config>::evict_reg(Reg reg) {
   derived()->spill(evict_part);
   evict_part.set_register_valid(false);
   register_file.unmark_used(reg);
+}
+
+template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+void CompilerBase<Adaptor, Derived, Config>::invalidate_register_owner(Reg reg) {
+  const ValLocalIdx owner_idx = register_file.reg_local_idx(reg);
+  if (owner_idx == INVALID_VAL_LOCAL_IDX) {
+    return;
+  }
+
+  ValueAssignment *owner = this->val_assignment(owner_idx);
+  if (!owner) {
+    return;
+  }
+
+  auto owner_ap = AssignmentPartRef{owner, register_file.reg_part(reg)};
+  if (owner_ap.register_valid()) {
+    owner_ap.set_register_valid(false);
+  }
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
@@ -3801,17 +3831,9 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           // used_phi_regs_global &= ~(1ull << reg.id());
           ap.set_register_valid(true);
           if (register_file.is_used(reg)) {
-            if(register_file.reg_local_idx(reg) != INVALID_VAL_LOCAL_IDX && register_file.reg_local_idx(reg) != phi_idx) {
-              ValueAssignment *other =
-                  this->val_assignment(register_file.reg_local_idx(reg));
-              if (other) {
-                auto other_ap =
-                    AssignmentPartRef{other, register_file.reg_part(reg)};
-                if (other_ap.register_valid()) {
-                  //assert(other_ap.stack_valid() && "can't spill during phi resoulution");
-                  other_ap.set_register_valid(false);
-                }
-              }
+            if (register_file.reg_local_idx(reg) != INVALID_VAL_LOCAL_IDX &&
+                register_file.reg_local_idx(reg) != phi_idx) {
+              invalidate_register_owner(reg);
             }
             register_file.update_reg_assignment(reg, phi_idx, i);
           } else {
@@ -3862,17 +3884,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           if (register_file.is_used(reg) &&
               (register_file.reg_local_idx(reg) != state.val_local_idx ||
                register_file.reg_part(reg) != i)) {
-            if (register_file.reg_local_idx(reg) != INVALID_VAL_LOCAL_IDX) {
-              ValueAssignment *other =
-                  this->val_assignment(register_file.reg_local_idx(reg));
-              if (other) {
-                auto other_ap =
-                    AssignmentPartRef{other, register_file.reg_part(reg)};
-                if (other_ap.register_valid()) {
-                  other_ap.set_register_valid(false);
-                }
-              }
-            }
+            invalidate_register_owner(reg);
             register_file.update_reg_assignment(reg, state.val_local_idx, i);
           } else if (!register_file.is_used(reg)) {
             register_file.mark_used(reg, state.val_local_idx, i);

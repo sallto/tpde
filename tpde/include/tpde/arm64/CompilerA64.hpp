@@ -1903,12 +1903,7 @@ void CompilerA64<Adaptor, Derived, BaseTy, Config>::generate_raw_intext(
     AsmReg dst, AsmReg src, bool sign, u32 from, u32 to) {
   assert(from < to && to <= 64);
 #ifndef NDEBUG
-  this->verification_ir.emit_edit(VIR<Adaptor>::EditKind::Move,
-                                  from,
-                                  to,
-                                  this->INVALID_VAL_LOCAL_IDX,
-                                  0,
-                                  to);
+  this->vir_emit_intext_edit(from, to);
 #endif
   if (sign) {
     if (to <= 32) {
