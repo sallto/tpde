@@ -1877,6 +1877,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       const bool has_call = adaptor->inst_has_call(inst);
       // capacity after is lower for calls due to caller-saved registers.
       // But the call results are already in the registers automatically.
+      //todo(salto): fix potential underflow
       const u32 capacity_after_instr_gp =
           NUM_GP_REGS - static_cast<u32>(has_call) *
                             (NUM_CALLER_SAVED_GP - num_result_regs[0]);
