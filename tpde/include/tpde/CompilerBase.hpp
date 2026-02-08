@@ -305,7 +305,7 @@ struct CompilerBase {
   // TreeRAContext *tree_ra_ctx = nullptr;
   MoveList parallel_copies;
 
-  void global_assign(ValLocalIdx idx, Reg reg) {
+  void global_assign(ValLocalIdx, Reg) {
     /*if (global_register_file.is_used(reg) &&
        global_register_file.reg_local_idx(reg) == idx) {
      return;
@@ -320,7 +320,7 @@ struct CompilerBase {
    }*/
   }
 
-  void global_unassign(ValLocalIdx idx) {
+  void global_unassign(ValLocalIdx) {
     /*for (auto reg_id : global_register_file.used_regs()) {
       if (global_register_file.reg_local_idx(Reg{reg_id}) == idx) {
         global_register_file.unmark_used(Reg{reg_id});
@@ -329,7 +329,7 @@ struct CompilerBase {
     }*/
   }
 
-  Reg global_reg_for(ValLocalIdx idx) const {
+  Reg global_reg_for(ValLocalIdx) const {
     /*for (auto reg_id : global_register_file.used_regs()) {
       if (global_register_file.reg_local_idx(Reg{reg_id}) == idx) {
         return Reg{reg_id};
