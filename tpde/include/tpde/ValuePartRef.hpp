@@ -576,6 +576,22 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
     if (success) [[likely]] {
       execute_moves(compiler, old_reg);
 
+      auto ap = assignment();
+      assert(ap.register_valid());
+      assert(ap.get_reg() == reg);
+
+      // execute_moves updates assignment metadata and register-file tracking.
+      // Rebind this ValuePart lock/state to the repaired destination register.
+      if (ap.get_reg() != old_reg) {
+        unlock(compiler);
+        if (reg_file.is_used(old_reg) &&
+            reg_file.reg_local_idx(old_reg) == local_idx() &&
+            reg_file.reg_part(old_reg) == part()) {
+          reg_file.unmark_used(old_reg);
+        }
+        lock(compiler);
+      }
+
       reg_file.mark_clobbered(reg);
       return reg;
     } else {
