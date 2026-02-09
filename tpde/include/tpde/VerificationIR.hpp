@@ -10,6 +10,7 @@
 #include <fstream>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -299,49 +300,22 @@ struct VerificationIR {
 
   struct BlockEntry {
     BlockEntryKind kind;
-    union {
-      InstOp inst;
-      Edit edit;
-    };
+    std::optional<InstOp> inst;
+    std::optional<Edit> edit;
 
     BlockEntry(InstOp i) : kind(BlockEntryKind::Inst), inst(std::move(i)) {}
     BlockEntry(Edit e) : kind(BlockEntryKind::Edit), edit(std::move(e)) {}
 
-    BlockEntry(BlockEntry &&other) noexcept : kind(other.kind) {
-      if (kind == BlockEntryKind::Inst) {
-        new (&inst) InstOp(std::move(other.inst));
-      } else {
-        new (&edit) Edit(std::move(other.edit));
-      }
-    }
-
-    BlockEntry &operator=(BlockEntry &&other) noexcept {
-      if (this != &other) {
-        this->~BlockEntry();
-        kind = other.kind;
-        if (kind == BlockEntryKind::Inst) {
-          new (&inst) InstOp(std::move(other.inst));
-        } else {
-          new (&edit) Edit(std::move(other.edit));
-        }
-      }
-      return *this;
-    }
-
-    ~BlockEntry() {
-      if (kind == BlockEntryKind::Inst) {
-        inst.~InstOp();
-      } else {
-        edit.~Edit();
-      }
-    }
+    BlockEntry(BlockEntry &&) noexcept = default;
+    BlockEntry &operator=(BlockEntry &&) noexcept = default;
+    ~BlockEntry() = default;
 
     std::string format(const std::map<std::pair<ValLocalIdx, u32>, Allocation>
                            &current_allocs) const {
       if (kind == BlockEntryKind::Inst) {
-        return inst.format(current_allocs);
+        return inst->format(current_allocs);
       } else {
-        return edit.format();
+        return edit->format();
       }
     }
   };
@@ -363,12 +337,12 @@ struct VerificationIR {
       std::map<std::pair<ValLocalIdx, u32>, Allocation> current_allocs;
       for (const auto &entry : entries) {
         if (entry.kind == BlockEntryKind::Edit) {
-          if (entry.edit.kind == EditKind::Reload) {
-            current_allocs[{entry.edit.val_idx, entry.edit.from.part_idx}] =
-                entry.edit.to;
-          } else if (entry.edit.kind == EditKind::Spill) {
-            current_allocs[{entry.edit.val_idx, entry.edit.from.part_idx}] =
-                entry.edit.to;
+          if (entry.edit->kind == EditKind::Reload) {
+            current_allocs[{entry.edit->val_idx, entry.edit->from.part_idx}] =
+                entry.edit->to;
+          } else if (entry.edit->kind == EditKind::Spill) {
+            current_allocs[{entry.edit->val_idx, entry.edit->from.part_idx}] =
+                entry.edit->to;
           }
         }
         result += entry.format(current_allocs);
@@ -467,7 +441,12 @@ private:
 public:
 
   void set_branch_condition(util::SmallVector<Operand, 4> ops) noexcept {
-    current_branch_condition = std::move(ops);
+    // Avoid SmallVector move-assignment here. VIR is debug-only, and copying
+    // prevents leaks from repeated reassignment of grown buffers.
+    current_branch_condition.clear();
+    for (const auto &op : ops) {
+      current_branch_condition.push_back(op);
+    }
   }
 
   void clear_branch_condition() noexcept { current_branch_condition.clear(); }
@@ -668,12 +647,12 @@ public:
         std::find_if(block_info.entries.begin(),
                      block_info.entries.end(),
                      [branch_target](const BlockEntry &entry) {
-                       return entry.kind == BlockEntryKind::Inst &&
-                               entry.inst.branch_target == branch_target;
+                        return entry.kind == BlockEntryKind::Inst &&
+                                entry.inst->branch_target == branch_target;
                      });
     if (branch_it != block_info.entries.end()) {
       // Replace existing branch with the one from x64 (which has jump type)
-      branch_it->inst = std::move(inst_op);
+      *branch_it->inst = std::move(inst_op);
     } else {
       block_info.entries.push_back(std::move(inst_op));
     }
