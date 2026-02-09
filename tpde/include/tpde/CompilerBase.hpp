@@ -588,12 +588,8 @@ public:
   void vir_emit_def(Reg reg) { verification_ir.materialize_constant(reg); }
 
   void vir_emit_intext_edit(u32 from, u32 to) {
-    verification_ir.emit_edit(VIR<Adaptor>::EditKind::Move,
-                              from,
-                              to,
-                              INVALID_VAL_LOCAL_IDX,
-                              0,
-                              to);
+    verification_ir.emit_edit(
+        VIR<Adaptor>::EditKind::Move, from, to, INVALID_VAL_LOCAL_IDX, 0, to);
   }
 
 private:
@@ -896,7 +892,6 @@ public:
 
   void move_one(u32 i, MoveList &moves, MoveList &result) {
     if (moves[i].src == moves[i].dst) {
-      
       return;
     }
     moves[i].status = MoveStatus::MOVING;
@@ -945,14 +940,13 @@ public:
     MoveList result;
     for (u32 i = 0; i < moves.size(); ++i) {
       if (moves[i].status == MoveStatus::TO_MOVE) {
-        if(keep_self_moves && moves[i].src == moves[i].dst)
-        {
+        if (keep_self_moves && moves[i].src == moves[i].dst) {
           result.emplace_back(moves[i].dst,
-                        moves[i].src,
-                        moves[i].size,
-                        moves[i].value_idx,
-                        moves[i].part_idx);
-           continue;
+                              moves[i].src,
+                              moves[i].size,
+                              moves[i].value_idx,
+                              moves[i].part_idx);
+          continue;
         }
         move_one(i, moves, result);
       }
@@ -970,7 +964,8 @@ public:
     typename RegisterFile::RegBitSet phi_regs = 0;
     typename RegisterFile::RegBitSet unallocatable_regs = 0;
     if (analyzer.block_has_phis(target)) {
-      auto [phi_regs_, unallocatable_regs_] = move_to_phi_nodes_impl(target, moves);
+      auto [phi_regs_, unallocatable_regs_] =
+          move_to_phi_nodes_impl(target, moves);
       phi_regs = phi_regs_;
       unallocatable_regs = unallocatable_regs_;
     }
@@ -1095,7 +1090,7 @@ public:
             continue;
           }
 
-          if(ap.variable_ref()){
+          if (ap.variable_ref()) {
             // cheap to 'spill' so don't worry about it across blocks
             evict(ap);
             continue;
@@ -1129,10 +1124,11 @@ public:
       }
     }
 
-    // prevent any phi registers from being used as temporaries for swap resolution″
+    // prevent any phi registers from being used as temporaries for swap
+    // resolution″
     auto prev_alloc = register_file.allocatable & phi_regs;
     register_file.allocatable &= ~phi_regs;
-    MoveList result = sequentialize(moves,true);
+    MoveList result = sequentialize(moves, true);
     register_file.allocatable |= prev_alloc;
     register_file.allocatable |= unallocatable_regs;
     // todo(salto): maybe execute the mov in sequentialize directly
@@ -1153,8 +1149,9 @@ public:
             move.value_idx != register_file.reg_local_idx(Reg{move.dst})) {
           this->evict_reg(Reg{move.dst});
         }
-        if(move.dst!=move.src)
-        this->derived()->mov(move.dst, move.src, ap.part_size());
+        if (move.dst != move.src) {
+          this->derived()->mov(move.dst, move.src, ap.part_size());
+        }
         if (ap.register_valid() && register_file.is_used(ap.get_reg())) {
           register_file.unmark_used(ap.get_reg());
         }
@@ -1176,9 +1173,9 @@ public:
     }
   }
 
-  
-std::pair<typename RegisterFile::RegBitSet, typename RegisterFile::RegBitSet> move_to_phi_nodes_impl(BlockIndex target,
-                                                          MoveList &moves);
+
+  std::pair<typename RegisterFile::RegBitSet, typename RegisterFile::RegBitSet>
+      move_to_phi_nodes_impl(BlockIndex target, MoveList &moves);
 
   /// Count available registers in a specific bank
   u32 count_available_registers(RegBank bank) const {
@@ -1344,8 +1341,10 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
           // our target is a already used source register.
           auto temp = compiler.register_file.find_first_free_excluding(
               cca.bank, source_regs);
-          TPDE_LOG_TRACE("Target reg {} is already used as source, using temp {}", cca.reg.id(),
-                   temp.id());
+          TPDE_LOG_TRACE(
+              "Target reg {} is already used as source, using temp {}",
+              cca.reg.id(),
+              temp.id());
           if (!temp.valid()) {
             temp = compiler.select_reg(cca.bank, source_regs);
           }
@@ -1377,10 +1376,12 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       // todo(salto): test unlikely
       if (source_regs & (1ull << cca.reg.id())) {
         // our target is a already used source register.
-        auto temp = compiler.register_file.find_first_free_excluding(cca.bank,
-                                                                     source_regs);
-        TPDE_LOG_TRACE("Target var-ref/sret reg {} is already used as source, using temp {}", cca.reg.id(),
-                   temp.id());
+        auto temp = compiler.register_file.find_first_free_excluding(
+            cca.bank, source_regs);
+        TPDE_LOG_TRACE("Target var-ref/sret reg {} is already used as source, "
+                       "using temp {}",
+                       cca.reg.id(),
+                       temp.id());
         if (!temp.valid()) {
           temp = compiler.select_reg(cca.bank, source_regs);
         }
@@ -1475,59 +1476,36 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     return;
   }
 
-  // Phase 2: Execute byval copies
-  for (auto &arg : pending_args) {
-    if (arg.kind != PendingArg::Kind::BYVAL) {
-      continue;
+  auto kind_sort_key = [](PendingArg::Kind kind) {
+    switch (kind) {
+    case PendingArg::Kind::BYVAL: return u8{0};
+    case PendingArg::Kind::REG_TO_REG: return u8{1};
+    case PendingArg::Kind::STACK_TO_REG: return u8{2};
+    case PendingArg::Kind::CONST_TO_REG: return u8{3};
+    case PendingArg::Kind::TO_STACK: return u8{4};
     }
+    TPDE_UNREACHABLE("invalid pending arg kind");
+    return u8{0};
+  };
 
-    ValuePart vp{arg.bank};
-    if (arg.local_idx != INVALID_VAL_LOCAL_IDX) {
-      ValueAssignment *va = compiler.val_assignment(arg.local_idx);
-      if (va) {
-        vp = ValuePart{arg.local_idx, va, arg.part_idx, false};
-      }
-    }
+  std::stable_sort(pending_args.begin(),
+                   pending_args.end(),
+                   [&](const PendingArg &lhs, const PendingArg &rhs) {
+                     return kind_sort_key(lhs.kind) < kind_sort_key(rhs.kind);
+                   });
 
-    CCAssignment cca{
-        .byval = true,
-        .size = arg.byval_size,
-        .stack_off = arg.stack_off,
-    };
-    derived()->add_arg_byval(vp, cca);
-    vp.reset(&compiler);
-  }
-
-  // Phase 3: Build parallel move list for register-to-register moves
   MoveList moves;
-  for (auto &arg : pending_args) {
-    if (arg.kind != PendingArg::Kind::REG_TO_REG) {
-      continue;
-    }
-    if (arg.source_reg == arg.target_reg) {
-      apply_int_ext_if_needed(arg.target_reg, arg.target_reg, arg.int_ext);
-      lock_arg_reg(arg.target_reg);
-      continue;
+  std::array<u8, 64> move_int_ext = {};
+
+  auto emit_reg_moves = [&]() {
+    if (moves.empty()) {
+      return;
     }
 
-    RegisterMove move{
-        arg.target_reg, arg.source_reg, arg.size, arg.local_idx, arg.part_idx};
-    moves.push_back(move);
-  }
-
-  // Phase 4: Sequentialize and execute register-to-register moves
-  if (!moves.empty()) {
     compiler.register_file.allocatable &= ~source_regs;
     MoveList ordered = compiler.sequentialize(moves);
     for (auto &move : ordered) {
-      u8 int_ext = 0;
-      for (const auto &arg : pending_args) {
-        if (arg.kind == PendingArg::Kind::REG_TO_REG &&
-            arg.target_reg == move.dst) {
-          int_ext = arg.int_ext;
-          break;
-        }
-      }
+      const u8 int_ext = move_int_ext[move.dst.id()];
 
       if (compiler.register_file.is_used(move.dst)) {
         compiler.evict_reg(move.dst);
@@ -1547,14 +1525,42 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
 #endif
       lock_arg_reg(move.dst);
     }
-  }
 
-  // Phase 5: Execute stack-to-register loads
-  for (auto &arg : pending_args) {
-    if (arg.kind != PendingArg::Kind::STACK_TO_REG) {
-      continue;
+    moves.clear();
+    move_int_ext.fill(0);
+  };
+
+  auto queue_reg_move = [&](const PendingArg &arg) {
+    if (arg.source_reg == arg.target_reg) {
+      apply_int_ext_if_needed(arg.target_reg, arg.target_reg, arg.int_ext);
+      lock_arg_reg(arg.target_reg);
+      return;
     }
 
+    moves.emplace_back(
+        arg.target_reg, arg.source_reg, arg.size, arg.local_idx, arg.part_idx);
+    move_int_ext[arg.target_reg.id()] = arg.int_ext;
+  };
+
+  auto handle_byval = [&](const PendingArg &arg) {
+    ValuePart vp{arg.bank};
+    if (arg.local_idx != INVALID_VAL_LOCAL_IDX) {
+      ValueAssignment *va = compiler.val_assignment(arg.local_idx);
+      if (va) {
+        vp = ValuePart{arg.local_idx, va, arg.part_idx, false};
+      }
+    }
+
+    CCAssignment cca{
+        .byval = true,
+        .size = arg.byval_size,
+        .stack_off = arg.stack_off,
+    };
+    derived()->add_arg_byval(vp, cca);
+    vp.reset(&compiler);
+  };
+
+  auto handle_stack_to_reg = [&](const PendingArg &arg) {
     if (compiler.register_file.is_used(arg.target_reg)) {
       compiler.evict_reg(arg.target_reg);
     }
@@ -1573,14 +1579,9 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
 
     apply_int_ext_if_needed(arg.target_reg, arg.target_reg, arg.int_ext);
     lock_arg_reg(arg.target_reg);
-  }
+  };
 
-  // Phase 6: Materialize constants to registers
-  for (auto &arg : pending_args) {
-    if (arg.kind != PendingArg::Kind::CONST_TO_REG) {
-      continue;
-    }
-
+  auto handle_const_to_reg = [&](const PendingArg &arg) {
     if (compiler.register_file.is_used(arg.target_reg)) {
       compiler.evict_reg(arg.target_reg);
     }
@@ -1593,11 +1594,32 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     }
 
     vp.reload_into_specific_fixed(&compiler, arg.target_reg);
-
     apply_int_ext_if_needed(arg.target_reg, arg.target_reg, arg.int_ext);
 
     vp.reset(&compiler);
     lock_arg_reg(arg.target_reg);
+  };
+
+  typename PendingArg::Kind prev_kind = pending_args.front().kind;
+  for (const auto &arg : pending_args) {
+    if (arg.kind != prev_kind) {
+      if (prev_kind == PendingArg::Kind::REG_TO_REG) {
+        emit_reg_moves();
+      }
+      prev_kind = arg.kind;
+    }
+
+    switch (arg.kind) {
+    case PendingArg::Kind::BYVAL: handle_byval(arg); break;
+    case PendingArg::Kind::REG_TO_REG: queue_reg_move(arg); break;
+    case PendingArg::Kind::STACK_TO_REG: handle_stack_to_reg(arg); break;
+    case PendingArg::Kind::CONST_TO_REG: handle_const_to_reg(arg); break;
+    case PendingArg::Kind::TO_STACK: break;
+    }
+  }
+
+  if (prev_kind == PendingArg::Kind::REG_TO_REG) {
+    emit_reg_moves();
   }
 
   pending_args.clear();
@@ -1609,7 +1631,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     std::variant<SymRef, ValuePart> target) {
   assert(!compiler.stack.is_leaf_function && "leaf func must not have calls");
   compiler.stack.generated_call = true;
-  auto spilled=compiler.spill_caller_saved_before_call(arg_regs);
+  auto spilled = compiler.spill_caller_saved_before_call(arg_regs);
 
   /*
   // Phase 1: Update evicted sources - check if any REG_TO_* sources were
@@ -2567,7 +2589,8 @@ void CompilerBase<Adaptor, Derived, Config>::evict_reg(Reg reg) {
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
-void CompilerBase<Adaptor, Derived, Config>::invalidate_register_owner(Reg reg) {
+void CompilerBase<Adaptor, Derived, Config>::invalidate_register_owner(
+    Reg reg) {
   const ValLocalIdx owner_idx = register_file.reg_local_idx(reg);
   if (owner_idx == INVALID_VAL_LOCAL_IDX) {
     return;
@@ -3030,8 +3053,9 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
-std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet,
-          typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet>
+std::pair<
+    typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet,
+    typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet>
     CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
         BlockIndex target, MoveList &moves) {
   // PHI-nodes are always moved to their stack-slot (unless they are fixed)
@@ -3112,7 +3136,7 @@ std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitS
                                  .gp_parts = gp_parts,
                                  .fp_parts = fp_parts});
   }
-  typename RegisterFile::RegBitSet unallocatable_regs=0;
+  typename RegisterFile::RegBitSet unallocatable_regs = 0;
 
   typename RegisterFile::RegBitSet used_phi_regs = 0;
 
@@ -3130,7 +3154,8 @@ std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitS
     }
 
     if (incoming_reg.valid()) {
-      derived()->spill_reg(incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
+      derived()->spill_reg(
+          incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
     } else {
       ScratchReg scratch = std::move(incoming_part).into_scratch();
       derived()->spill_reg(
@@ -3161,7 +3186,7 @@ std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitS
     }
 
     if (register_file.is_used(target_reg)) {
-      //todo(salto): find a different register for the value
+      // todo(salto): find a different register for the value
       evict_reg(target_reg);
     }
 
@@ -3240,8 +3265,11 @@ std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitS
         if (incoming_reg.valid()) {
           // We can't move immediately here since incoming could also be a phi
           // that might still need our value.
-          moves.emplace_back(
-              target_reg, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
+          moves.emplace_back(target_reg,
+                             incoming_reg,
+                             phi_ap.part_size(),
+                             phi_local_idx,
+                             part);
         } else {
           incoming_part.reload_into_specific_fixed(target_reg);
         }
@@ -3249,8 +3277,10 @@ std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitS
       }
 
       if (!target_reg.valid()) {
-        spill_phi_part_to_stack(
-            phi_ap, incoming_part, incoming_reg, /*clear_register_state=*/false);
+        spill_phi_part_to_stack(phi_ap,
+                                incoming_part,
+                                incoming_reg,
+                                /*clear_register_state=*/false);
         continue;
       }
 
@@ -3367,8 +3397,10 @@ std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitS
 
           ValuePartRef incoming_part = incoming_ref.part(part);
           Reg incoming_reg = incoming_part.cur_reg_unlocked();
-          spill_phi_part_to_stack(
-              phi_ap, incoming_part, incoming_reg, /*clear_register_state=*/true);
+          spill_phi_part_to_stack(phi_ap,
+                                  incoming_part,
+                                  incoming_reg,
+                                  /*clear_register_state=*/true);
         }
       }
     }
@@ -3398,19 +3430,20 @@ std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitS
   }
 
   // Calculate register capacity per bank (ensuring at least 1 free register)
-  const u32 gp_regs_for_phis =
-      std::min(available_gp > reserved_per_bank ? available_gp - reserved_per_bank : 0,
-               PHI_REGISTER_THRESHOLD);
-  const u32 fp_regs_for_phis =
-      std::min(available_fp > reserved_per_bank ? available_fp - reserved_per_bank : 0,
-               PHI_REGISTER_THRESHOLD);
+  const u32 gp_regs_for_phis = std::min(
+      available_gp > reserved_per_bank ? available_gp - reserved_per_bank : 0,
+      PHI_REGISTER_THRESHOLD);
+  const u32 fp_regs_for_phis = std::min(
+      available_fp > reserved_per_bank ? available_fp - reserved_per_bank : 0,
+      PHI_REGISTER_THRESHOLD);
 
   // Determine if hybrid allocation is needed for each bank
-  bool use_hybrid_allocation = gp_parts_total > gp_regs_for_phis ||
-                               fp_parts_total > fp_regs_for_phis;
+  bool use_hybrid_allocation =
+      gp_parts_total > gp_regs_for_phis || fp_parts_total > fp_regs_for_phis;
 
   if (use_hybrid_allocation) {
-    TPDE_LOG_DBG("Using hybrid phi allocation: {} GP parts ({} avail), {} FP parts ({} avail)",
+    TPDE_LOG_DBG("Using hybrid phi allocation: {} GP parts ({} avail), {} FP "
+                 "parts ({} avail)",
                  gp_parts_total,
                  available_gp,
                  fp_parts_total,
@@ -3429,10 +3462,12 @@ std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitS
     // Mark phi nodes for stack allocation when bank capacity is exceeded
     for (auto &node : nodes) {
       bool needs_stack = false;
-      if (node.gp_parts > 0 && gp_allocated + node.gp_parts > gp_regs_for_phis) {
+      if (node.gp_parts > 0 &&
+          gp_allocated + node.gp_parts > gp_regs_for_phis) {
         needs_stack = true;
       }
-      if (node.fp_parts > 0 && fp_allocated + node.fp_parts > fp_regs_for_phis) {
+      if (node.fp_parts > 0 &&
+          fp_allocated + node.fp_parts > fp_regs_for_phis) {
         needs_stack = true;
       }
       if (needs_stack) {
@@ -3546,7 +3581,7 @@ std::pair<typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitS
       register_file.unmark_used(move.dst);
     }
   }
-  return {used_phi_regs,  unallocatable_regs};
+  return {used_phi_regs, unallocatable_regs};
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
@@ -3861,7 +3896,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
           for (u32 i = 0; i < state.registers.size(); i++) {
             auto reg = state.registers[i];
             if (reg.valid() && register_file.is_used(reg)) {
-              this->evict_reg(reg); 
+              this->evict_reg(reg);
             }
           }
           continue;
