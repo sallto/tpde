@@ -2952,7 +2952,7 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
     // immediately.
     // TODO: more precise condition?
     BlockIndex target = this->analyzer.block_idx(cases[i].second);
-    if (analyzer.block_has_phis(target)) {
+    if (analyzer.block_has_phis(target) || block_regs.contains(target)) {
       case_labels.push_back(this->text_writer.label_create());
       case_blocks.emplace_back(case_labels.back(), cases[i].second);
     } else {
