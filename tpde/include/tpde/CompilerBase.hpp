@@ -3265,8 +3265,8 @@ std::pair<
       derived()->spill_reg(
         incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
     } else {
-      Reg tmp_reg = register_file.find_first_free_excluding(
-        phi_ap.bank(), used_phi_regs | unallocatable_regs);
+      Reg tmp_reg =
+          this->select_reg(phi_ap.bank(), used_phi_regs | unallocatable_regs);
       if (tmp_reg.invalid()) [[unlikely]] {
         TPDE_FATAL("failed to allocate temporary register for phi spill");
       }
@@ -4032,6 +4032,7 @@ void CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
         if (ap.fixed_assignment()) {
           continue;
         }
+
         if (ap.register_valid()) {
           Reg old_reg = ap.get_reg();
           if (register_file.is_used(old_reg) &&
@@ -4048,6 +4049,9 @@ void CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
             !register_file.is_fixed(old_reg)) {
           register_file.unmark_used(old_reg);
         }
+      }
+      if (!ap.variable_ref() && ap.stack_valid()) {
+        ap.set_modified(true);
       }
       ap.set_reg(reg);
       ap.set_register_valid(true);
