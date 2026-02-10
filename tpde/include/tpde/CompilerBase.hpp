@@ -979,7 +979,7 @@ public:
             break;
           }
           case MoveStatus::MOVING: {
-            auto tmp = register_file.find_first_free_excluding(
+            auto tmp = this->select_reg(
               register_file.reg_bank(moves[j].src), temp_exclusion);
             if (tmp.invalid()) [[unlikely]] {
               TPDE_FATAL("failed to resolve parallel move cycle without state "
