@@ -130,7 +130,6 @@ public:
     reg_file.mark_clobbered(value_reg);
     set_reg(value_reg);
     set_register_valid(true);
-    set_modified(true);
   }
 
   [[nodiscard]] bool stack_valid() const {
