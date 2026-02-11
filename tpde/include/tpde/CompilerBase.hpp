@@ -1087,16 +1087,18 @@ public:
           ap.stack_valid()) {
         return;
       }
-      allocate_spill_slot(ap);
-      derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
+      spill(ap);
     };
 
     auto block_state_it = block_regs.find(target);
     if (block_state_it != block_regs.end()) {
+      std::unordered_set<ValLocalIdx> seen_local_idxs;
+      seen_local_idxs.reserve(block_state_it->second.size());
       for (ValueState &state : block_state_it->second) {
         if (state.val_local_idx == INVALID_VAL_LOCAL_IDX) {
           continue;
         }
+        seen_local_idxs.insert(state.val_local_idx);
         ValueAssignment *va = val_assignment(state.val_local_idx);
         if (!va) {
           continue;
@@ -1125,6 +1127,42 @@ public:
             .part_idx = i,
           });
         }
+      }
+
+      for (auto reg: register_file.used_regs()) {
+        Reg current_reg{reg};
+        const ValLocalIdx local_idx = register_file.reg_local_idx(current_reg);
+        if (local_idx == INVALID_VAL_LOCAL_IDX ||
+            seen_local_idxs.contains(local_idx)) {
+          continue;
+        }
+        if (phi_regs & (1ull << reg)) {
+          continue;
+        }
+
+        ValueAssignment *assignment = val_assignment(local_idx);
+        if (!assignment) {
+          continue;
+        }
+
+        const u32 part = register_file.reg_part(current_reg);
+        if (part >= assignment->part_count) {
+          continue;
+        }
+
+        if (assignment->variable_ref) {
+          continue;
+        }
+
+        const auto &liveness = analyzer.liveness_info(local_idx);
+        if (liveness.last < target || liveness.first >= target) {
+          continue;
+        }
+
+
+        AssignmentPartRef ap{assignment, part};
+        spill_assignment_if_needed(ap);
+
       }
     } else {
       std::unordered_set<ValLocalIdx> seen;
@@ -1175,7 +1213,7 @@ public:
             continue;
           }
 
-          if (ap.variable_ref() || !ap.modified()) {
+          if (ap.variable_ref() || !ap.register_valid()) {
             continue;
           }
 
@@ -1198,6 +1236,16 @@ public:
 
     MoveList ordered =
         sequentialize_readonly(moves, phi_regs | unallocatable_regs, false);
+    register_file.allocatable |= unallocatable_regs;
+    for (auto reg: register_file.used_regs()) {
+      if (register_file.reg_local_idx(Reg{reg}) == INVALID_VAL_LOCAL_IDX) {
+        continue;
+      }
+      AssignmentPartRef ap{val_assignment(register_file.reg_local_idx(Reg{reg})), register_file.reg_part(Reg{reg})};
+      if (ap.register_valid() && ap.get_reg() != Reg{reg}) {
+        register_file.unmark_used(Reg{reg});
+      }
+    }
     for (const auto &move: ordered) {
       // note we don't update any assignments here. this is done at the start of compile_block
       if (move.dst != move.src) {
@@ -3008,7 +3056,7 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
   const auto default_label = this->text_writer.label_create();
 
   const auto build_range = [&,
-                            this](size_t begin, size_t end, const auto &self) {
+        this](size_t begin, size_t end, const auto &self) {
     assert(begin <= end);
     const auto num_cases = end - begin;
     if (num_cases <= 4) {
@@ -3039,7 +3087,7 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
 
       // Give target the option to emit a jump table.
       auto *jt = derived()->switch_create_jump_table(
-          default_label, cmp_reg, tmp_reg, low_bound, high_bound, width_is_32);
+        default_label, cmp_reg, tmp_reg, low_bound, high_bound, width_is_32);
       if (jt) {
         if (range == num_cases) {
           std::copy(case_labels.begin() + begin,
@@ -3079,10 +3127,15 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
 
   build_range(0, case_labels.size(), build_range);
 
+  // release scratch registers before phi resolution
+  cond.reset();
+  tmp_scratch.reset();
+
+
   // write out the labels
   this->label_place(default_label);
   derived()->generate_branch_to_block(
-      Derived::Jump::jmp, default_block, false, false);
+    Derived::Jump::jmp, default_block, false, false);
 
   for (const auto &[label, target] : case_blocks) {
     // Branch predictors typically have problems if too many branches follow too
@@ -3172,21 +3225,35 @@ std::pair<
           ++fp_parts;
         }
       }
+    } else {
+      auto parts = adaptor->val_parts(phi);
+      for (u32 part = 0; part < parts.count(); ++part) {
+        RegBank bank = parts.reg_bank(part);
+        if (bank == Config::FP_BANK) {
+          ++fp_parts;
+        }
+      }
     }
 
-    nodes.emplace_back(NodeEntry{.phi = phi,
-                                 .incoming_val = incoming,
-                                 .phi_local_idx = phi_local_idx,
-                                 .references_left = refs_left,
-                                 .gp_parts = gp_parts,
-                                 .fp_parts = fp_parts});
+    nodes.emplace_back(NodeEntry{
+      .phi = phi,
+      .incoming_val = incoming,
+      .phi_local_idx = phi_local_idx,
+      .references_left = refs_left,
+      .gp_parts = gp_parts,
+      .fp_parts = fp_parts
+    });
   }
   typename RegisterFile::RegBitSet unallocatable_regs = 0;
 
   typename RegisterFile::RegBitSet used_phi_regs = 0;
+  typename RegisterFile::RegBitSet reserved_phi_temp_regs = 0;
+  std::array<Reg, Config::NUM_BANKS> phi_spill_temps;
+  phi_spill_temps.fill(Reg::make_invalid());
 
   const auto mark_reg_unallocatable = [&](Reg reg) {
     unallocatable_regs |= (1ull << reg.id());
+    register_file.allocatable &= ~(1ull << reg.id());
   };
 
   const auto emit_assignment_part_to_reg =
@@ -3265,8 +3332,11 @@ std::pair<
       derived()->spill_reg(
         incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
     } else {
-      Reg tmp_reg =
-          this->select_reg(phi_ap.bank(), used_phi_regs | unallocatable_regs);
+      Reg tmp_reg = phi_spill_temps[phi_ap.bank().id()];
+      if (tmp_reg.invalid()) {
+        tmp_reg = this->select_reg(
+          phi_ap.bank(), used_phi_regs | unallocatable_regs);
+      }
       if (tmp_reg.invalid()) [[unlikely]] {
         TPDE_FATAL("failed to allocate temporary register for phi spill");
       }
@@ -3298,13 +3368,12 @@ std::pair<
     incoming_part.reset();
   };
 
-  const auto preserve_incoming_reg = [&](IRValueRef incoming_val,
-                                         AssignmentPartRef phi_ap,
-                                         Reg incoming_reg,
-                                         Reg target_reg,
-                                         u32 part) {
-    if (incoming_reg != target_reg ||
-        adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+  const auto preserve_incoming_reg = [&](
+    AssignmentPartRef phi_ap,
+    Reg incoming_reg,
+    Reg target_reg,
+    u32 part) {
+    if (incoming_reg != target_reg) {
       return;
     }
 
@@ -3322,11 +3391,9 @@ std::pair<
     auto repair_reg = register_file.find_first_free_excluding(
         phi_ap.bank(), unallocatable_regs | used_phi_regs);
     if (repair_reg.valid()) {
-      moves.emplace_back(repair_reg,
-                         incoming_reg,
-                         incoming_ap.part_size(),
-                         incoming_idx,
-                         part);
+      // needs to be immediate, value may be overwritten by phi
+      derived()->mov(repair_reg, incoming_reg, incoming_ap.part_size());
+      
       mark_reg_unallocatable(repair_reg);
       return;
     }
@@ -3402,9 +3469,14 @@ std::pair<
         continue;
       }
 
-      if (incoming_reg.valid() && !incoming_last_ref) {
+      if (register_file.is_used(target_reg)) {
         preserve_incoming_reg(
-          incoming_val, phi_ap, incoming_reg, target_reg, part);
+          phi_ap, target_reg, target_reg, part);
+      }
+
+      if (incoming_reg.valid() && !incoming_last_ref && !adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+        preserve_incoming_reg(
+          phi_ap, incoming_reg, target_reg, part);
       }
 
       enqueue_or_materialize_phi_part(phi_ap,
@@ -3468,7 +3540,7 @@ std::pair<
       }
 
       RegBank bank = phi_ap.bank();
-      auto exclusion = used_phi_regs | new_phi_regs;
+      auto exclusion = used_phi_regs | new_phi_regs | reserved_phi_temp_regs;
       Reg selected = Reg::make_invalid();
 
       // if our incoming is dead after the phi we can reuse the register
@@ -3544,17 +3616,34 @@ std::pair<
     fp_parts_total += node.fp_parts;
   }
 
+  const auto reserve_phi_spill_temp = [&](RegBank bank, bool needs_stack) {
+    if (!needs_stack) {
+      return;
+    }
+    Reg tmp = register_file.find_first_free_excluding(bank, unallocatable_regs);
+    if (!tmp.valid()) {
+      return;
+    }
+    phi_spill_temps[bank.id()] = tmp;
+    reserved_phi_temp_regs |= (1ull << tmp.id());
+    mark_reg_unallocatable(tmp);
+  };
+
   // Calculate register capacity per bank (ensuring at least 1 free register)
   const u32 gp_regs_for_phis = std::min(
-      available_gp > reserved_per_bank ? available_gp - reserved_per_bank : 0,
-      PHI_REGISTER_THRESHOLD);
+    available_gp > reserved_per_bank ? available_gp - reserved_per_bank : 0,
+    PHI_REGISTER_THRESHOLD);
   const u32 fp_regs_for_phis = std::min(
-      available_fp > reserved_per_bank ? available_fp - reserved_per_bank : 0,
-      PHI_REGISTER_THRESHOLD);
+    available_fp > reserved_per_bank ? available_fp - reserved_per_bank : 0,
+    PHI_REGISTER_THRESHOLD);
+
+  const bool gp_needs_stack = gp_parts_total > gp_regs_for_phis;
+  const bool fp_needs_stack = fp_parts_total > fp_regs_for_phis;
+
+  reserve_phi_spill_temp(Config::FP_BANK, fp_needs_stack);
 
   // Determine if hybrid allocation is needed for each bank
-  bool use_hybrid_allocation =
-      gp_parts_total > gp_regs_for_phis || fp_parts_total > fp_regs_for_phis;
+  bool use_hybrid_allocation = gp_needs_stack || fp_needs_stack;
 
   if (use_hybrid_allocation) {
     TPDE_LOG_DBG("Using hybrid phi allocation: {} GP parts ({} avail), {} FP "
@@ -3690,6 +3779,8 @@ std::pair<
         cur_block_idx, target, std::move(parallel_moves));
   }
 #endif
+  // prevent fixed assignments from getting phi registers
+  this->used_phi_regs_global |= used_phi_regs;
   return {used_phi_regs, unallocatable_regs};
 }
 
