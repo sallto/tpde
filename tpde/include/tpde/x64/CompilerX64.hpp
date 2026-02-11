@@ -871,7 +871,7 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::spill_reg(
     const AsmReg reg, const i32 frame_off, const u32 size) {
   assert(this->stack.frame_used);
   this->text_writer.ensure_space(16);
-  assert(frame_off < 0);
+  assert(frame_off != 0);
   const auto mem = FE_MEM(FE_BP, 0, FE_NOREG, frame_off);
   if (reg.id() <= AsmReg::R15) {
     switch (size) {

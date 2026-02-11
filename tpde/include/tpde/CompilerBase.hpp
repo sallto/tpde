@@ -230,6 +230,48 @@ struct CompilerBase {
 
   using DeferredEdgeLoadList = util::SmallVector<DeferredEdgeLoad, 16>;
 
+  struct DeferredPhiMaterialization {
+    enum class SourceKind : u8 {
+      UNINITIALIZED,
+      ASSIGNMENT_PART,
+      CONST_DATA,
+    };
+
+    enum class DestKind : u8 {
+      TO_REG,
+      TO_STACK,
+    };
+
+    static constexpr u32 MAX_CONST_WORDS = 8;
+
+    SourceKind source_kind = SourceKind::UNINITIALIZED;
+    DestKind dest_kind = DestKind::TO_REG;
+    bool allow_uninitialized = false;
+
+    Reg dst_reg = Reg::make_invalid();
+    Reg temp_reg = Reg::make_invalid();
+    i32 stack_off = 0;
+
+    ValLocalIdx local_idx = INVALID_VAL_LOCAL_IDX;
+    u32 part_idx = 0;
+
+    RegBank bank{};
+    u32 size = 0;
+    std::array<u64, MAX_CONST_WORDS> const_words{};
+    u8 const_word_count = 0;
+  };
+
+  using DeferredPhiMaterializationList =
+  util::SmallVector<DeferredPhiMaterialization, 16>;
+
+  struct DeferredPinnedAssignment {
+    ValLocalIdx local_idx = INVALID_VAL_LOCAL_IDX;
+    ValueAssignment *assignment = nullptr;
+  };
+
+  using DeferredPinnedAssignmentList =
+  util::SmallVector<DeferredPinnedAssignment, 16>;
+
   struct EdgeRepairReg {
     ValLocalIdx local_idx = INVALID_VAL_LOCAL_IDX;
     u32 part_idx = 0;
@@ -1050,13 +1092,18 @@ public:
   void move_values_to_match(BlockIndex target) {
     MoveList moves;
     DeferredEdgeLoadList deferred_loads;
+    DeferredPhiMaterializationList deferred_phi_materializations;
+    DeferredPinnedAssignmentList deferred_pinned_assignments;
     EdgeRepairRegList edge_repair_regs;
 
     typename RegisterFile::RegBitSet phi_regs = 0;
     typename RegisterFile::RegBitSet unallocatable_regs = 0;
     if (analyzer.block_has_phis(target)) {
       auto [phi_regs_, unallocatable_regs_] =
-          move_to_phi_nodes_impl(target, moves, edge_repair_regs);
+          move_to_phi_nodes_impl(target,
+                                 moves,
+                                 deferred_phi_materializations,
+                                 deferred_pinned_assignments);
       phi_regs = phi_regs_;
       unallocatable_regs = unallocatable_regs_;
     }
@@ -1117,6 +1164,10 @@ public:
       if (!spill_reg.valid()) {
         return;
       }
+      // wasn't spilled on incoming branch
+      if (ap.assignment()->frame_off == 0) {
+        return;
+      }
 
       if (spill_reg == ap.get_reg()) {
         spill(ap);
@@ -1172,9 +1223,6 @@ public:
         const ValLocalIdx local_idx = register_file.reg_local_idx(current_reg);
         if (local_idx == INVALID_VAL_LOCAL_IDX ||
             seen_local_idxs.contains(local_idx)) {
-          continue;
-        }
-        if (phi_regs & (1ull << reg)) {
           continue;
         }
 
@@ -1292,11 +1340,58 @@ public:
 
     MoveList ordered =
         sequentialize_readonly(moves, phi_regs | unallocatable_regs, false);
-    register_file.allocatable |= unallocatable_regs;
     for (const auto &move: ordered) {
       // note we don't update any assignments here. this is done at the start of compile_block
       if (move.dst != move.src) {
         derived()->mov(move.dst, move.src, move.size);
+      }
+    }
+
+    const auto emit_deferred_phi_source_to_reg =
+        [&](const DeferredPhiMaterialization &deferred, Reg dst) {
+      switch (deferred.source_kind) {
+        case DeferredPhiMaterialization::SourceKind::UNINITIALIZED:
+          if (deferred.allow_uninitialized) {
+            return false;
+          }
+          TPDE_UNREACHABLE(
+            "attempt to defer-load uninitialized value part");
+        case DeferredPhiMaterialization::SourceKind::CONST_DATA:
+          derived()->materialize_constant(
+            deferred.const_words.data(), deferred.bank, deferred.size, dst);
+          return true;
+        case DeferredPhiMaterialization::SourceKind::ASSIGNMENT_PART: {
+          ValueAssignment *assignment = val_assignment(deferred.local_idx);
+          if (!assignment || deferred.part_idx >= assignment->part_count) {
+            if (deferred.allow_uninitialized) {
+              return false;
+            }
+            TPDE_UNREACHABLE(
+              "attempt to defer-load freed assignment value part");
+          }
+          AssignmentPartRef ap{assignment, deferred.part_idx};
+          emit_assignment_part_to_reg(dst, ap, deferred.allow_uninitialized);
+          return true;
+        }
+      }
+      TPDE_UNREACHABLE("unknown deferred source kind");
+    };
+
+    for (const auto &deferred: deferred_phi_materializations) {
+      switch (deferred.dest_kind) {
+        case DeferredPhiMaterialization::DestKind::TO_REG:
+          emit_deferred_phi_source_to_reg(deferred, deferred.dst_reg);
+          break;
+        case DeferredPhiMaterialization::DestKind::TO_STACK: {
+          const Reg tmp_reg = deferred.temp_reg;
+          if (!tmp_reg.valid()) [[unlikely]] {
+            TPDE_FATAL("missing deferred temporary register for phi spill");
+          }
+          if (emit_deferred_phi_source_to_reg(deferred, tmp_reg)) {
+            derived()->spill_reg(tmp_reg, deferred.stack_off, deferred.size);
+          }
+          break;
+        }
       }
     }
 
@@ -1309,13 +1404,34 @@ public:
       emit_assignment_part_to_reg(
         deferred.dst, ap, /*allow_uninitialized=*/true);
     }
+
+    for (const auto &pin: deferred_pinned_assignments) {
+      if (!pin.assignment || pin.local_idx == INVALID_VAL_LOCAL_IDX) {
+        continue;
+      }
+      if (val_assignment(pin.local_idx) != pin.assignment) {
+        continue;
+      }
+      assert(!pin.assignment->variable_ref &&
+        "variable-ref assignments must not be pinned");
+      assert(pin.assignment->references_left > 0 &&
+        "invalid pinned assignment ref-count state");
+      if (--pin.assignment->references_left == 0) {
+        release_assignment(pin.local_idx, pin.assignment);
+      }
+    }
+
+    register_file.allocatable |= unallocatable_regs;
   }
 
 
   std::pair<typename RegisterFile::RegBitSet, typename RegisterFile::RegBitSet>
   move_to_phi_nodes_impl(BlockIndex target,
                          MoveList &moves,
-                         EdgeRepairRegList &edge_repair_regs);
+                         DeferredPhiMaterializationList
+                         &deferred_phi_materializations,
+                         DeferredPinnedAssignmentList
+                         &deferred_pinned_assignments);
 
   /// Count available registers in a specific bank
   u32 count_available_registers(RegBank bank) const {
@@ -2673,9 +2789,8 @@ void CompilerBase<Adaptor, Derived, Config>::spill(AssignmentPartRef ap) {
     assert(ap.register_valid() && "cannot spill uninitialized assignment part");
     allocate_spill_slot(ap);
     // argument stack slot will remain valid
-    if (ap.frame_off() < 0) {
       derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
-    }
+
     ap.set_stack_valid();
 #ifndef NDEBUG
     {
@@ -2715,6 +2830,7 @@ void CompilerBase<Adaptor, Derived, Config>::evict_reg(Reg reg) {
   assert(register_file.reg_local_idx(reg) != INVALID_VAL_LOCAL_IDX);
 
   ValLocalIdx local_idx = register_file.reg_local_idx(reg);
+  TPDE_LOG_TRACE("Evicting reg {} containing value {}", reg.id(), static_cast<u32>(local_idx));
   auto part = register_file.reg_part(reg);
   AssignmentPartRef evict_part{val_assignment(local_idx), part};
 
@@ -3209,7 +3325,8 @@ std::pair<
     CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
   BlockIndex target,
   MoveList &moves,
-  EdgeRepairRegList &edge_repair_regs) {
+  DeferredPhiMaterializationList &deferred_phi_materializations,
+  DeferredPinnedAssignmentList &deferred_pinned_assignments) {
   // PHI-nodes are always moved to their stack-slot (unless they are fixed)
   //
   // However, we need to take care of PHI-dependencies (cycles and chains)
@@ -3258,6 +3375,8 @@ std::pair<
   };
   ScratchReg spill_scratch_gp{this};
   ScratchReg spill_scratch_fp{this};
+  std::array<Reg, Config::NUM_BANKS> phi_spill_temps;
+  phi_spill_temps.fill(Reg::make_invalid());
   util::SmallVector<NodeEntry, 16> nodes;
   for (IRValueRef phi : adaptor->block_phis(target_ref)) {
     ValLocalIdx phi_local_idx = adaptor->val_local_idx(phi);
@@ -3302,16 +3421,13 @@ std::pair<
   typename RegisterFile::RegBitSet unallocatable_regs = 0;
 
   typename RegisterFile::RegBitSet used_phi_regs = 0;
-  typename RegisterFile::RegBitSet reserved_phi_temp_regs = 0;
-  std::array<Reg, Config::NUM_BANKS> phi_spill_temps;
-  phi_spill_temps.fill(Reg::make_invalid());
 
   const auto mark_reg_unallocatable = [&](Reg reg) {
     unallocatable_regs |= (1ull << reg.id());
     register_file.allocatable &= ~(1ull << reg.id());
   };
 
-  const auto record_edge_repair_reg = [&](ValLocalIdx local_idx,
+  /*const auto record_edge_repair_reg = [&](ValLocalIdx local_idx,
                                           u32 part_idx,
                                           Reg reg) {
     for (auto &repair: edge_repair_regs) {
@@ -3322,73 +3438,79 @@ std::pair<
     }
     edge_repair_regs.emplace_back(
       EdgeRepairReg{.local_idx = local_idx, .part_idx = part_idx, .reg = reg});
+  };*/
+
+  const auto pin_deferred_assignment = [&](ValLocalIdx local_idx,
+                                           ValueAssignment *assignment) {
+    if (!assignment || assignment->variable_ref) {
+      return;
+    }
+    ++assignment->references_left;
+    deferred_pinned_assignments.emplace_back(DeferredPinnedAssignment{
+      .local_idx = local_idx,
+      .assignment = assignment,
+    });
   };
 
-  const auto emit_assignment_part_to_reg =
-      [&](Reg dst, AssignmentPartRef ap, bool allow_uninitialized = false) {
-    if (ap.register_valid()) {
-      if (ap.get_reg() != dst) {
-        derived()->mov(dst, ap.get_reg(), ap.part_size());
-      }
+  const auto defer_value_part_materialization =
+      [&](DeferredPhiMaterialization::DestKind dest_kind,
+          Reg dst_reg,
+          Reg temp_reg,
+          i32 stack_off,
+          AssignmentPartRef phi_ap,
+          ValuePartRef &incoming_part,
+          bool allow_uninitialized = false) {
+    DeferredPhiMaterialization deferred{};
+    deferred.dest_kind = dest_kind;
+    deferred.allow_uninitialized = allow_uninitialized;
+    deferred.dst_reg = dst_reg;
+    deferred.temp_reg = temp_reg;
+    deferred.stack_off = stack_off;
+    deferred.bank = phi_ap.bank();
+    deferred.size = phi_ap.part_size();
+
+    if (incoming_part.is_const()) {
+      deferred.source_kind =
+          DeferredPhiMaterialization::SourceKind::CONST_DATA;
+      const auto data = incoming_part.const_data();
+      assert(data.size() <= deferred.const_words.size() &&
+        "deferred constant exceeds maximum part size");
+      std::copy(data.begin(), data.end(), deferred.const_words.begin());
+      deferred.const_word_count = static_cast<u8>(data.size());
+      deferred_phi_materializations.push_back(std::move(deferred));
       return;
     }
 
-    if (!ap.variable_ref()) {
-      if (!ap.stack_valid()) {
-        if (allow_uninitialized) {
-          return;
-        }
-        TPDE_UNREACHABLE("attempt to edge-load uninitialized value part");
-      }
-      derived()->load_from_stack(dst, ap.frame_off(), ap.part_size());
-      return;
-    }
-
-    if (ap.is_stack_variable()) {
-      derived()->load_address_of_stack_var(dst, ap);
-    } else if constexpr (!Config::DEFAULT_VAR_REF_HANDLING) {
-      derived()->load_address_of_var_reference(dst, ap);
-    } else {
-      TPDE_UNREACHABLE("non-stack-variable needs custom var-ref handling");
-    }
-  };
-
-  const auto emit_value_part_to_reg = [&](Reg dst,
-                                          ValuePartRef &part,
-                                          bool allow_uninitialized = false) {
-    if (part.is_const()) {
-      derived()->materialize_constant(
-        part.const_data().data(), part.bank(), part.part_size(), dst);
-      return;
-    }
-
-    if (part.has_assignment()) {
-      emit_assignment_part_to_reg(dst, part.assignment(), allow_uninitialized);
-      return;
-    }
-
-    Reg src = part.cur_reg_unlocked();
-    if (src.valid()) {
-      if (src != dst) {
-        derived()->mov(dst, src, part.part_size());
-      }
+    if (incoming_part.has_assignment()) {
+      deferred.source_kind =
+          DeferredPhiMaterialization::SourceKind::ASSIGNMENT_PART;
+      deferred.local_idx = incoming_part.local_idx();
+      deferred.part_idx = incoming_part.part();
+      pin_deferred_assignment(
+        deferred.local_idx, val_assignment(deferred.local_idx));
+      deferred_phi_materializations.push_back(std::move(deferred));
       return;
     }
 
     if (!allow_uninitialized) {
-      TPDE_UNREACHABLE("cannot edge-load special value part without register");
+      TPDE_UNREACHABLE(
+        "cannot defer-load special value part without register");
     }
-  };
 
-  const auto spill_assignment_if_needed = [&](AssignmentPartRef ap) {
-    if (ap.fixed_assignment() || ap.variable_ref() || !ap.register_valid() ||
-        ap.stack_valid()) {
-      return;
-    }
-    allocate_spill_slot(ap);
-    derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
+    deferred.source_kind =
+        DeferredPhiMaterialization::SourceKind::UNINITIALIZED;
+    deferred_phi_materializations.push_back(std::move(deferred));
   };
-
+  /*
+    const auto spill_assignment_if_needed = [&](AssignmentPartRef ap) {
+      if (ap.fixed_assignment() || ap.variable_ref() || !ap.register_valid() ||
+          ap.stack_valid()) {
+        return;
+      }
+      allocate_spill_slot(ap);
+      derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
+    };
+  */
   const auto spill_phi_part_to_stack = [&](AssignmentPartRef phi_ap,
                                            ValuePartRef &incoming_part,
                                            Reg incoming_reg) {
@@ -3402,17 +3524,30 @@ std::pair<
     } else {
       Reg tmp_reg = phi_spill_temps[phi_ap.bank().id()];
       if (tmp_reg.invalid()) {
-        tmp_reg = this->select_reg(
-          phi_ap.bank(), used_phi_regs | unallocatable_regs);
+        if (phi_ap.bank() == Config::GP_BANK) {
+          tmp_reg = spill_scratch_gp.alloc_gp();
+        } else if (phi_ap.bank() == Config::FP_BANK) {
+          tmp_reg = spill_scratch_fp.alloc_fp();
+        } else {
+          TPDE_FATAL("unsupported register bank for deferred phi spill temp");
+        }
+        phi_spill_temps[phi_ap.bank().id()] = tmp_reg;
       }
-      if (tmp_reg.invalid()) [[unlikely]] {
-        TPDE_FATAL("failed to allocate temporary register for phi spill");
-      }
-      emit_value_part_to_reg(
-        tmp_reg, incoming_part, /*allow_uninitialized=*/true);
-      derived()->spill_reg(tmp_reg, phi_ap.frame_off(), phi_ap.part_size());
+
+      defer_value_part_materialization(
+        DeferredPhiMaterialization::DestKind::TO_STACK,
+        Reg::make_invalid(),
+        tmp_reg,
+        phi_ap.frame_off(),
+        phi_ap,
+        incoming_part,
+
+        true
+      );
+      incoming_part.reset();
     }
   };
+
 
   const auto enqueue_or_materialize_phi_part = [&](AssignmentPartRef phi_ap,
                                                    ValuePartRef &incoming_part,
@@ -3431,45 +3566,53 @@ std::pair<
       return;
     }
 
-    emit_value_part_to_reg(
-      target_reg, incoming_part, /*allow_uninitialized=*/true);
+    defer_value_part_materialization(DeferredPhiMaterialization::DestKind::TO_REG,
+                                     target_reg,
+                                     Reg::make_invalid(),
+                                     /*stack_off=*/
+                                     0,
+                                     phi_ap,
+                                     incoming_part,
+                                     /*allow_uninitialized=*/true
+    );
     incoming_part.reset();
   };
+  /*
+    const auto preserve_incoming_reg = [&](
+      AssignmentPartRef phi_ap,
+      Reg incoming_reg,
+      Reg target_reg,
+      u32 part) {
+      if (incoming_reg != target_reg) {
+        return;
+      }
 
-  const auto preserve_incoming_reg = [&](
-    AssignmentPartRef phi_ap,
-    Reg incoming_reg,
-    Reg target_reg,
-    u32 part) {
-    if (incoming_reg != target_reg) {
-      return;
-    }
+      const auto incoming_idx = register_file.reg_local_idx(incoming_reg);
+      if (incoming_idx == INVALID_VAL_LOCAL_IDX) {
+        return;
+      }
 
-    const auto incoming_idx = register_file.reg_local_idx(incoming_reg);
-    if (incoming_idx == INVALID_VAL_LOCAL_IDX) {
-      return;
-    }
+      ValueAssignment *incoming_assignment = val_assignment(incoming_idx);
+      if (!incoming_assignment || part >= incoming_assignment->part_count ||
+          incoming_assignment->pending_free ||
+          incoming_assignment->references_left <= 1) {
+        return;
+      }
 
-    ValueAssignment *incoming_assignment = val_assignment(incoming_idx);
-    if (!incoming_assignment || part >= incoming_assignment->part_count) {
-      return;
-    }
+      AssignmentPartRef incoming_ap{incoming_assignment, part};
+      auto repair_reg = register_file.find_first_free_excluding(
+          phi_ap.bank(), unallocatable_regs | used_phi_regs);
+      if (repair_reg.valid()) {
+        moves.emplace_back(
+          repair_reg, incoming_reg, incoming_ap.part_size(), incoming_idx, part);
+        //record_edge_repair_reg(incoming_idx, part, repair_reg);
+        mark_reg_unallocatable(repair_reg);
+        return;
+      }
 
-    AssignmentPartRef incoming_ap{incoming_assignment, part};
-    auto repair_reg = register_file.find_first_free_excluding(
-        phi_ap.bank(), unallocatable_regs | used_phi_regs);
-    if (repair_reg.valid()) {
-      // needs to be immediate, value may be overwritten by phi
-      derived()->mov(repair_reg, incoming_reg, incoming_ap.part_size());
-
-      record_edge_repair_reg(incoming_idx, part, repair_reg);
-      mark_reg_unallocatable(repair_reg);
-      return;
-    }
-
-    spill_assignment_if_needed(incoming_ap);
-    mark_reg_unallocatable(incoming_reg);
-  };
+      spill_assignment_if_needed(incoming_ap);
+      mark_reg_unallocatable(incoming_reg);
+    };*/
 
   const auto edge_incoming_ref = [&](IRValueRef value) -> ValueRef {
     if (auto special = derived()->val_ref_special(value); special) {
@@ -3524,8 +3667,14 @@ std::pair<
                              phi_local_idx,
                              part);
         } else {
-          emit_value_part_to_reg(
-            target_reg, incoming_part, /*allow_uninitialized=*/true);
+          defer_value_part_materialization(
+            DeferredPhiMaterialization::DestKind::TO_REG,
+            target_reg,
+            Reg::make_invalid(),
+            /*stack_off=*/0,
+            phi_ap,
+            incoming_part,
+            /*allow_uninitialized=*/true);
           incoming_part.reset();
         }
         continue;
@@ -3536,16 +3685,16 @@ std::pair<
         continue;
       }
 
-      if (register_file.is_used(target_reg)) {
+      /*if (register_file.is_used(target_reg)) {
         preserve_incoming_reg(
           phi_ap, target_reg, target_reg, part);
-      }
-
-      if (incoming_reg.valid() && !incoming_last_ref && !adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
-        preserve_incoming_reg(
-          phi_ap, incoming_reg, target_reg, part);
-      }
-
+      }*/
+      /*
+            if (incoming_reg.valid() && !incoming_last_ref && !adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+              preserve_incoming_reg(
+                phi_ap, incoming_reg, target_reg, part);
+            }
+      */
       enqueue_or_materialize_phi_part(phi_ap,
                                       incoming_part,
                                       target_reg,
@@ -3593,10 +3742,16 @@ std::pair<
           // that might still need our value.
           mark_reg_unallocatable(incoming_reg);
           moves.emplace_back(
-              fixed_reg, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
+            fixed_reg, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
         } else {
-          emit_value_part_to_reg(
-            fixed_reg, incoming_part, /*allow_uninitialized=*/true);
+          defer_value_part_materialization(
+            DeferredPhiMaterialization::DestKind::TO_REG,
+            fixed_reg,
+            Reg::make_invalid(),
+            /*stack_off=*/0,
+            phi_ap,
+            incoming_part,
+            /*allow_uninitialized=*/true);
           incoming_part.reset();
         }
         continue;
@@ -3608,7 +3763,7 @@ std::pair<
       }
 
       RegBank bank = phi_ap.bank();
-      auto exclusion = used_phi_regs | new_phi_regs | reserved_phi_temp_regs;
+      auto exclusion = used_phi_regs | new_phi_regs;
       Reg selected = Reg::make_invalid();
 
       // if our incoming is dead after the phi we can reuse the register
@@ -3684,19 +3839,6 @@ std::pair<
     fp_parts_total += node.fp_parts;
   }
 
-  /*const auto reserve_phi_spill_temp = [&](RegBank bank, bool needs_stack) {
-    if (!needs_stack) {
-      return;
-    }
-    Reg tmp = register_file.find_first_free_excluding(bank, unallocatable_regs);
-    if (!tmp.valid()) {
-      return;
-    }
-    phi_spill_temps[bank.id()] = tmp;
-    reserved_phi_temp_regs |= (1ull << tmp.id());
-    mark_reg_unallocatable(tmp);
-  };*/
-
   // Calculate register capacity per bank (ensuring at least 1 free register)
   const u32 gp_regs_for_phis = std::min(
     available_gp > reserved_per_bank ? available_gp - reserved_per_bank : 0,
@@ -3713,9 +3855,6 @@ std::pair<
   bool use_hybrid_allocation = gp_needs_stack || fp_needs_stack;
 
   if (use_hybrid_allocation) {
-    phi_spill_temps[0] = spill_scratch_gp.alloc_gp();
-    phi_spill_temps[1] = spill_scratch_fp.alloc_fp();
-
     TPDE_LOG_DBG("Using hybrid phi allocation: {} GP parts ({} avail), {} FP "
                  "parts ({} avail)",
                  gp_parts_total,
@@ -4103,9 +4242,19 @@ void CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
     return;
   }
 
+
   auto phi_block_it = phi_regs.find(cur_block_idx);
   const PhiRegMap *phi_reg_map =
       phi_block_it != phi_regs.end() ? &phi_block_it->second : nullptr;
+
+  for (auto reg: register_file.used_regs()) {
+    if (register_file.reg_local_idx(Reg{reg}) == INVALID_VAL_LOCAL_IDX || register_file.is_fixed(Reg{reg})) {
+      continue;
+    }
+    AssignmentPartRef ap{val_assignment(register_file.reg_local_idx(Reg{reg})), register_file.reg_part(Reg{reg})};
+    register_file.unmark_used(Reg{reg});
+    ap.set_register_valid(false);
+  }
 
   for (IRValueRef phi: adaptor->block_phis(block)) {
     auto phi_idx = adaptor->val_local_idx(phi);
@@ -4212,7 +4361,7 @@ void CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
         }
       }
       if (!ap.variable_ref() && ap.stack_valid()) {
-        ap.set_modified(true);
+        //ap.set_modified(true);
       }
       ap.set_reg(reg);
       ap.set_register_valid(true);
