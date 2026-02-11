@@ -230,6 +230,14 @@ struct CompilerBase {
 
   using DeferredEdgeLoadList = util::SmallVector<DeferredEdgeLoad, 16>;
 
+  struct EdgeRepairReg {
+    ValLocalIdx local_idx = INVALID_VAL_LOCAL_IDX;
+    u32 part_idx = 0;
+    Reg reg = Reg::make_invalid();
+  };
+
+  using EdgeRepairRegList = util::SmallVector<EdgeRepairReg, 8>;
+
   /// Pending argument for lazy CallBuilder execution
   struct PendingArg {
     enum class Kind : u8 {
@@ -1042,12 +1050,13 @@ public:
   void move_values_to_match(BlockIndex target) {
     MoveList moves;
     DeferredEdgeLoadList deferred_loads;
+    EdgeRepairRegList edge_repair_regs;
 
     typename RegisterFile::RegBitSet phi_regs = 0;
     typename RegisterFile::RegBitSet unallocatable_regs = 0;
     if (analyzer.block_has_phis(target)) {
       auto [phi_regs_, unallocatable_regs_] =
-          move_to_phi_nodes_impl(target, moves);
+          move_to_phi_nodes_impl(target, moves, edge_repair_regs);
       phi_regs = phi_regs_;
       unallocatable_regs = unallocatable_regs_;
     }
@@ -1082,12 +1091,41 @@ public:
       }
     };
 
-    const auto spill_assignment_if_needed = [&](AssignmentPartRef ap) {
+    const auto effective_reg_for_part = [&](ValLocalIdx local_idx,
+                                            u32 part_idx,
+                                            AssignmentPartRef ap) {
+      for (const auto &repair: edge_repair_regs) {
+        if (repair.local_idx == local_idx && repair.part_idx == part_idx) {
+          return repair.reg;
+        }
+      }
+      if (ap.register_valid()) {
+        return ap.get_reg();
+      }
+      return Reg::make_invalid();
+    };
+
+    const auto spill_assignment_if_needed = [&](ValLocalIdx local_idx,
+                                                u32 part_idx,
+                                                AssignmentPartRef ap) {
       if (ap.fixed_assignment() || ap.variable_ref() || !ap.register_valid() ||
           ap.stack_valid()) {
         return;
       }
-      spill(ap);
+
+      Reg spill_reg = effective_reg_for_part(local_idx, part_idx, ap);
+      if (!spill_reg.valid()) {
+        return;
+      }
+
+      if (spill_reg == ap.get_reg()) {
+        spill(ap);
+        return;
+      }
+
+      allocate_spill_slot(ap);
+      derived()->spill_reg(spill_reg, ap.frame_off(), ap.part_size());
+      ap.set_stack_valid();
     };
 
     auto block_state_it = block_regs.find(target);
@@ -1108,7 +1146,7 @@ public:
           Reg target_reg = state.registers[i];
 
           if (!target_reg.valid()) {
-            spill_assignment_if_needed(ap);
+            spill_assignment_if_needed(state.val_local_idx, i, ap);
             continue;
           }
 
@@ -1155,14 +1193,32 @@ public:
         }
 
         const auto &liveness = analyzer.liveness_info(local_idx);
-        if (liveness.last < target || liveness.first >= target) {
+        if (liveness.last < target || liveness.first > target) {
           continue;
         }
 
 
         AssignmentPartRef ap{assignment, part};
-        spill_assignment_if_needed(ap);
+        spill_assignment_if_needed(local_idx, part, ap);
+      }
+      for (auto entry: edge_repair_regs) {
+        ValueAssignment *assignment = val_assignment(entry.local_idx);
+        if (!assignment || entry.part_idx >= assignment->part_count) {
+          continue;
+        }
+        if (assignment->variable_ref) {
+          continue;
+        }
 
+        const auto &liveness = analyzer.liveness_info(entry.local_idx);
+        if (liveness.last < target || liveness.first >= target) {
+          continue;
+        }
+        AssignmentPartRef ap{assignment, entry.part_idx};
+        if (ap.stack_valid()) {
+          continue;
+        }
+        spill_assignment_if_needed(entry.local_idx, entry.part_idx, ap);
       }
     } else {
       std::unordered_set<ValLocalIdx> seen;
@@ -1189,7 +1245,7 @@ public:
                 assignment->pending_free || !ap.register_valid()) {
               continue;
             }
-            spill_assignment_if_needed(ap);
+            spill_assignment_if_needed(local_idx, i, ap);
           }
           continue;
         }
@@ -1237,15 +1293,6 @@ public:
     MoveList ordered =
         sequentialize_readonly(moves, phi_regs | unallocatable_regs, false);
     register_file.allocatable |= unallocatable_regs;
-    for (auto reg: register_file.used_regs()) {
-      if (register_file.reg_local_idx(Reg{reg}) == INVALID_VAL_LOCAL_IDX) {
-        continue;
-      }
-      AssignmentPartRef ap{val_assignment(register_file.reg_local_idx(Reg{reg})), register_file.reg_part(Reg{reg})};
-      if (ap.register_valid() && ap.get_reg() != Reg{reg}) {
-        register_file.unmark_used(Reg{reg});
-      }
-    }
     for (const auto &move: ordered) {
       // note we don't update any assignments here. this is done at the start of compile_block
       if (move.dst != move.src) {
@@ -1266,7 +1313,9 @@ public:
 
 
   std::pair<typename RegisterFile::RegBitSet, typename RegisterFile::RegBitSet>
-      move_to_phi_nodes_impl(BlockIndex target, MoveList &moves);
+  move_to_phi_nodes_impl(BlockIndex target,
+                         MoveList &moves,
+                         EdgeRepairRegList &edge_repair_regs);
 
   /// Count available registers in a specific bank
   u32 count_available_registers(RegBank bank) const {
@@ -2623,7 +2672,10 @@ void CompilerBase<Adaptor, Derived, Config>::spill(AssignmentPartRef ap) {
   if (!ap.stack_valid() && !ap.variable_ref()) {
     assert(ap.register_valid() && "cannot spill uninitialized assignment part");
     allocate_spill_slot(ap);
-    derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
+    // argument stack slot will remain valid
+    if (ap.frame_off() < 0) {
+      derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
+    }
     ap.set_stack_valid();
 #ifndef NDEBUG
     {
@@ -3155,7 +3207,9 @@ std::pair<
     typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet,
     typename CompilerBase<Adaptor, Derived, Config>::RegisterFile::RegBitSet>
     CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
-        BlockIndex target, MoveList &moves) {
+  BlockIndex target,
+  MoveList &moves,
+  EdgeRepairRegList &edge_repair_regs) {
   // PHI-nodes are always moved to their stack-slot (unless they are fixed)
   //
   // However, we need to take care of PHI-dependencies (cycles and chains)
@@ -3202,7 +3256,8 @@ std::pair<
     u32 gp_parts = 0;               // Number of parts using GP registers
     u32 fp_parts = 0;               // Number of parts using FP registers
   };
-
+  ScratchReg spill_scratch_gp{this};
+  ScratchReg spill_scratch_fp{this};
   util::SmallVector<NodeEntry, 16> nodes;
   for (IRValueRef phi : adaptor->block_phis(target_ref)) {
     ValLocalIdx phi_local_idx = adaptor->val_local_idx(phi);
@@ -3254,6 +3309,19 @@ std::pair<
   const auto mark_reg_unallocatable = [&](Reg reg) {
     unallocatable_regs |= (1ull << reg.id());
     register_file.allocatable &= ~(1ull << reg.id());
+  };
+
+  const auto record_edge_repair_reg = [&](ValLocalIdx local_idx,
+                                          u32 part_idx,
+                                          Reg reg) {
+    for (auto &repair: edge_repair_regs) {
+      if (repair.local_idx == local_idx && repair.part_idx == part_idx) {
+        repair.reg = reg;
+        return;
+      }
+    }
+    edge_repair_regs.emplace_back(
+      EdgeRepairReg{.local_idx = local_idx, .part_idx = part_idx, .reg = reg});
   };
 
   const auto emit_assignment_part_to_reg =
@@ -3393,7 +3461,8 @@ std::pair<
     if (repair_reg.valid()) {
       // needs to be immediate, value may be overwritten by phi
       derived()->mov(repair_reg, incoming_reg, incoming_ap.part_size());
-      
+
+      record_edge_repair_reg(incoming_idx, part, repair_reg);
       mark_reg_unallocatable(repair_reg);
       return;
     }
@@ -3429,12 +3498,9 @@ std::pair<
     assert(phi_assignment && "phi node has no assignment");
 
     ValueRef incoming_ref = edge_incoming_ref(incoming_val);
-    if (!adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+    /*if (!adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
       const auto incoming_local_idx = adaptor->val_local_idx(incoming_val);
-      if (incoming_local_idx == phi_local_idx) {
-        return;
-      }
-    }
+    }*/
     const bool incoming_last_ref = incoming_ref.last_ref();
 
     for (u32 part = 0; part < phi_assignment->part_count; ++part) {
@@ -3451,6 +3517,7 @@ std::pair<
         if (incoming_reg.valid()) {
           // We can't move immediately here since incoming could also be a phi
           // that might still need our value.
+          mark_reg_unallocatable(incoming_reg);
           moves.emplace_back(target_reg,
                              incoming_reg,
                              phi_ap.part_size(),
@@ -3524,6 +3591,7 @@ std::pair<
         if (incoming_reg.valid()) {
           // We can't move immediately here since incoming could also be a phi
           // that might still need our value.
+          mark_reg_unallocatable(incoming_reg);
           moves.emplace_back(
               fixed_reg, incoming_reg, phi_ap.part_size(), phi_local_idx, part);
         } else {
@@ -3616,7 +3684,7 @@ std::pair<
     fp_parts_total += node.fp_parts;
   }
 
-  const auto reserve_phi_spill_temp = [&](RegBank bank, bool needs_stack) {
+  /*const auto reserve_phi_spill_temp = [&](RegBank bank, bool needs_stack) {
     if (!needs_stack) {
       return;
     }
@@ -3627,7 +3695,7 @@ std::pair<
     phi_spill_temps[bank.id()] = tmp;
     reserved_phi_temp_regs |= (1ull << tmp.id());
     mark_reg_unallocatable(tmp);
-  };
+  };*/
 
   // Calculate register capacity per bank (ensuring at least 1 free register)
   const u32 gp_regs_for_phis = std::min(
@@ -3637,15 +3705,17 @@ std::pair<
     available_fp > reserved_per_bank ? available_fp - reserved_per_bank : 0,
     PHI_REGISTER_THRESHOLD);
 
-  const bool gp_needs_stack = gp_parts_total > gp_regs_for_phis;
-  const bool fp_needs_stack = fp_parts_total > fp_regs_for_phis;
+  const bool gp_needs_stack = gp_parts_total > gp_regs_for_phis || !gp_regs_for_phis;
+  const bool fp_needs_stack = fp_parts_total > fp_regs_for_phis || !fp_regs_for_phis;
 
-  reserve_phi_spill_temp(Config::FP_BANK, fp_needs_stack);
 
   // Determine if hybrid allocation is needed for each bank
   bool use_hybrid_allocation = gp_needs_stack || fp_needs_stack;
 
   if (use_hybrid_allocation) {
+    phi_spill_temps[0] = spill_scratch_gp.alloc_gp();
+    phi_spill_temps[1] = spill_scratch_fp.alloc_fp();
+
     TPDE_LOG_DBG("Using hybrid phi allocation: {} GP parts ({} avail), {} FP "
                  "parts ({} avail)",
                  gp_parts_total,

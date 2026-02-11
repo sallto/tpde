@@ -42,6 +42,9 @@ public:
   /// Allocate a general-purpose register.
   AsmReg alloc_gp() { return alloc(Config::GP_BANK); }
 
+  /// Allocate a floating-point register.
+  AsmReg alloc_fp() { return alloc(Config::FP_BANK); }
+
   /// Allocate register in the specified bank. Does nothing if it holds a
   /// register in the specified bank. Evicts a register if required.
   AsmReg alloc(RegBank bank);
