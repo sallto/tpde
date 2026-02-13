@@ -177,6 +177,8 @@ struct CompilerBase {
   BlockIndex cur_block_idx;
   u32 cur_instr_idx;
   RegisterFile::RegBitSet used_phi_regs_global = 0;
+  std::array<Reg, Config::NUM_BANKS> branch_scratch_regs;
+  RegisterFile::RegBitSet branch_scratch_mask = 0;
 
   // Assignments
 
@@ -900,15 +902,53 @@ public:
     assert(!generating_branch);
     generating_branch = true;
 #endif
+    branch_scratch_regs.fill(Reg::make_invalid());
+    branch_scratch_mask = 0;
+    for (u32 bank_id = 0; bank_id < Config::NUM_BANKS; ++bank_id) {
+      RegBank bank(static_cast<u8>(bank_id));
+      Reg scratch = this->select_reg(
+        bank, used_phi_regs_global | branch_scratch_mask);
+      if (scratch.invalid()) [[unlikely]] {
+        TPDE_FATAL("failed to allocate branch scratch register");
+      }
+      if (used_phi_regs_global & (1ull << scratch.id())) [[unlikely]] {
+        TPDE_FATAL("branch scratch register overlaps with used phi register");
+      }
+      register_file.mark_used(scratch, INVALID_VAL_LOCAL_IDX, 0);
+      register_file.mark_clobbered(scratch);
+      register_file.mark_fixed(scratch);
+      branch_scratch_regs[bank_id] = scratch;
+      branch_scratch_mask |= (1ull << scratch.id());
+    }
   }
 
   /// Indicate end of region where value-state must not change.
   void end_branch_region() {
+    for (u32 bank_id = 0; bank_id < Config::NUM_BANKS; ++bank_id) {
+      Reg scratch = branch_scratch_regs[bank_id];
+      if (scratch.invalid()) {
+        continue;
+      }
+      register_file.unmark_fixed(scratch);
+      register_file.unmark_used(scratch);
+      branch_scratch_regs[bank_id] = Reg::make_invalid();
+    }
+    branch_scratch_mask = 0;
 #ifndef NDEBUG
     assert(generating_branch);
     generating_branch = false;
     verification_ir.end_branch();
 #endif
+  }
+  Reg branch_scratch_reg(RegBank bank) const {
+    Reg reg = branch_scratch_regs[bank.id()];
+    if (reg.invalid()) [[unlikely]] {
+      TPDE_FATAL("missing branch scratch register");
+    }
+    return reg;
+  }
+  bool has_branch_scratch_reg(RegBank bank) const {
+    return branch_scratch_regs[bank.id()].valid();
   }
 
   /// Generate a branch to a basic block; execution continues afterwards.
@@ -995,9 +1035,10 @@ public:
   }
 
   void move_one_readonly(u32 i,
-                         MoveList &moves,
-                         MoveList &result,
-                         typename RegisterFile::RegBitSet temp_exclusion) {
+      MoveList &moves,
+      MoveList &result,
+      typename RegisterFile::RegBitSet temp_exclusion,
+      const std::array<Reg, Config::NUM_BANKS> *scratch_regs = nullptr) {
     if (moves[i].src == moves[i].dst) {
       return;
     }
@@ -1006,12 +1047,19 @@ public:
       if (moves[j].src == moves[i].dst) {
         switch (moves[j].status) {
           case MoveStatus::TO_MOVE: {
-            move_one_readonly(j, moves, result, temp_exclusion);
+            move_one_readonly(j, moves, result, temp_exclusion, scratch_regs);
             break;
           }
           case MoveStatus::MOVING: {
-            auto tmp = this->select_reg(
-              register_file.reg_bank(moves[j].src), temp_exclusion);
+            Reg tmp = Reg::make_invalid();
+            if (scratch_regs) {
+              RegBank bank = register_file.reg_bank(moves[j].src);
+              tmp = (*scratch_regs)[bank.id()];
+            }
+            if (tmp.invalid()) {
+              tmp = this->select_reg(
+                register_file.reg_bank(moves[j].src), temp_exclusion);
+            }
             if (tmp.invalid()) [[unlikely]] {
               TPDE_FATAL("failed to resolve parallel move cycle without state "
                 "changes");
@@ -1041,7 +1089,8 @@ public:
   MoveList sequentialize_readonly(
     MoveList &moves,
     typename RegisterFile::RegBitSet extra_temp_exclusion = 0,
-    bool keep_self_moves = false) {
+    bool keep_self_moves = false,
+    const std::array<Reg, Config::NUM_BANKS> *scratch_regs = nullptr) {
     typename RegisterFile::RegBitSet move_regs = 0;
     for (const auto &move: moves) {
       if (move.src.valid()) {
@@ -1064,7 +1113,7 @@ public:
                               moves[i].part_idx);
           continue;
         }
-        move_one_readonly(i, moves, result, temp_exclusion);
+        move_one_readonly(i, moves, result, temp_exclusion, scratch_regs);
       }
     }
     return result;
@@ -1318,7 +1367,7 @@ public:
     }
 
     MoveList ordered =
-        sequentialize_readonly(moves, phi_regs | unallocatable_regs, false);
+        sequentialize_readonly(moves, phi_regs | unallocatable_regs, false, &branch_scratch_regs);
     for (const auto &move: ordered) {
       // note we don't update any assignments here. this is done at the start of compile_block
       if (move.dst != move.src) {
@@ -3364,10 +3413,6 @@ std::pair<
     u32 gp_parts = 0;               // Number of parts using GP registers
     u32 fp_parts = 0;               // Number of parts using FP registers
   };
-  ScratchReg spill_scratch_gp{this};
-  ScratchReg spill_scratch_fp{this};
-  std::array<Reg, Config::NUM_BANKS> phi_spill_temps;
-  phi_spill_temps.fill(Reg::make_invalid());
   util::SmallVector<NodeEntry, 16> nodes;
   for (IRValueRef phi : adaptor->block_phis(target_ref)) {
     ValLocalIdx phi_local_idx = adaptor->val_local_idx(phi);
@@ -3499,18 +3544,7 @@ std::pair<
       derived()->spill_reg(
         incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
     } else {
-      Reg tmp_reg = phi_spill_temps[phi_ap.bank().id()];
-      if (tmp_reg.invalid()) {
-        Reg find_tmp = this->select_reg(phi_ap.bank(), unallocatable_regs | used_phi_regs_global);
-        if (phi_ap.bank() == Config::GP_BANK) {
-          tmp_reg = spill_scratch_gp.alloc_specific(find_tmp);
-        } else if (phi_ap.bank() == Config::FP_BANK) {
-          tmp_reg = spill_scratch_fp.alloc_specific(find_tmp);
-        } else {
-          TPDE_FATAL("unsupported register bank for deferred phi spill temp");
-        }
-        phi_spill_temps[phi_ap.bank().id()] = tmp_reg;
-      }
+      Reg tmp_reg = branch_scratch_reg(phi_ap.bank());
 
       defer_value_part_materialization(
         DeferredPhiMaterialization::DestKind::TO_STACK,
@@ -4061,6 +4095,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
   block_regs.clear();
   phi_regs.clear();
   used_phi_regs_global = 0;
+  branch_scratch_regs.fill(Reg::make_invalid());
+  branch_scratch_mask = 0;
   register_file.reset();
   global_register_file.reset();
   // if (tree_ra_ctx) {
