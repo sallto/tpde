@@ -940,6 +940,7 @@ public:
     verification_ir.end_branch();
 #endif
   }
+
   Reg branch_scratch_reg(RegBank bank) const {
     Reg reg = branch_scratch_regs[bank.id()];
     if (reg.invalid()) [[unlikely]] {
@@ -947,6 +948,7 @@ public:
     }
     return reg;
   }
+
   bool has_branch_scratch_reg(RegBank bank) const {
     return branch_scratch_regs[bank.id()].valid();
   }
@@ -1035,10 +1037,10 @@ public:
   }
 
   void move_one_readonly(u32 i,
-      MoveList &moves,
-      MoveList &result,
-      typename RegisterFile::RegBitSet temp_exclusion,
-      const std::array<Reg, Config::NUM_BANKS> *scratch_regs = nullptr) {
+                         MoveList &moves,
+                         MoveList &result,
+                         typename RegisterFile::RegBitSet temp_exclusion,
+                         const std::array<Reg, Config::NUM_BANKS> *scratch_regs = nullptr) {
     if (moves[i].src == moves[i].dst) {
       return;
     }
