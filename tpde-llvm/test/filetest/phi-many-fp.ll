@@ -22,7 +22,8 @@ define <4 x float> @many_fp_phis() {
 ; X64-NEXT:    pxor xmm9, xmm9
 ; X64-NEXT:    pxor xmm10, xmm10
 ; X64-NEXT:    pxor xmm11, xmm11
-; X64-NEXT:    pxor xmm12, xmm12
+; X64-NEXT:    pxor xmm0, xmm0
+; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    pxor xmm0, xmm0
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    pxor xmm0, xmm0

@@ -1170,23 +1170,24 @@ public:
     }
 
     const auto emit_assignment_part_to_reg =
-        [&](Reg dst, AssignmentPartRef ap, bool allow_uninitialized = false) {
+        [&](Reg dst, AssignmentPartRef ap, bool allow_uninitialized = false) -> bool {
       if (ap.register_valid()) {
         if (ap.get_reg() != dst) {
           derived()->mov(dst, ap.get_reg(), ap.part_size());
+          return true;
         }
-        return;
+        return false;
       }
 
       if (!ap.variable_ref()) {
         if (!ap.stack_valid()) {
           if (allow_uninitialized) {
-            return;
+            return false;
           }
           TPDE_UNREACHABLE("attempt to edge-load uninitialized value part");
         }
         derived()->load_from_stack(dst, ap.frame_off(), ap.part_size());
-        return;
+        return true;
       }
 
       if (ap.is_stack_variable()) {
@@ -1197,6 +1198,7 @@ public:
         TPDE_UNREACHABLE(
           "non-stack-variable needs custom var-ref handling");
       }
+      return true;
     };
 
     const auto effective_reg_for_part = [&](ValLocalIdx local_idx,
@@ -1476,6 +1478,7 @@ public:
           }
           if (emit_deferred_phi_source_to_reg(deferred, tmp_reg)) {
             derived()->spill_reg(tmp_reg, deferred.stack_off, deferred.size);
+            register_file.mark_clobbered(tmp_reg);
           }
           break;
         }
@@ -1490,6 +1493,7 @@ public:
       // note we don't update any assignments here. this is done at the start of compile_block
       if (move.dst != move.src) {
         derived()->mov(move.dst, move.src, move.size);
+        register_file.mark_clobbered(move.dst);
       }
     }
 
@@ -1498,7 +1502,9 @@ public:
     for (const auto &deferred: deferred_phi_materializations) {
       switch (deferred.dest_kind) {
         case DeferredPhiMaterialization::DestKind::TO_REG:
-          emit_deferred_phi_source_to_reg(deferred, deferred.dst_reg);
+          if (emit_deferred_phi_source_to_reg(deferred, deferred.dst_reg)) {
+            register_file.mark_clobbered(deferred.dst_reg);
+          }
           break;
         case DeferredPhiMaterialization::DestKind::TO_STACK: {
           // already done
@@ -1515,8 +1521,10 @@ public:
         continue;
       }
       AssignmentPartRef ap{assignment, deferred.part_idx};
-      emit_assignment_part_to_reg(
-        deferred.dst, ap, /*allow_uninitialized=*/true);
+      if (emit_assignment_part_to_reg(
+        deferred.dst, ap, /*allow_uninitialized=*/true)) {
+        register_file.mark_clobbered(deferred.dst);
+      }
     }
 
 
@@ -3250,8 +3258,8 @@ void CompilerBase<Adaptor, Derived, Config>::generate_cond_branch(
     Jump jmp, IRBlockRef true_target, IRBlockRef false_target) {
   IRBlockRef next = analyzer.block_ref(next_block());
 
-  bool true_needs_split = branch_needs_split(true_target);
-  bool false_needs_split = branch_needs_split(false_target);
+  bool true_needs_split = true;
+  bool false_needs_split = true;
 
   auto spilled = spill_before_branch();
   begin_branch_region();
@@ -4401,8 +4409,10 @@ std::unordered_set<ValLocalIdx> CompilerBase<Adaptor, Derived, Config>::initiali
             invalidate_register_owner(reg);
           }
           register_file.update_reg_assignment(reg, phi_idx, i);
+          register_file.mark_clobbered(reg);
         } else {
           register_file.mark_used(reg, phi_idx, i);
+          register_file.mark_clobbered(reg);
         }
       } else {
         if (ap.register_valid()) {
@@ -4489,8 +4499,10 @@ std::unordered_set<ValLocalIdx> CompilerBase<Adaptor, Derived, Config>::initiali
            register_file.reg_part(reg) != i)) {
         invalidate_register_owner(reg);
         register_file.update_reg_assignment(reg, state.val_local_idx, i);
+        register_file.mark_clobbered(reg);
       } else if (!register_file.is_used(reg)) {
         register_file.mark_used(reg, state.val_local_idx, i);
+        register_file.mark_clobbered(reg);
       }
     }
   }

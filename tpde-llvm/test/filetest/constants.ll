@@ -257,17 +257,17 @@ define void @phi_const_float(ptr %ptr) {
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    push rbx
 ; X64-NEXT:    mov rbx, rdi
-; X64-NEXT:    mov eax, 0x42000000
-; X64-NEXT:    movd xmm0, eax
+; X64-NEXT:    mov edx, 0x42000000
+; X64-NEXT:    movd xmm1, edx
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    test al, 0x1
 ; X64-NEXT:    je <L1>
-; X64-NEXT:    mov eax, 0x41800000
-; X64-NEXT:    movd xmm0, eax
+; X64-NEXT:    mov edx, 0x41800000
+; X64-NEXT:    movd xmm1, edx
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    movss dword ptr [rbx], xmm1
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -364,24 +364,24 @@ define void @phi_const_float_regpressure(ptr %ptr) {
 ; X64-NEXT:    mov byte ptr [rbp - 0x3b], al
 ; X64-NEXT:    movzx eax, byte ptr [rbx]
 ; X64-NEXT:    mov byte ptr [rbp - 0x3c], al
-; X64-NEXT:    movss xmm0, dword ptr <phi_const_float_regpressure+0xb3>
+; X64-NEXT:    mov byte ptr [rbp - 0x3d], cl
+; X64-NEXT:    movss xmm1, dword ptr <phi_const_float_regpressure+0xb6>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    mov byte ptr [rbp - 0x3c], al
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    test al, 0x1
+; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    test cl, 0x1
 ; X64-NEXT:    je <L1>
-; X64-NEXT:    mov eax, 0x41800000
-; X64-NEXT:    movd xmm0, eax
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x3c]
+; X64-NEXT:    movss xmm1, dword ptr <phi_const_float_regpressure+0xc9>
+; X64-NEXT:     R_X86_64_PC32 -0x4
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    mov byte ptr [rbx], r12b
 ; X64-NEXT:    mov byte ptr [rbx], r13b
 ; X64-NEXT:    mov byte ptr [rbx], r14b
 ; X64-NEXT:    mov byte ptr [rbx], r15b
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x29]
-; X64-NEXT:    mov byte ptr [rbx], al
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x29]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x3d]
 ; X64-NEXT:    mov byte ptr [rbx], cl
 ; X64-NEXT:    mov byte ptr [rbx], dl
 ; X64-NEXT:    mov byte ptr [rbx], sil
@@ -390,45 +390,44 @@ define void @phi_const_float_regpressure(ptr %ptr) {
 ; X64-NEXT:    mov byte ptr [rbx], r9b
 ; X64-NEXT:    mov byte ptr [rbx], r10b
 ; X64-NEXT:    mov byte ptr [rbx], r11b
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2a]
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x2a]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x2b]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x2c]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x2d]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x2e]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x2f]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x30]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x31]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x32]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x33]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x34]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x35]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x36]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x37]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x38]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x39]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x3a]
+; X64-NEXT:    mov byte ptr [rbx], cl
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x3b]
+; X64-NEXT:    mov byte ptr [rbx], cl
 ; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2b]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2c]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2d]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2e]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2f]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x30]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x31]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x32]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x33]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x34]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x35]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x36]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x37]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x38]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x39]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x3a]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x3b]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x3c]
-; X64-NEXT:    mov byte ptr [rbx], al
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    movss dword ptr [rbx], xmm1
 ; X64-NEXT:    pop r15
 ; X64-NEXT:    pop r14
 ; X64-NEXT:    pop r13
@@ -484,23 +483,23 @@ define void @phi_const_float_regpressure(ptr %ptr) {
 ; ARM64-NEXT:    ldrb w0, [x19]
 ; ARM64-NEXT:    strb w0, [x29, #0xa4]
 ; ARM64-NEXT:    ldrb w0, [x19]
+; ARM64-NEXT:    strb w1, [x29, #0xa5]
 ; ARM64-NEXT:    mov x16, #0x42000000 // =1107296256
 ; ARM64-NEXT:    fmov s8, w16
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    strb w0, [x29, #0xa5]
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    tst w0, #0x1
+; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    tst w1, #0x1
 ; ARM64-NEXT:    b.eq <L1>
 ; ARM64-NEXT:    fmov s8, #16.00000000
-; ARM64-NEXT:    ldrb w0, [x29, #0xa5]
 ; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    strb w20, [x19]
 ; ARM64-NEXT:    strb w21, [x19]
 ; ARM64-NEXT:    strb w22, [x19]
 ; ARM64-NEXT:    strb w23, [x19]
-; ARM64-NEXT:    ldrb w0, [x29, #0xa0]
-; ARM64-NEXT:    strb w0, [x19]
+; ARM64-NEXT:    ldrb w1, [x29, #0xa0]
+; ARM64-NEXT:    strb w1, [x19]
+; ARM64-NEXT:    ldrb w1, [x29, #0xa5]
 ; ARM64-NEXT:    strb w1, [x19]
 ; ARM64-NEXT:    strb w2, [x19]
 ; ARM64-NEXT:    strb w3, [x19]
@@ -523,15 +522,14 @@ define void @phi_const_float_regpressure(ptr %ptr) {
 ; ARM64-NEXT:    strb w26, [x19]
 ; ARM64-NEXT:    strb w27, [x19]
 ; ARM64-NEXT:    strb w28, [x19]
-; ARM64-NEXT:    ldrb w0, [x29, #0xa1]
-; ARM64-NEXT:    strb w0, [x19]
-; ARM64-NEXT:    ldrb w0, [x29, #0xa2]
-; ARM64-NEXT:    strb w0, [x19]
-; ARM64-NEXT:    ldrb w0, [x29, #0xa3]
-; ARM64-NEXT:    strb w0, [x19]
-; ARM64-NEXT:    ldrb w0, [x29, #0xa4]
-; ARM64-NEXT:    strb w0, [x19]
-; ARM64-NEXT:    ldrb w0, [x29, #0xa5]
+; ARM64-NEXT:    ldrb w1, [x29, #0xa1]
+; ARM64-NEXT:    strb w1, [x19]
+; ARM64-NEXT:    ldrb w1, [x29, #0xa2]
+; ARM64-NEXT:    strb w1, [x19]
+; ARM64-NEXT:    ldrb w1, [x29, #0xa3]
+; ARM64-NEXT:    strb w1, [x19]
+; ARM64-NEXT:    ldrb w1, [x29, #0xa4]
+; ARM64-NEXT:    strb w1, [x19]
 ; ARM64-NEXT:    strb w0, [x19]
 ; ARM64-NEXT:    str s8, [x19]
 ; ARM64-NEXT:    ldp x19, x20, [sp, #0x10]
@@ -872,18 +870,18 @@ define void @phi_struct1(ptr %ptr) {
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    push rbx
 ; X64-NEXT:    mov rbx, rdi
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov ecx, 0x1
-; X64-NEXT:  <L0>:
 ; X64-NEXT:    xor edx, edx
-; X64-NEXT:    test dl, 0x1
-; X64-NEXT:    je <L1>
+; X64-NEXT:    mov esi, 0x1
+; X64-NEXT:  <L0>:
 ; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov ecx, 0x1
+; X64-NEXT:    test al, 0x1
+; X64-NEXT:    je <L1>
+; X64-NEXT:    xor edx, edx
+; X64-NEXT:    mov esi, 0x1
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    mov dword ptr [rbx], eax
-; X64-NEXT:    mov dword ptr [rbx + 0x4], ecx
+; X64-NEXT:    mov dword ptr [rbx], edx
+; X64-NEXT:    mov dword ptr [rbx + 0x4], esi
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -893,18 +891,18 @@ define void @phi_struct1(ptr %ptr) {
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    str x19, [sp, #0x10]
 ; ARM64-NEXT:    mov x19, x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    mov x1, #0x1 // =1
-; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    mov w2, #0x0 // =0
-; ARM64-NEXT:    tst w2, #0x1
-; ARM64-NEXT:    b.eq <L1>
+; ARM64-NEXT:    mov x3, #0x1 // =1
+; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    mov x1, #0x1 // =1
+; ARM64-NEXT:    tst w0, #0x1
+; ARM64-NEXT:    b.eq <L1>
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    mov x3, #0x1 // =1
 ; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    str w0, [x19]
-; ARM64-NEXT:    str w1, [x19, #0x4]
+; ARM64-NEXT:    str w2, [x19]
+; ARM64-NEXT:    str w3, [x19, #0x4]
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
@@ -924,20 +922,20 @@ define void @phi_struct2(ptr %ptr) {
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    push rbx
 ; X64-NEXT:    mov rbx, rdi
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    lea rcx, <phi_struct2+0x9>
+; X64-NEXT:    xor edx, edx
+; X64-NEXT:    lea rsi, <phi_struct2+0x9>
 ; X64-NEXT:     R_X86_64_PC32 glob-0x4
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    xor edx, edx
-; X64-NEXT:    test dl, 0x1
-; X64-NEXT:    je <L1>
 ; X64-NEXT:    xor eax, eax
-; X64-NEXT:    lea rcx, <phi_struct2+0x1d>
+; X64-NEXT:    test al, 0x1
+; X64-NEXT:    je <L1>
+; X64-NEXT:    xor edx, edx
+; X64-NEXT:    lea rsi, <phi_struct2+0x1c>
 ; X64-NEXT:     R_X86_64_PC32 glob-0x4
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    mov dword ptr [rbx], eax
-; X64-NEXT:    mov qword ptr [rbx + 0x8], rcx
+; X64-NEXT:    mov dword ptr [rbx], edx
+; X64-NEXT:    mov qword ptr [rbx + 0x8], rsi
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -947,24 +945,24 @@ define void @phi_struct2(ptr %ptr) {
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    str x19, [sp, #0x10]
 ; ARM64-NEXT:    mov x19, x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    adrp x1, 0x0 <store_glob>
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    adrp x3, 0x0 <store_glob>
 ; ARM64-NEXT:     R_AARCH64_ADR_PREL_PG_HI21 glob
-; ARM64-NEXT:    add x1, x1, #0x0
+; ARM64-NEXT:    add x3, x3, #0x0
 ; ARM64-NEXT:     R_AARCH64_ADD_ABS_LO12_NC glob
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    mov w2, #0x0 // =0
-; ARM64-NEXT:    tst w2, #0x1
-; ARM64-NEXT:    b.eq <L1>
 ; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    adrp x1, 0x0 <store_glob>
+; ARM64-NEXT:    tst w0, #0x1
+; ARM64-NEXT:    b.eq <L1>
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    adrp x3, 0x0 <store_glob>
 ; ARM64-NEXT:     R_AARCH64_ADR_PREL_PG_HI21 glob
-; ARM64-NEXT:    add x1, x1, #0x0
+; ARM64-NEXT:    add x3, x3, #0x0
 ; ARM64-NEXT:     R_AARCH64_ADD_ABS_LO12_NC glob
 ; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    str w0, [x19]
-; ARM64-NEXT:    str x1, [x19, #0x8]
+; ARM64-NEXT:    str w2, [x19]
+; ARM64-NEXT:    str x3, [x19, #0x8]
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
@@ -988,19 +986,20 @@ define void @phi_struct3(ptr %ptr) {
 ; X64-NEXT:     R_X86_64_PC32 glob-0x4
 ; X64-NEXT:    lea eax, [rax + 0x20]
 ; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    mov esi, ecx
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    lea rdx, <phi_struct3+0x13>
+; X64-NEXT:    lea rcx, <phi_struct3+0x15>
 ; X64-NEXT:     R_X86_64_PC32 glob-0x4
-; X64-NEXT:    lea edx, [rdx + 0x20]
-; X64-NEXT:    xor esi, esi
+; X64-NEXT:    lea ecx, [rcx + 0x20]
+; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    xor edi, edi
 ; X64-NEXT:    test dil, 0x1
 ; X64-NEXT:    je <L1>
-; X64-NEXT:    mov ecx, esi
-; X64-NEXT:    mov eax, edx
+; X64-NEXT:    mov esi, edx
+; X64-NEXT:    mov eax, ecx
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    mov dword ptr [rbx], ecx
+; X64-NEXT:    mov dword ptr [rbx], esi
 ; X64-NEXT:    mov dword ptr [rbx + 0x4], eax
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
@@ -1017,21 +1016,22 @@ define void @phi_struct3(ptr %ptr) {
 ; ARM64-NEXT:     R_AARCH64_ADD_ABS_LO12_NC glob
 ; ARM64-NEXT:    add w0, w0, #0x20
 ; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    mov w3, w1
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    adrp x2, 0x0 <store_glob>
+; ARM64-NEXT:    adrp x1, 0x0 <store_glob>
 ; ARM64-NEXT:     R_AARCH64_ADR_PREL_PG_HI21 glob
-; ARM64-NEXT:    add x2, x2, #0x0
+; ARM64-NEXT:    add x1, x1, #0x0
 ; ARM64-NEXT:     R_AARCH64_ADD_ABS_LO12_NC glob
-; ARM64-NEXT:    add w2, w2, #0x20
-; ARM64-NEXT:    mov w3, #0x0 // =0
+; ARM64-NEXT:    add w1, w1, #0x20
+; ARM64-NEXT:    mov w2, #0x0 // =0
 ; ARM64-NEXT:    mov w4, #0x0 // =0
 ; ARM64-NEXT:    tst w4, #0x1
 ; ARM64-NEXT:    b.eq <L1>
-; ARM64-NEXT:    mov w1, w3
-; ARM64-NEXT:    mov w0, w2
+; ARM64-NEXT:    mov w3, w2
+; ARM64-NEXT:    mov w0, w1
 ; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    str w1, [x19]
+; ARM64-NEXT:    str w3, [x19]
 ; ARM64-NEXT:    str w0, [x19, #0x4]
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1217,24 +1217,28 @@ define i32 @phi_gep_insert_after_earlier_phi() {
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    push rbx
-; X64-NEXT:    xor eax, eax
+; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    lea rax, [rax + 0x28]
 ; X64-NEXT:    xor ecx, ecx
-; X64-NEXT:    cmp ecx, 0x0
-; X64-NEXT:    je <L2>
-; X64-NEXT:    cmp ecx, 0x1
+; X64-NEXT:    mov rsi, rcx
+; X64-NEXT:    cmp esi, 0x0
 ; X64-NEXT:    je <L1>
+; X64-NEXT:    cmp esi, 0x1
+; X64-NEXT:    je <L2>
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    jmp <L2>
-; X64-NEXT:    nop word ptr [rax + rax]
-; X64-NEXT:  <L1>:
-; X64-NEXT:    mov rbx, rax
 ; X64-NEXT:    jmp <L3>
+; X64-NEXT:    nop dword ptr [rax]
+; X64-NEXT:  <L1>:
+; X64-NEXT:    jmp <L3>
+; X64-NEXT:    nop dword ptr [rax]
 ; X64-NEXT:  <L2>:
-; X64-NEXT:    xor ebx, ebx
+; X64-NEXT:    mov rbx, rax
+; X64-NEXT:    jmp <L4>
 ; X64-NEXT:  <L3>:
+; X64-NEXT:    xor ebx, ebx
+; X64-NEXT:  <L4>:
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
@@ -1244,23 +1248,28 @@ define i32 @phi_gep_insert_after_earlier_phi() {
 ; ARM64:         stp x29, x30, [sp, #-0xa0]!
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    str x19, [sp, #0x10]
-; ARM64-NEXT:    mov w0, #0x0 // =0
+; ARM64-NEXT:    mov w2, #0x0 // =0
 ; ARM64-NEXT:    mov w0, #0x0 // =0
 ; ARM64-NEXT:    add x0, x0, #0x28
 ; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    cmp w1, #0x0
-; ARM64-NEXT:    b.eq <L2>
-; ARM64-NEXT:    cmp w1, #0x1
+; ARM64-NEXT:    mov x3, x1
+; ARM64-NEXT:    cmp w3, #0x0
 ; ARM64-NEXT:    b.eq <L1>
+; ARM64-NEXT:    cmp w3, #0x1
+; ARM64-NEXT:    b.eq <L2>
 ; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    b <L2>
-; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    mov x19, x0
 ; ARM64-NEXT:    b <L3>
+; ARM64-NEXT:    udf #0x0
+; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    b <L3>
+; ARM64-NEXT:    udf #0x0
 ; ARM64-NEXT:  <L2>:
-; ARM64-NEXT:    mov w19, #0x0 // =0
+; ARM64-NEXT:    mov x19, x0
+; ARM64-NEXT:    b <L4>
 ; ARM64-NEXT:  <L3>:
+; ARM64-NEXT:    mov w19, #0x0 // =0
+; ARM64-NEXT:  <L4>:
 ; ARM64-NEXT:    mov w0, #0x0 // =0
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1289,7 +1298,7 @@ define i32 @phi_gep_insert_after_earlier_phi() {
 
 define i32 @register_persistance() {
 ; X64-LABEL: <register_persistance>:
-; X64:         mov rax, qword ptr <phi_gep_insert_after_earlier_phi+0x3f>
+; X64:         mov rax, qword ptr <phi_gep_insert_after_earlier_phi+0x4f>
 ; X64-NEXT:     R_X86_64_GOTPCREL d-0x4
 ; X64-NEXT:    movzx ecx, word ptr [rax]
 ; X64-NEXT:    xor ecx, ecx
