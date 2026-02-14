@@ -904,10 +904,41 @@ public:
 #endif
     branch_scratch_regs.fill(Reg::make_invalid());
     branch_scratch_mask = 0;
+    const auto phi_nonallocatable_mask = [&]() -> typename RegisterFile::RegBitSet {
+      if constexpr (requires(Derived &d) { d.phi_nonallocatable_mask(); }) {
+        return static_cast<typename RegisterFile::RegBitSet>(
+          derived()->phi_nonallocatable_mask());
+      }
+      return 0;
+    }();
     for (u32 bank_id = 0; bank_id < Config::NUM_BANKS; ++bank_id) {
       RegBank bank(static_cast<u8>(bank_id));
-      Reg scratch = this->select_reg(
+      Reg scratch = register_file.find_first_free_excluding(
         bank, used_phi_regs_global | branch_scratch_mask);
+      if (scratch.invalid()) {
+        auto bank_phi_mask =
+            phi_nonallocatable_mask & register_file.bank_regs(bank);
+        if (bank_phi_mask == 0) [[unlikely]] {
+          TPDE_FATAL("failed to allocate branch scratch register");
+        }
+
+        scratch = Reg{util::cnt_tz(bank_phi_mask)};
+        if (register_file.is_used(scratch)) {
+          if (register_file.is_fixed(scratch)) [[unlikely]] {
+            TPDE_FATAL("failed to evict PHI-forbidden branch scratch register");
+          }
+
+          ValLocalIdx local_idx = register_file.reg_local_idx(scratch);
+          if (local_idx == INVALID_VAL_LOCAL_IDX) {
+            register_file.unmark_used(scratch);
+          } else {
+            if (global_reg_for(local_idx).valid()) {
+              global_unassign(local_idx);
+            }
+            evict_reg(scratch);
+          }
+        }
+      }
       if (scratch.invalid()) [[unlikely]] {
         TPDE_FATAL("failed to allocate branch scratch register");
       }
@@ -1199,6 +1230,11 @@ public:
         return;
       }
 
+      if (this->phi_regs[target].contains(local_idx)) {
+        return;
+      }
+
+
       if (spill_reg == ap.get_reg()) {
         spill(ap);
         return;
@@ -1367,16 +1403,6 @@ public:
         }
       }
     }
-
-    MoveList ordered =
-        sequentialize_readonly(moves, phi_regs | unallocatable_regs, false, &branch_scratch_regs);
-    for (const auto &move: ordered) {
-      // note we don't update any assignments here. this is done at the start of compile_block
-      if (move.dst != move.src) {
-        derived()->mov(move.dst, move.src, move.size);
-      }
-    }
-
     const auto emit_deferred_phi_source_to_reg =
         [&](const DeferredPhiMaterialization &deferred, Reg dst) {
       if (!deferred.incoming_part.has_value()) {
@@ -1386,6 +1412,8 @@ public:
         TPDE_UNREACHABLE(
           "attempt to defer-load uninitialized value part");
       }
+      unallocatable_regs |= (1ull << dst.id());
+      register_file.allocatable &= ~unallocatable_regs;
 
       const ValuePartRef &incoming_part = deferred.incoming_part.value();
       if (Reg src = incoming_part.cur_reg_unlocked(); src.valid()) {
@@ -1435,13 +1463,13 @@ public:
       derived()->load_from_stack(dst, ap.frame_off(), deferred.size);
       return true;
     };
-
     for (const auto &deferred: deferred_phi_materializations) {
       switch (deferred.dest_kind) {
         case DeferredPhiMaterialization::DestKind::TO_REG:
-          emit_deferred_phi_source_to_reg(deferred, deferred.dst_reg);
+          // we can do to reg later decreasing reg pressure atm
           break;
         case DeferredPhiMaterialization::DestKind::TO_STACK: {
+          // need to do this now since one of the moves could need our temp_reg.
           const Reg tmp_reg = deferred.temp_reg;
           if (!tmp_reg.valid()) [[unlikely]] {
             TPDE_FATAL("missing deferred temporary register for phi spill");
@@ -1449,6 +1477,31 @@ public:
           if (emit_deferred_phi_source_to_reg(deferred, tmp_reg)) {
             derived()->spill_reg(tmp_reg, deferred.stack_off, deferred.size);
           }
+          break;
+        }
+        default:
+          TPDE_UNREACHABLE("unknown deferred destination kind");
+      }
+    }
+
+    MoveList ordered =
+        sequentialize_readonly(moves, phi_regs | unallocatable_regs, false, &branch_scratch_regs);
+    for (const auto &move: ordered) {
+      // note we don't update any assignments here. this is done at the start of compile_block
+      if (move.dst != move.src) {
+        derived()->mov(move.dst, move.src, move.size);
+      }
+    }
+
+
+
+    for (const auto &deferred: deferred_phi_materializations) {
+      switch (deferred.dest_kind) {
+        case DeferredPhiMaterialization::DestKind::TO_REG:
+          emit_deferred_phi_source_to_reg(deferred, deferred.dst_reg);
+          break;
+        case DeferredPhiMaterialization::DestKind::TO_STACK: {
+          // already done
           break;
         }
         default:
@@ -1701,7 +1754,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       if (compiler.register_file.is_used(cca.reg)) {
         compiler.evict_reg(cca.reg);
       }
-      vp.load_to_specific(&compiler, cca.reg);
+      vp.reload_into_specific_fixed(&compiler, cca.reg, cca.size);
       arg_regs |= (1ull << cca.reg.id());
       source_regs |= (1ull << cca.reg.id());
       compiler.register_file.allocatable &= ~source_regs;
@@ -3234,8 +3287,17 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
   // We don't support sections with more than 4 GiB, so switches with more than
   // 4G cases are impossible to support.
   assert(cases.size() < UINT32_MAX && "large switches are unsupported");
-
   AsmReg cmp_reg = cond.cur_reg();
+  if ((1ull << cmp_reg.id()) & derived()->phi_nonallocatable_mask()) {
+    cmp_reg = this->select_reg(register_file.reg_bank(cmp_reg),
+                               used_phi_regs_global | derived()->phi_nonallocatable_mask());
+    ScratchReg new_reg{this};
+    new_reg.alloc_specific(cmp_reg);
+    //todo(salto):size
+    derived()->mov(cmp_reg, cond.cur_reg(), 8);
+    cond.reset();
+    cond = std::move(new_reg);
+  }
   bool width_is_32 = width <= 32;
   if (u32 dst_width = util::align_up(width, 32); width != dst_width) {
     derived()->generate_raw_intext(cmp_reg, cmp_reg, false, width, dst_width);
@@ -3245,7 +3307,7 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
   // the individual value states per block. Hence, we must not allocate any
   // registers (e.g., for constants, jump table address) below.
   // make sure we don't get a phi register for the consts
-  AsmReg tmp_reg = this->select_reg(Config::GP_BANK, used_phi_regs_global);
+  AsmReg tmp_reg = this->select_reg(Config::GP_BANK, used_phi_regs_global | derived()->phi_nonallocatable_mask());
   ScratchReg tmp_scratch{this};
   tmp_scratch.alloc_specific(tmp_reg);
 
@@ -3465,6 +3527,15 @@ std::pair<
     register_file.allocatable &= ~(1ull << reg.id());
   };
 
+  const auto phi_nonallocatable_mask = [&]() -> typename RegisterFile::RegBitSet {
+    if constexpr (requires(Derived &d) { d.phi_nonallocatable_mask(); }) {
+      return static_cast<typename RegisterFile::RegBitSet>(
+        derived()->phi_nonallocatable_mask());
+    }
+    return 0;
+  }();
+  unallocatable_regs |= phi_nonallocatable_mask;
+  register_file.allocatable &= ~phi_nonallocatable_mask;
   /*const auto record_edge_repair_reg = [&](ValLocalIdx local_idx,
                                           u32 part_idx,
                                           Reg reg) {
@@ -3664,6 +3735,8 @@ std::pair<
 
       if (phi_ap.fixed_assignment()) {
         target_reg = phi_ap.get_reg();
+        assert((phi_nonallocatable_mask & (1ull << target_reg.id())) == 0 &&
+          "phi target register is PHI-forbidden");
         if (incoming_reg.valid()) {
           // We can't move immediately here since incoming could also be a phi
           // that might still need our value.
@@ -3698,6 +3771,8 @@ std::pair<
                                 incoming_reg);
         continue;
       }
+      assert((phi_nonallocatable_mask & (1ull << target_reg.id())) == 0 &&
+        "phi target register is PHI-forbidden");
 
       /*if (register_file.is_used(target_reg)) {
         preserve_incoming_reg(
@@ -3756,6 +3831,8 @@ std::pair<
                        static_cast<u32>(phi_ap.get_reg().id()));
 
         Reg fixed_reg = phi_ap.get_reg();
+        assert((phi_nonallocatable_mask & (1ull << fixed_reg.id())) == 0 &&
+          "phi target register is PHI-forbidden");
         target_regs[part] = fixed_reg;
         new_phi_regs |= (1ull << fixed_reg.id());
 
@@ -3794,12 +3871,13 @@ std::pair<
       }
 
       RegBank bank = phi_ap.bank();
-      auto exclusion = used_phi_regs | new_phi_regs;
+      auto exclusion = used_phi_regs | new_phi_regs | phi_nonallocatable_mask;
       Reg selected = Reg::make_invalid();
 
       // if our incoming is dead after the phi we can reuse the register
       if (incoming_last_ref && incoming_reg.valid() &&
-          !register_file.is_fixed(incoming_reg)) {
+          !register_file.is_fixed(incoming_reg) &&
+          ((phi_nonallocatable_mask & (1ull << incoming_reg.id())) == 0)) {
         selected = incoming_reg;
       } else {
         selected = register_file.find_first_free_excluding(bank, exclusion);
@@ -3826,6 +3904,8 @@ std::pair<
         continue;
       }
 
+      assert((phi_nonallocatable_mask & (1ull << selected.id())) == 0 &&
+        "phi target register is PHI-forbidden");
       enqueue_or_materialize_phi_part(phi_ap,
                                       incoming_ref,
                                       incoming_ref_owner_idx,
@@ -3838,6 +3918,15 @@ std::pair<
 
       target_regs[part] = selected;
       new_phi_regs |= (1ull << selected.id());
+    }
+    if constexpr (WithAsserts) {
+      for (Reg target_reg: target_regs) {
+        if (!target_reg.valid()) {
+          continue;
+        }
+        assert((phi_nonallocatable_mask & (1ull << target_reg.id())) == 0 &&
+          "phi target register is PHI-forbidden");
+      }
     }
 
 

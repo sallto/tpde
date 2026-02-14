@@ -343,10 +343,14 @@ struct CompilerA64 : BaseTy<Adaptor, Derived, Config> {
   // When handling function arguments, we need to prevent argument registers
   // from being handed out as fixed registers
   //
-  // Additionally, we prevent R0 and R1 from being fixed assignments to
-  // prevent issues with exception handling
+  // Additionally, R0 and V0 are reserved for PHI exclusion and therefore are
+  // not handed out as fixed assignments.
+  // R1 is also prevented from fixed assignments to avoid issues with exception
+  // handling.
+  static constexpr u64 phi_nonallocatable_mask_value =
+      create_bitmask({AsmReg::R1, AsmReg::V0});
   u64 fixed_assignment_nonallocatable_mask =
-      create_bitmask({AsmReg::R0, AsmReg::R1});
+      create_bitmask({AsmReg::R0, AsmReg::R1, AsmReg::V0});
   u32 func_start_off = 0u, func_prologue_alloc = 0u;
   /// Offset to the `add sp, sp, XXX` instruction that the argument handling
   /// uses to access stack arguments if needed
@@ -442,6 +446,8 @@ struct CompilerA64 : BaseTy<Adaptor, Derived, Config> {
   }
 
   AsmReg select_fixed_assignment_reg(AssignmentPartRef, IRValueRef);
+
+  u64 phi_nonallocatable_mask() const { return phi_nonallocatable_mask_value; }
 
   /// Jump conditions.
   struct Jump {

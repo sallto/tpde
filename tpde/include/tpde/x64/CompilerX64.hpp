@@ -327,12 +327,16 @@ struct CompilerX64 : BaseTy<Adaptor, Derived, Config> {
   // When handling function arguments, we need to prevent argument registers
   // from being handed out as fixed registers
   //
-  // Additionally, for now we prevent AX,DX,CX to be fixed to not run into
-  // issues with instructions that need them as implicit arguments
-  // also AX and DX can never be fixed if exception handling is used
-  // since they are clobbered there
+  // Additionally, AX, DX, and CX are not handed out as fixed assignments to
+  // avoid conflicts with implicit-operand instructions.
+  // AX and DX can never be fixed if exception handling is used since they are
+  // clobbered there.
+  // Reserve XMM as a PHI-forbidden register and keep it nonallocatable for
+  // fixed assignments.
+  static constexpr u64 phi_nonallocatable_mask_value =
+      create_bitmask({AsmReg::CX, AsmReg::XMM15});
   u64 fixed_assignment_nonallocatable_mask =
-      create_bitmask({AsmReg::AX, AsmReg::DX, AsmReg::CX});
+      create_bitmask({AsmReg::AX, AsmReg::DX, AsmReg::CX, AsmReg::XMM15});
   u32 func_start_off = 0u, func_prologue_alloc = 0u;
   /// For vararg functions only: number of scalar and xmm registers used.
   // TODO: this information should be obtained from the CCAssigner.
@@ -447,6 +451,8 @@ struct CompilerX64 : BaseTy<Adaptor, Derived, Config> {
       materialize_constant(const u64 *data, RegBank bank, u32 size, AsmReg dst);
 
   AsmReg select_fixed_assignment_reg(AssignmentPartRef, IRValueRef);
+
+  u64 phi_nonallocatable_mask() const { return phi_nonallocatable_mask_value; }
 
   /// Jump conditions.
   enum class Jump {
