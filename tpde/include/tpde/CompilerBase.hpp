@@ -1469,7 +1469,6 @@ public:
       }
     }
 
-
     register_file.allocatable |= unallocatable_regs;
   }
 
@@ -2917,6 +2916,7 @@ void CompilerBase<Adaptor, Derived, Config>::invalidate_register_owner(
   }
 
   auto owner_ap = AssignmentPartRef{owner, register_file.reg_part(reg)};
+
   if (owner_ap.register_valid()) {
     owner_ap.set_register_valid(false);
   }
@@ -3261,15 +3261,15 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
   // the individual value states per block. Hence, we must not allocate any
   // registers (e.g., for constants, jump table address) below.
   // make sure we don't get a phi register for the consts
+
+
+  // const auto spilled = this->spill_before_branch(true);
+  this->begin_branch_region();
   AsmReg tmp_reg = this->select_reg(Config::GP_BANK,
                                     used_phi_regs_global |
                                     derived()->phi_nonallocatable_mask());
   ScratchReg tmp_scratch{this};
   tmp_scratch.alloc_specific(tmp_reg);
-
-  // const auto spilled = this->spill_before_branch(true);
-  this->begin_branch_region();
-
   tpde::util::SmallVector<tpde::Label, 64> case_labels;
   // Labels that need an intermediate block to setup registers. This is
   // separate, because most switch targets don't need this.
@@ -3673,7 +3673,18 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
     for (u32 part = 0; part < phi_assignment->part_count; ++part) {
       AssignmentPartRef phi_ap{phi_assignment, part};
       ValuePartRef incoming_part =
-          incoming_ref.part(part);
+          incoming_ref_owner.has_value()
+            ? (incoming_ref_owner->list ==
+               DeferredIncomingOwner::ListKind::REG
+                 ? deferred_phi_reg_materializations[incoming_ref_owner
+                   ->idx]
+                 .incoming_ref.value()
+                 .part(part)
+                 : deferred_phi_stack_materializations[incoming_ref_owner
+                   ->idx]
+                 .incoming_ref.value()
+                 .part(part))
+            : incoming_ref.part(part);
       Reg incoming_reg = incoming_part.cur_reg_unlocked();
       Reg target_reg = Reg::make_invalid();
       if (target_regs.size() > part) {
@@ -3841,6 +3852,7 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
 
       target_regs[part] = selected;
       new_phi_regs |= (1ull << selected.id());
+      used_phi_regs_global |= (1ull << selected.id());
     }
     if constexpr (WithAsserts) {
       for (Reg target_reg: target_regs) {
@@ -4413,6 +4425,15 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
       if (!ap.variable_ref() && ap.stack_valid()) {
         ap.set_modified(true);
         dirtied_values.insert(state.val_local_idx);
+      }
+      if (register_file.is_fixed(reg)) {
+        // fixed assignment took our spot. Due to domination, it can't be used here. We need to spill to keep the state management happy
+        // todo(salto): maybe search for a differen register here?
+        ap.set_reg(reg);
+        ap.set_register_valid(true);
+        spill(ap);
+        ap.set_register_valid(false);
+        continue;
       }
       ap.set_reg(reg);
       ap.set_register_valid(true);
