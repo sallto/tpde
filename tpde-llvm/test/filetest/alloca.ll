@@ -1355,13 +1355,13 @@ define void @alloca_manyregs(i32 %0, ptr %1, ptr %2, ptr %3, i64 %4, i32 %5, ptr
 ; X64-NEXT:    push r14
 ; X64-NEXT:    push r15
 ; X64-NEXT:    sub rsp, 0x40748
-; X64-NEXT:    xor eax, eax
+; X64-NEXT:    xor r10d, r10d
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    lea r10, [rcx + r8]
-; X64-NEXT:    mov r10d, r9d
-; X64-NEXT:    or r10d, 0x0
-; X64-NEXT:    mov r10, qword ptr [rbp + 0x10]
-; X64-NEXT:    mov r11d, dword ptr [r10]
+; X64-NEXT:    lea rax, [rcx + r8]
+; X64-NEXT:    mov eax, r9d
+; X64-NEXT:    or eax, 0x0
+; X64-NEXT:    mov rax, qword ptr [rbp + 0x10]
+; X64-NEXT:    mov r11d, dword ptr [rax]
 ; X64-NEXT:    mov r11, qword ptr [rbp + 0x18]
 ; X64-NEXT:    mov ebx, dword ptr [r11]
 ; X64-NEXT:    mov rbx, qword ptr [rbp + 0x20]
@@ -1376,24 +1376,24 @@ define void @alloca_manyregs(i32 %0, ptr %1, ptr %2, ptr %3, i64 %4, i32 %5, ptr
 ; X64-NEXT:    cmp qword ptr [rbp + 0x40], 0x0
 ; X64-NEXT:    sete r15b
 ; X64-NEXT:    mov r15d, dword ptr [rbp + 0x48]
-; X64-NEXT:    mov ebx, r15d
-; X64-NEXT:    and ebx, 0x0
+; X64-NEXT:    mov eax, r15d
+; X64-NEXT:    and eax, 0x0
 ; X64-NEXT:    cmp qword ptr [rbp + 0x50], 0x0
-; X64-NEXT:    sete bl
-; X64-NEXT:    mov rbx, qword ptr [rbp + 0x58]
-; X64-NEXT:    mov r10d, dword ptr [rbx]
-; X64-NEXT:    xor r10d, r10d
-; X64-NEXT:    lea r10d, [1*r10]
-; X64-NEXT:    mov rbx, qword ptr [rbp + 0x60]
-; X64-NEXT:    mov r11d, dword ptr [rbx]
+; X64-NEXT:    sete al
+; X64-NEXT:    mov rax, qword ptr [rbp + 0x58]
+; X64-NEXT:    mov ebx, dword ptr [rax]
+; X64-NEXT:    xor ebx, ebx
+; X64-NEXT:    lea ebx, [1*rbx]
+; X64-NEXT:    mov rax, qword ptr [rbp + 0x60]
+; X64-NEXT:    mov r11d, dword ptr [rax]
 ; X64-NEXT:    mov r11, qword ptr [rbp + 0x68]
 ; X64-NEXT:    mov dword ptr [r11], 0x0
-; X64-NEXT:    mov ebx, dword ptr [rbp + 0x70]
-; X64-NEXT:    mov dword ptr [0x0], ebx
+; X64-NEXT:    mov eax, dword ptr [rbp + 0x70]
+; X64-NEXT:    mov dword ptr [0x0], eax
 ; X64-NEXT:    cmp qword ptr [rbp + 0x78], 0x0
-; X64-NEXT:    sete bl
-; X64-NEXT:    lea rbx, [rdx + 0x4]
-; X64-NEXT:    mov rbx, rcx
+; X64-NEXT:    sete al
+; X64-NEXT:    lea rax, [rdx + 0x4]
+; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    xor r11d, r11d
 ; X64-NEXT:    mov r12d, dword ptr [rbp + 0x80]
 ; X64-NEXT:    mov ecx, r12d
@@ -1411,8 +1411,8 @@ define void @alloca_manyregs(i32 %0, ptr %1, ptr %2, ptr %3, i64 %4, i32 %5, ptr
 ; X64-NEXT:    shr r11d, 0x0
 ; X64-NEXT:    mov r11d, edi
 ; X64-NEXT:    or r11d, 0x0
-; X64-NEXT:    mov eax, r10d
-; X64-NEXT:    mov rcx, rbx
+; X64-NEXT:    mov r10d, ebx
+; X64-NEXT:    mov rcx, rax
 ; X64-NEXT:    jmp <L0>
 ;
 ; ARM64-LABEL: <alloca_manyregs>:
@@ -1445,29 +1445,29 @@ define void @alloca_manyregs(i32 %0, ptr %1, ptr %2, ptr %3, i64 %4, i32 %5, ptr
 ; ARM64-NEXT:    ldr w27, [x17, #0x88]
 ; ARM64-NEXT:    ldr w28, [x17, #0x90]
 ; ARM64-NEXT:    mov w8, #0x0 // =0
-; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    add x16, x29, #0x40, lsl #12 // =0x40000
-; ARM64-NEXT:    str w0, [x16, #0x7e0]
-; ARM64-NEXT:    add x0, x3, x4
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    orr w0, w0, w5
-; ARM64-NEXT:    ldr w0, [x6]
-; ARM64-NEXT:    ldr w0, [x7]
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    str w0, [x9]
-; ARM64-NEXT:    ldr w0, [x10]
-; ARM64-NEXT:    ldr w0, [x11]
-; ARM64-NEXT:    ldr w0, [x12]
-; ARM64-NEXT:    mov x0, x1
+; ARM64-NEXT:    str w8, [x16, #0x7e0]
+; ARM64-NEXT:  <L0>:
+; ARM64-NEXT:    add x8, x3, x4
+; ARM64-NEXT:    mov w8, #0x0 // =0
+; ARM64-NEXT:    orr w8, w8, w5
+; ARM64-NEXT:    ldr w8, [x6]
+; ARM64-NEXT:    ldr w8, [x7]
+; ARM64-NEXT:    mov w8, #0x0 // =0
+; ARM64-NEXT:    str w8, [x9]
+; ARM64-NEXT:    ldr w8, [x10]
+; ARM64-NEXT:    ldr w8, [x11]
+; ARM64-NEXT:    ldr w8, [x12]
+; ARM64-NEXT:    mov x8, x1
 ; ARM64-NEXT:    cmp x13, #0x0
-; ARM64-NEXT:    cset w0, eq
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    and w0, w0, w14
+; ARM64-NEXT:    cset w8, eq
+; ARM64-NEXT:    mov w8, #0x0 // =0
+; ARM64-NEXT:    and w8, w8, w14
 ; ARM64-NEXT:    cmp x15, #0x0
-; ARM64-NEXT:    cset w0, eq
-; ARM64-NEXT:    ldr w0, [x18]
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    add w0, w0, #0x0
+; ARM64-NEXT:    cset w8, eq
+; ARM64-NEXT:    ldr w8, [x18]
+; ARM64-NEXT:    mov w8, #0x0 // =0
+; ARM64-NEXT:    add w8, w8, #0x0
 ; ARM64-NEXT:    add x16, x29, #0x40, lsl #12 // =0x40000
 ; ARM64-NEXT:    str x1, [x16, #0x7e8]
 ; ARM64-NEXT:    ldr w1, [x30]
@@ -1485,17 +1485,11 @@ define void @alloca_manyregs(i32 %0, ptr %1, ptr %2, ptr %3, i64 %4, i32 %5, ptr
 ; ARM64-NEXT:    and w1, w27, w26
 ; ARM64-NEXT:    lsr w1, w28, #0
 ; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    orr w1, w1, w0
 ; ARM64-NEXT:    add x16, x29, #0x40, lsl #12 // =0x40000
-; ARM64-NEXT:    str x2, [x16, #0x7f0]
-; ARM64-NEXT:    add x2, x29, #0x40, lsl #12 // =0x40000
-; ARM64-NEXT:    ldr w2, [x2, #0x7e0]
-; ARM64-NEXT:    orr w1, w1, w2
-; ARM64-NEXT:    mov w8, w0
-; ARM64-NEXT:    mov w0, w2
+; ARM64-NEXT:    str w8, [x16, #0x7e0]
 ; ARM64-NEXT:    add x1, x29, #0x40, lsl #12 // =0x40000
 ; ARM64-NEXT:    ldr x1, [x1, #0x7e8]
-; ARM64-NEXT:    add x2, x29, #0x40, lsl #12 // =0x40000
-; ARM64-NEXT:    ldr x2, [x2, #0x7f0]
 ; ARM64-NEXT:    b <L0>
   %23 = alloca [66000 x i32], align 4
   br label %24

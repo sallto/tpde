@@ -1303,7 +1303,8 @@ define i32 @register_persistance() {
 ; X64-NEXT:    movzx ecx, word ptr [rax]
 ; X64-NEXT:    xor ecx, ecx
 ; X64-NEXT:    test cl, 0x1
-; X64-NEXT:    je <L0>
+; X64-NEXT:    jne <L0>
+; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    ret
@@ -1316,7 +1317,8 @@ define i32 @register_persistance() {
 ; ARM64-NEXT:    ldrh w1, [x0]
 ; ARM64-NEXT:    mov w1, #0x0 // =0
 ; ARM64-NEXT:    tst w1, #0x1
-; ARM64-NEXT:    b.eq <L0>
+; ARM64-NEXT:    b.ne <L0>
+; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    mov w0, #0x0 // =0
 ; ARM64-NEXT:    ret

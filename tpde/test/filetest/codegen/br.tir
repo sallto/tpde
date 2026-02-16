@@ -178,13 +178,13 @@ define @condbr3(%a, %b, %c) {
 ; X64-LABEL: <condbr3>:
 ; X64:         test rdi, rdi
 ; X64-NEXT:    jne <L0>
-; X64-NEXT:    mov rax, rsi
+; X64-NEXT:    mov r8, rsi
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    add rsi, rdx
-; X64-NEXT:    mov rax, rsi
+; X64-NEXT:    mov r8, rsi
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    sub rdx, rax
+; X64-NEXT:    sub rdx, r8
 ; X64-NEXT:    mov rax, rdx
 ; X64-NEXT:    ret
 ;
@@ -206,13 +206,13 @@ define @condbr3(%a, %b, %c) {
 ; ARM64-LABEL: <condbr3>:
 ; ARM64:         cmp x0, #0x0
 ; ARM64-NEXT:    b.ne <L0>
-; ARM64-NEXT:    mov x3, x1
+; ARM64-NEXT:    mov x4, x1
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    add x1, x1, x2
-; ARM64-NEXT:    mov x3, x1
+; ARM64-NEXT:    mov x4, x1
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    sub x2, x2, x3
+; ARM64-NEXT:    sub x2, x2, x4
 ; ARM64-NEXT:    mov x0, x2
 ; ARM64-NEXT:    ret
 ;
@@ -246,15 +246,16 @@ define @phi_reuse_copy(%cond, %a, %b) {
 ; X64:         test rdi, rdi
 ; X64-NEXT:    je <L0>
 ; X64-NEXT:    lea rax, [rsi + rdx]
-; X64-NEXT:    mov rcx, rax
+; X64-NEXT:    mov rdi, rax
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    mov rcx, rsi
-; X64-NEXT:    sub rcx, rdx
-; X64-NEXT:    lea rdx, [rcx + rsi]
+; X64-NEXT:    mov rax, rsi
+; X64-NEXT:    sub rax, rdx
+; X64-NEXT:    lea rcx, [rax + rsi]
+; X64-NEXT:    mov rdi, rax
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    add rcx, rax
-; X64-NEXT:    mov rax, rcx
+; X64-NEXT:    add rdi, rax
+; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    ret
 ;
 ; X64-FIXED-LABEL: <phi_reuse_copy>:
@@ -279,14 +280,15 @@ define @phi_reuse_copy(%cond, %a, %b) {
 ; ARM64:         cmp x0, #0x0
 ; ARM64-NEXT:    b.eq <L0>
 ; ARM64-NEXT:    add x0, x1, x2
-; ARM64-NEXT:    mov x3, x0
+; ARM64-NEXT:    mov x4, x0
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    sub x3, x1, x2
-; ARM64-NEXT:    add x2, x3, x1
+; ARM64-NEXT:    sub x0, x1, x2
+; ARM64-NEXT:    add x2, x0, x1
+; ARM64-NEXT:    mov x4, x0
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    add x3, x3, x0
-; ARM64-NEXT:    mov x0, x3
+; ARM64-NEXT:    add x4, x4, x0
+; ARM64-NEXT:    mov x0, x4
 ; ARM64-NEXT:    ret
 ;
 ; ARM64-FIXED-LABEL: <phi_reuse_copy>:
@@ -347,12 +349,13 @@ define @loop1(%a, %b) {
 ; X64-FIXED-NEXT:    ret
 ;
 ; ARM64-LABEL: <loop1>:
-; ARM64:       <L0>:
-; ARM64-NEXT:    cmp x0, #0x0
+; ARM64:         mov x3, x0
+; ARM64-NEXT:  <L0>:
+; ARM64-NEXT:    cmp x3, #0x0
 ; ARM64-NEXT:    b.eq <L1>
-; ARM64-NEXT:    sub x2, x0, x1
-; ARM64-NEXT:    mov x0, x2
-; ARM64-NEXT:    b <loop1>
+; ARM64-NEXT:    sub x0, x3, x1
+; ARM64-NEXT:    mov x3, x0
+; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    ret
 ;
@@ -382,13 +385,13 @@ ret:
 
 define @phi_chain1(%a) {
 ; X64-LABEL: <phi_chain1>:
-; X64:         mov rax, rdi
+; X64:         mov rdx, rdi
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    test rdi, rdi
 ; X64-NEXT:    je <L1>
-; X64-NEXT:    lea rcx, [rax + rdi]
-; X64-NEXT:    mov rdi, rax
-; X64-NEXT:    mov rax, rcx
+; X64-NEXT:    lea rax, [rdx + rdi]
+; X64-NEXT:    mov rdi, rdx
+; X64-NEXT:    mov rdx, rax
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    ret
@@ -407,13 +410,14 @@ define @phi_chain1(%a) {
 ; X64-FIXED-NEXT:    ret
 ;
 ; ARM64-LABEL: <phi_chain1>:
-; ARM64:         mov x1, x0
+; ARM64:         mov x2, x0
+; ARM64-NEXT:    mov x3, x0
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    cmp x0, #0x0
+; ARM64-NEXT:    cmp x3, #0x0
 ; ARM64-NEXT:    b.eq <L1>
-; ARM64-NEXT:    add x2, x1, x0
-; ARM64-NEXT:    mov x0, x1
-; ARM64-NEXT:    mov x1, x2
+; ARM64-NEXT:    add x0, x2, x3
+; ARM64-NEXT:    mov x3, x2
+; ARM64-NEXT:    mov x2, x0
 ; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    ret
@@ -445,14 +449,14 @@ ret:
 
 define @phi_cycle1(%a) {
 ; X64-LABEL: <phi_cycle1>:
-; X64:         mov rax, rdi
+; X64:         mov rdx, rdi
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    test rdi, rdi
 ; X64-NEXT:    je <L1>
-; X64-NEXT:    lea rcx, [rax + rdi]
-; X64-NEXT:    mov rcx, rdi
-; X64-NEXT:    mov rdi, rax
-; X64-NEXT:    mov rax, rcx
+; X64-NEXT:    lea rax, [rdx + rdi]
+; X64-NEXT:    mov rax, rdi
+; X64-NEXT:    mov rdi, rdx
+; X64-NEXT:    mov rdx, rax
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    ret
@@ -472,14 +476,15 @@ define @phi_cycle1(%a) {
 ; X64-FIXED-NEXT:    ret
 ;
 ; ARM64-LABEL: <phi_cycle1>:
-; ARM64:         mov x1, x0
+; ARM64:         mov x2, x0
+; ARM64-NEXT:    mov x3, x0
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    cmp x0, #0x0
+; ARM64-NEXT:    cmp x3, #0x0
 ; ARM64-NEXT:    b.eq <L1>
-; ARM64-NEXT:    add x2, x1, x0
+; ARM64-NEXT:    add x0, x2, x3
+; ARM64-NEXT:    mov x0, x3
+; ARM64-NEXT:    mov x3, x2
 ; ARM64-NEXT:    mov x2, x0
-; ARM64-NEXT:    mov x0, x1
-; ARM64-NEXT:    mov x1, x2
 ; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    ret

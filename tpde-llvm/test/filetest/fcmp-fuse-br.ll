@@ -15,12 +15,14 @@ define void @fcmp_false_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    mov rbx, rdi
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -35,12 +37,14 @@ define void @fcmp_false_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    mov x19, x0
 ; ARM64-NEXT:    mov w0, #0x0 // =0
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -68,12 +72,14 @@ define void @fcmp_oeq_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    movd eax, xmm2
 ; X64-NEXT:    and eax, 0x1
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -89,12 +95,14 @@ define void @fcmp_oeq_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, eq
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -121,12 +129,14 @@ define void @fcmp_ogt_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm0, xmm1
 ; X64-NEXT:    seta al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -142,12 +152,14 @@ define void @fcmp_ogt_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, gt
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -174,12 +186,14 @@ define void @fcmp_oge_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm0, xmm1
 ; X64-NEXT:    setae al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -195,12 +209,14 @@ define void @fcmp_oge_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, ge
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -227,12 +243,14 @@ define void @fcmp_olt_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm1, xmm0
 ; X64-NEXT:    seta al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -248,12 +266,14 @@ define void @fcmp_olt_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, mi
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -280,12 +300,14 @@ define void @fcmp_ole_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm1, xmm0
 ; X64-NEXT:    setae al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -301,12 +323,14 @@ define void @fcmp_ole_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, ls
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -333,12 +357,14 @@ define void @fcmp_one_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm0, xmm1
 ; X64-NEXT:    setne al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -355,12 +381,14 @@ define void @fcmp_one_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    cset w0, mi
 ; ARM64-NEXT:    csinc w1, w0, wzr, le
 ; ARM64-NEXT:    tst w1, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -387,12 +415,14 @@ define void @fcmp_ord_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm0, xmm1
 ; X64-NEXT:    setnp al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -408,12 +438,14 @@ define void @fcmp_ord_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, vc
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -440,12 +472,14 @@ define void @fcmp_ueq_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm0, xmm1
 ; X64-NEXT:    sete al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -462,12 +496,14 @@ define void @fcmp_ueq_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    cset w0, eq
 ; ARM64-NEXT:    csinc w1, w0, wzr, vc
 ; ARM64-NEXT:    tst w1, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -494,12 +530,14 @@ define void @fcmp_ugt_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm1, xmm0
 ; X64-NEXT:    setb al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -515,12 +553,14 @@ define void @fcmp_ugt_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, hi
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -547,12 +587,14 @@ define void @fcmp_uge_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm1, xmm0
 ; X64-NEXT:    setbe al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -568,12 +610,14 @@ define void @fcmp_uge_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, pl
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -600,12 +644,14 @@ define void @fcmp_ult_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm0, xmm1
 ; X64-NEXT:    setb al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -621,12 +667,14 @@ define void @fcmp_ult_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, lt
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -653,12 +701,14 @@ define void @fcmp_ule_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm0, xmm1
 ; X64-NEXT:    setbe al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -674,12 +724,14 @@ define void @fcmp_ule_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, le
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -707,12 +759,14 @@ define void @fcmp_une_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    movd eax, xmm2
 ; X64-NEXT:    and eax, 0x1
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -728,12 +782,14 @@ define void @fcmp_une_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, ne
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -760,12 +816,14 @@ define void @fcmp_uno_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    ucomiss xmm0, xmm1
 ; X64-NEXT:    setp al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -781,12 +839,14 @@ define void @fcmp_uno_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    fcmp s8, s9
 ; ARM64-NEXT:    cset w0, vs
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -811,12 +871,14 @@ define void @fcmp_true_f32_br(float, float, ptr %p) {
 ; X64-NEXT:    mov rbx, rdi
 ; X64-NEXT:    mov eax, 0x1
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:    movss dword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movss dword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -831,12 +893,14 @@ define void @fcmp_true_f32_br(float, float, ptr %p) {
 ; ARM64-NEXT:    mov x19, x0
 ; ARM64-NEXT:    mov x0, #0x1 // =1
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:    str s8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str s9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -862,12 +926,14 @@ define void @fcmp_false_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    mov rbx, rdi
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -882,12 +948,14 @@ define void @fcmp_false_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    mov x19, x0
 ; ARM64-NEXT:    mov w0, #0x0 // =0
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -915,12 +983,14 @@ define void @fcmp_oeq_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    movq rax, xmm2
 ; X64-NEXT:    and eax, 0x1
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -936,12 +1006,14 @@ define void @fcmp_oeq_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, eq
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -968,12 +1040,14 @@ define void @fcmp_ogt_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm0, xmm1
 ; X64-NEXT:    seta al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -989,12 +1063,14 @@ define void @fcmp_ogt_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, gt
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1021,12 +1097,14 @@ define void @fcmp_oge_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm0, xmm1
 ; X64-NEXT:    setae al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1042,12 +1120,14 @@ define void @fcmp_oge_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, ge
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1074,12 +1154,14 @@ define void @fcmp_olt_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm1, xmm0
 ; X64-NEXT:    seta al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1095,12 +1177,14 @@ define void @fcmp_olt_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, mi
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1127,12 +1211,14 @@ define void @fcmp_ole_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm1, xmm0
 ; X64-NEXT:    setae al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1148,12 +1234,14 @@ define void @fcmp_ole_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, ls
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1180,12 +1268,14 @@ define void @fcmp_one_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm0, xmm1
 ; X64-NEXT:    setne al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1202,12 +1292,14 @@ define void @fcmp_one_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    cset w0, mi
 ; ARM64-NEXT:    csinc w1, w0, wzr, le
 ; ARM64-NEXT:    tst w1, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1234,12 +1326,14 @@ define void @fcmp_ord_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm0, xmm1
 ; X64-NEXT:    setnp al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1255,12 +1349,14 @@ define void @fcmp_ord_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, vc
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1287,12 +1383,14 @@ define void @fcmp_ueq_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm0, xmm1
 ; X64-NEXT:    sete al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1309,12 +1407,14 @@ define void @fcmp_ueq_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    cset w0, eq
 ; ARM64-NEXT:    csinc w1, w0, wzr, vc
 ; ARM64-NEXT:    tst w1, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1341,12 +1441,14 @@ define void @fcmp_ugt_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm1, xmm0
 ; X64-NEXT:    setb al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1362,12 +1464,14 @@ define void @fcmp_ugt_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, hi
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1394,12 +1498,14 @@ define void @fcmp_uge_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm1, xmm0
 ; X64-NEXT:    setbe al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1415,12 +1521,14 @@ define void @fcmp_uge_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, pl
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1447,12 +1555,14 @@ define void @fcmp_ult_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm0, xmm1
 ; X64-NEXT:    setb al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1468,12 +1578,14 @@ define void @fcmp_ult_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, lt
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1500,12 +1612,14 @@ define void @fcmp_ule_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm0, xmm1
 ; X64-NEXT:    setbe al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1521,12 +1635,14 @@ define void @fcmp_ule_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, le
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1554,12 +1670,14 @@ define void @fcmp_une_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    movq rax, xmm2
 ; X64-NEXT:    and eax, 0x1
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1575,12 +1693,14 @@ define void @fcmp_une_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, ne
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1607,12 +1727,14 @@ define void @fcmp_uno_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    ucomisd xmm0, xmm1
 ; X64-NEXT:    setp al
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1628,12 +1750,14 @@ define void @fcmp_uno_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    fcmp d8, d9
 ; ARM64-NEXT:    cset w0, vs
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
@@ -1658,12 +1782,14 @@ define void @fcmp_true_f64_br(double, double, ptr %p) {
 ; X64-NEXT:    mov rbx, rdi
 ; X64-NEXT:    mov eax, 0x1
 ; X64-NEXT:    test al, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:    movsd qword ptr [rbx], xmm0
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    movsd qword ptr [rbx], xmm1
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -1678,12 +1804,14 @@ define void @fcmp_true_f64_br(double, double, ptr %p) {
 ; ARM64-NEXT:    mov x19, x0
 ; ARM64-NEXT:    mov x0, #0x1 // =1
 ; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:    str d8, [x19]
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    str d9, [x19]
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp d8, d9, [sp, #0x18]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0

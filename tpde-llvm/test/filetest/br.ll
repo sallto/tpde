@@ -41,13 +41,15 @@ define i64 @condbr0(i64 %0, i1 %1) {
 ; X64-NEXT:    push rbx
 ; X64-NEXT:    mov rbx, rdi
 ; X64-NEXT:    test sil, 0x1
-; X64-NEXT:    je <L0>
-; X64-NEXT:    mov rax, rbx
+; X64-NEXT:    jne <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
+; X64-NEXT:    mov rax, rbx
+; X64-NEXT:    jmp <L2>
+; X64-NEXT:  <L1>:
 ; X64-NEXT:    lea rbx, [rbx + 0xa]
 ; X64-NEXT:    mov rax, rbx
-; X64-NEXT:  <L1>:
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -58,13 +60,15 @@ define i64 @condbr0(i64 %0, i1 %1) {
 ; ARM64-NEXT:    str x19, [sp, #0x10]
 ; ARM64-NEXT:    mov x19, x0
 ; ARM64-NEXT:    tst w1, #0x1
-; ARM64-NEXT:    b.eq <L0>
-; ARM64-NEXT:    mov x0, x19
+; ARM64-NEXT:    b.ne <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
+; ARM64-NEXT:    mov x0, x19
+; ARM64-NEXT:    b <L2>
+; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    add x19, x19, #0xa
 ; ARM64-NEXT:    mov x0, x19
-; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
@@ -84,12 +88,14 @@ define i64 @condbr1(i64 %0, i1 %1) {
 ; X64-NEXT:    push rbx
 ; X64-NEXT:    mov rbx, rdi
 ; X64-NEXT:    test sil, 0x1
-; X64-NEXT:    jne <L0>
-; X64-NEXT:    lea rax, [rbx + 0xa]
+; X64-NEXT:    je <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    mov rax, rbx
+; X64-NEXT:    lea rax, [rbx + 0xa]
+; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
+; X64-NEXT:    mov rax, rbx
+; X64-NEXT:  <L2>:
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -100,12 +106,14 @@ define i64 @condbr1(i64 %0, i1 %1) {
 ; ARM64-NEXT:    str x19, [sp, #0x10]
 ; ARM64-NEXT:    mov x19, x0
 ; ARM64-NEXT:    tst w1, #0x1
-; ARM64-NEXT:    b.ne <L0>
-; ARM64-NEXT:    add x0, x19, #0xa
+; ARM64-NEXT:    b.eq <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    mov x0, x19
+; ARM64-NEXT:    add x0, x19, #0xa
+; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    mov x0, x19
+; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    ldr x19, [sp, #0x10]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret

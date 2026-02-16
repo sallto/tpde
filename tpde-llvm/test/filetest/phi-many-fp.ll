@@ -11,6 +11,18 @@ define <4 x float> @many_fp_phis() {
 ; X64-LABEL: <many_fp_phis>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
+; X64-NEXT:    pxor xmm0, xmm0
+; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
+; X64-NEXT:    pxor xmm0, xmm0
+; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
+; X64-NEXT:    pxor xmm0, xmm0
+; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
+; X64-NEXT:    pxor xmm0, xmm0
+; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
+; X64-NEXT:    pxor xmm0, xmm0
+; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
+; X64-NEXT:    pxor xmm0, xmm0
+; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    pxor xmm1, xmm1
 ; X64-NEXT:    pxor xmm2, xmm2
 ; X64-NEXT:    pxor xmm3, xmm3
@@ -22,18 +34,6 @@ define <4 x float> @many_fp_phis() {
 ; X64-NEXT:    pxor xmm9, xmm9
 ; X64-NEXT:    pxor xmm10, xmm10
 ; X64-NEXT:    pxor xmm11, xmm11
-; X64-NEXT:    pxor xmm0, xmm0
-; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
-; X64-NEXT:    pxor xmm0, xmm0
-; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
-; X64-NEXT:    pxor xmm0, xmm0
-; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
-; X64-NEXT:    pxor xmm0, xmm0
-; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
-; X64-NEXT:    pxor xmm0, xmm0
-; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
-; X64-NEXT:    pxor xmm0, xmm0
-; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
