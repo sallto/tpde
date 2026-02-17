@@ -363,15 +363,14 @@ define void @phi_const_float_regpressure(ptr %ptr) {
 ; X64-NEXT:    movzx eax, byte ptr [rbx]
 ; X64-NEXT:    mov byte ptr [rbp - 0x3b], al
 ; X64-NEXT:    movzx eax, byte ptr [rbx]
-; X64-NEXT:    mov byte ptr [rbp - 0x3c], al
-; X64-NEXT:    mov byte ptr [rbp - 0x3d], cl
-; X64-NEXT:    movss xmm1, dword ptr <phi_const_float_regpressure+0xb6>
+; X64-NEXT:    mov byte ptr [rbp - 0x3c], cl
+; X64-NEXT:    movss xmm1, dword ptr <phi_const_float_regpressure+0xb3>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    xor ecx, ecx
 ; X64-NEXT:    test cl, 0x1
 ; X64-NEXT:    je <L1>
-; X64-NEXT:    movss xmm1, dword ptr <phi_const_float_regpressure+0xc9>
+; X64-NEXT:    movss xmm1, dword ptr <phi_const_float_regpressure+0xc6>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L1>:
@@ -381,7 +380,7 @@ define void @phi_const_float_regpressure(ptr %ptr) {
 ; X64-NEXT:    mov byte ptr [rbx], r15b
 ; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x29]
 ; X64-NEXT:    mov byte ptr [rbx], cl
-; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x3d]
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x3c]
 ; X64-NEXT:    mov byte ptr [rbx], cl
 ; X64-NEXT:    mov byte ptr [rbx], dl
 ; X64-NEXT:    mov byte ptr [rbx], sil

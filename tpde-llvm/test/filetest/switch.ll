@@ -184,10 +184,10 @@ define i32 @switch_table(i32 %0) {
 ; X64:         80: 83 ff 06 cmp edi, 0x6
 ; X64-NEXT:    83: 0f 87 14 00 00 00 ja <L0>
 ; X64-NEXT:    89: 89 ff mov edi, edi
-; X64-NEXT:    8b: 48 8d 05 7e 00 00 00 lea rax, <switch_table+0x90>
-; X64-NEXT:    92: 8b 3c b8 mov edi, dword ptr [rax + 4*rdi]
-; X64-NEXT:    95: 48 29 f8 sub rax, rdi
-; X64-NEXT:    98: ff e0 jmp rax
+; X64-NEXT:    8b: 48 8d 15 7e 00 00 00 lea rdx, <switch_table+0x90>
+; X64-NEXT:    92: 8b 3c ba mov edi, dword ptr [rdx + 4*rdi]
+; X64-NEXT:    95: 48 29 fa sub rdx, rdi
+; X64-NEXT:    98: ff e2 jmp rdx
 ; X64-NEXT:    9a: 0f 1f 00 nop dword ptr [rax]
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    9d: e9 68 00 00 00 jmp <L7>
@@ -316,10 +316,10 @@ define i32 @switch_table2(i32 %0) {
 ; X64:         130: 83 ef 03 sub edi, 0x3
 ; X64-NEXT:    133: 83 ff 06 cmp edi, 0x6
 ; X64-NEXT:    136: 0f 87 12 00 00 00 ja <L0>
-; X64-NEXT:    13c: 48 8d 05 81 00 00 00 lea rax, <switch_table2+0x94>
-; X64-NEXT:    143: 8b 3c b8 mov edi, dword ptr [rax + 4*rdi]
-; X64-NEXT:    146: 48 29 f8 sub rax, rdi
-; X64-NEXT:    149: ff e0 jmp rax
+; X64-NEXT:    13c: 48 8d 15 81 00 00 00 lea rdx, <switch_table2+0x94>
+; X64-NEXT:    143: 8b 3c ba mov edi, dword ptr [rdx + 4*rdi]
+; X64-NEXT:    146: 48 29 fa sub rdx, rdi
+; X64-NEXT:    149: ff e2 jmp rdx
 ; X64-NEXT:    14b: 0f 1f 00 nop dword ptr [rax]
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    14e: e9 6a 00 00 00 jmp <L7>
@@ -452,19 +452,19 @@ define i32 @switch_table3(i32 %0) {
 ; X64-NEXT:    1f2: 83 ef 01 sub edi, 0x1
 ; X64-NEXT:    1f5: 83 ff 05 cmp edi, 0x5
 ; X64-NEXT:    1f8: 0f 87 33 00 00 00 ja <L1>
-; X64-NEXT:    1fe: 48 8d 05 bb 00 00 00 lea rax, <switch_table3+0xe0>
-; X64-NEXT:    205: 8b 3c b8 mov edi, dword ptr [rax + 4*rdi]
-; X64-NEXT:    208: 48 29 f8 sub rax, rdi
-; X64-NEXT:    20b: ff e0 jmp rax
+; X64-NEXT:    1fe: 48 8d 15 bb 00 00 00 lea rdx, <switch_table3+0xe0>
+; X64-NEXT:    205: 8b 3c ba mov edi, dword ptr [rdx + 4*rdi]
+; X64-NEXT:    208: 48 29 fa sub rdx, rdi
+; X64-NEXT:    20b: ff e2 jmp rdx
 ; X64-NEXT:    20d: 0f 1f 00 nop dword ptr [rax]
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    210: 81 ef ea 03 00 00 sub edi, 0x3ea
 ; X64-NEXT:    216: 83 ff 04 cmp edi, 0x4
 ; X64-NEXT:    219: 0f 87 12 00 00 00 ja <L1>
-; X64-NEXT:    21f: 48 8d 05 b2 00 00 00 lea rax, <switch_table3+0xf8>
-; X64-NEXT:    226: 8b 3c b8 mov edi, dword ptr [rax + 4*rdi]
-; X64-NEXT:    229: 48 29 f8 sub rax, rdi
-; X64-NEXT:    22c: ff e0 jmp rax
+; X64-NEXT:    21f: 48 8d 15 b2 00 00 00 lea rdx, <switch_table3+0xf8>
+; X64-NEXT:    226: 8b 3c ba mov edi, dword ptr [rdx + 4*rdi]
+; X64-NEXT:    229: 48 29 fa sub rdx, rdi
+; X64-NEXT:    22c: ff e2 jmp rdx
 ; X64-NEXT:    22e: 0f 1f 00 nop dword ptr [rax]
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    231: e9 81 00 00 00 jmp <L6>

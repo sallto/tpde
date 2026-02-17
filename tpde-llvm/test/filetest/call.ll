@@ -1639,17 +1639,17 @@ define i64 @fn_many_args_i64(i64 %p0, i64 %p1, i64 %p2, i64 %p3, i64 %p4, i64 %p
 ; X64-NEXT:    sub rsp, 0x40
 ; X64-NEXT:    mov rax, r9
 ; X64-NEXT:    mov r9, qword ptr [rbp + 0x10]
-; X64-NEXT:    mov r10, qword ptr [rbp + 0x18]
-; X64-NEXT:    mov qword ptr [rsp], r10
-; X64-NEXT:    mov r10, qword ptr [rbp + 0x20]
-; X64-NEXT:    mov qword ptr [rsp + 0x8], r10
+; X64-NEXT:    mov rdi, qword ptr [rbp + 0x18]
+; X64-NEXT:    mov qword ptr [rsp], rdi
+; X64-NEXT:    mov rdi, qword ptr [rbp + 0x20]
+; X64-NEXT:    mov qword ptr [rsp + 0x8], rdi
 ; X64-NEXT:    mov rdi, rsi
 ; X64-NEXT:    mov rsi, rdx
 ; X64-NEXT:    mov rdx, rcx
 ; X64-NEXT:    mov rcx, r8
 ; X64-NEXT:    mov r8, rax
-; X64-NEXT:    xor r11d, r11d
-; X64-NEXT:    mov qword ptr [rsp + 0x10], r11
+; X64-NEXT:    xor eax, eax
+; X64-NEXT:    mov qword ptr [rsp + 0x10], rax
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_i64-0x4
@@ -1694,17 +1694,17 @@ define i32 @fn_many_args_i32(i32 %p0, i32 %p1, i32 %p2, i32 %p3, i32 %p4, i32 %p
 ; X64-NEXT:    sub rsp, 0x40
 ; X64-NEXT:    mov rax, r9
 ; X64-NEXT:    mov r9d, dword ptr [rbp + 0x10]
-; X64-NEXT:    mov r10d, dword ptr [rbp + 0x18]
-; X64-NEXT:    mov dword ptr [rsp], r10d
-; X64-NEXT:    mov r10d, dword ptr [rbp + 0x20]
-; X64-NEXT:    mov dword ptr [rsp + 0x8], r10d
+; X64-NEXT:    mov edi, dword ptr [rbp + 0x18]
+; X64-NEXT:    mov dword ptr [rsp], edi
+; X64-NEXT:    mov edi, dword ptr [rbp + 0x20]
+; X64-NEXT:    mov dword ptr [rsp + 0x8], edi
 ; X64-NEXT:    mov edi, esi
 ; X64-NEXT:    mov esi, edx
 ; X64-NEXT:    mov edx, ecx
 ; X64-NEXT:    mov ecx, r8d
 ; X64-NEXT:    mov r8d, eax
-; X64-NEXT:    xor r11d, r11d
-; X64-NEXT:    mov dword ptr [rsp + 0x10], r11d
+; X64-NEXT:    xor eax, eax
+; X64-NEXT:    mov dword ptr [rsp + 0x10], eax
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_i32-0x4
@@ -1749,17 +1749,17 @@ define i16 @fn_many_args_i16(i16 %p0, i16 %p1, i16 %p2, i16 %p3, i16 %p4, i16 %p
 ; X64-NEXT:    sub rsp, 0x40
 ; X64-NEXT:    mov rax, r9
 ; X64-NEXT:    movzx r9d, word ptr [rbp + 0x10]
-; X64-NEXT:    movzx r10d, word ptr [rbp + 0x18]
-; X64-NEXT:    mov word ptr [rsp], r10w
-; X64-NEXT:    movzx r10d, word ptr [rbp + 0x20]
-; X64-NEXT:    mov word ptr [rsp + 0x8], r10w
+; X64-NEXT:    movzx edi, word ptr [rbp + 0x18]
+; X64-NEXT:    mov word ptr [rsp], di
+; X64-NEXT:    movzx edi, word ptr [rbp + 0x20]
+; X64-NEXT:    mov word ptr [rsp + 0x8], di
 ; X64-NEXT:    mov edi, esi
 ; X64-NEXT:    mov esi, edx
 ; X64-NEXT:    mov edx, ecx
 ; X64-NEXT:    mov ecx, r8d
 ; X64-NEXT:    mov r8d, eax
-; X64-NEXT:    xor r11d, r11d
-; X64-NEXT:    mov word ptr [rsp + 0x10], r11w
+; X64-NEXT:    xor eax, eax
+; X64-NEXT:    mov word ptr [rsp + 0x10], ax
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_i16-0x4
@@ -1804,17 +1804,17 @@ define i8 @fn_many_args_i8(i8 %p0, i8 %p1, i8 %p2, i8 %p3, i8 %p4, i8 %p5, i8 %p
 ; X64-NEXT:    sub rsp, 0x40
 ; X64-NEXT:    mov rax, r9
 ; X64-NEXT:    movzx r9d, byte ptr [rbp + 0x10]
-; X64-NEXT:    movzx r10d, byte ptr [rbp + 0x18]
-; X64-NEXT:    mov byte ptr [rsp], r10b
-; X64-NEXT:    movzx r10d, byte ptr [rbp + 0x20]
-; X64-NEXT:    mov byte ptr [rsp + 0x8], r10b
+; X64-NEXT:    movzx edi, byte ptr [rbp + 0x18]
+; X64-NEXT:    mov byte ptr [rsp], dil
+; X64-NEXT:    movzx edi, byte ptr [rbp + 0x20]
+; X64-NEXT:    mov byte ptr [rsp + 0x8], dil
 ; X64-NEXT:    mov edi, esi
 ; X64-NEXT:    mov esi, edx
 ; X64-NEXT:    mov edx, ecx
 ; X64-NEXT:    mov ecx, r8d
 ; X64-NEXT:    mov r8d, eax
-; X64-NEXT:    xor r11d, r11d
-; X64-NEXT:    mov byte ptr [rsp + 0x10], r11b
+; X64-NEXT:    xor eax, eax
+; X64-NEXT:    mov byte ptr [rsp + 0x10], al
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_i8-0x4
@@ -1867,12 +1867,12 @@ define float @fn_many_args_float(float %p0, float %p1, float %p2, float %p3, flo
 ; X64-NEXT:    movapd xmm5, xmm6
 ; X64-NEXT:    movapd xmm6, xmm0
 ; X64-NEXT:    movapd xmm0, xmm8
-; X64-NEXT:    movd xmm9, dword ptr [rbp + 0x18]
-; X64-NEXT:    movss dword ptr [rsp], xmm9
-; X64-NEXT:    movd xmm9, dword ptr [rbp + 0x20]
-; X64-NEXT:    movss dword ptr [rsp + 0x8], xmm9
-; X64-NEXT:    pxor xmm10, xmm10
-; X64-NEXT:    movss dword ptr [rsp + 0x10], xmm10
+; X64-NEXT:    movd xmm8, dword ptr [rbp + 0x18]
+; X64-NEXT:    movss dword ptr [rsp], xmm8
+; X64-NEXT:    movd xmm8, dword ptr [rbp + 0x20]
+; X64-NEXT:    movss dword ptr [rsp + 0x8], xmm8
+; X64-NEXT:    pxor xmm9, xmm9
+; X64-NEXT:    movss dword ptr [rsp + 0x10], xmm9
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_float-0x4
@@ -1929,12 +1929,12 @@ define double @fn_many_args_double(double %p0, double %p1, double %p2, double %p
 ; X64-NEXT:    movapd xmm5, xmm6
 ; X64-NEXT:    movapd xmm6, xmm0
 ; X64-NEXT:    movapd xmm0, xmm8
-; X64-NEXT:    movq xmm9, qword ptr [rbp + 0x18]
-; X64-NEXT:    movsd qword ptr [rsp], xmm9
-; X64-NEXT:    movq xmm9, qword ptr [rbp + 0x20]
-; X64-NEXT:    movsd qword ptr [rsp + 0x8], xmm9
-; X64-NEXT:    pxor xmm10, xmm10
-; X64-NEXT:    movsd qword ptr [rsp + 0x10], xmm10
+; X64-NEXT:    movq xmm8, qword ptr [rbp + 0x18]
+; X64-NEXT:    movsd qword ptr [rsp], xmm8
+; X64-NEXT:    movq xmm8, qword ptr [rbp + 0x20]
+; X64-NEXT:    movsd qword ptr [rsp + 0x8], xmm8
+; X64-NEXT:    pxor xmm9, xmm9
+; X64-NEXT:    movsd qword ptr [rsp + 0x10], xmm9
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_double-0x4
@@ -1993,12 +1993,12 @@ define double @fn_many_args_floatdouble(double %p0, float %p1, double %p2, float
 ; X64-NEXT:    movapd xmm3, xmm5
 ; X64-NEXT:    movapd xmm5, xmm1
 ; X64-NEXT:    movapd xmm1, xmm8
-; X64-NEXT:    movq xmm9, qword ptr [rbp + 0x20]
-; X64-NEXT:    movsd qword ptr [rsp], xmm9
-; X64-NEXT:    pxor xmm10, xmm10
-; X64-NEXT:    movss dword ptr [rsp + 0x8], xmm10
-; X64-NEXT:    pxor xmm10, xmm10
-; X64-NEXT:    movsd qword ptr [rsp + 0x10], xmm10
+; X64-NEXT:    movq xmm8, qword ptr [rbp + 0x20]
+; X64-NEXT:    movsd qword ptr [rsp], xmm8
+; X64-NEXT:    pxor xmm9, xmm9
+; X64-NEXT:    movss dword ptr [rsp + 0x8], xmm9
+; X64-NEXT:    pxor xmm9, xmm9
+; X64-NEXT:    movsd qword ptr [rsp + 0x10], xmm9
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_double-0x4
@@ -2026,10 +2026,10 @@ define double @fn_many_args_floatdouble(double %p0, float %p1, double %p2, float
 ; ARM64-NEXT:    mov v1.16b, v17.16b
 ; ARM64-NEXT:    sub sp, sp, #0x20
 ; ARM64-NEXT:    str d16, [sp]
-; ARM64-NEXT:    movi v18.8b, #0x0
-; ARM64-NEXT:    str s18, [sp, #0x8]
-; ARM64-NEXT:    movi v18.8b, #0x0
-; ARM64-NEXT:    str d18, [sp, #0x10]
+; ARM64-NEXT:    movi v17.8b, #0x0
+; ARM64-NEXT:    str s17, [sp, #0x8]
+; ARM64-NEXT:    movi v17.8b, #0x0
+; ARM64-NEXT:    str d17, [sp, #0x10]
 ; ARM64-NEXT:    str d16, [x29, #0xa0]
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
