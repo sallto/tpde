@@ -554,7 +554,9 @@ block2:
 
 define void @cbz_nophi(i32 %param) {
 ; X64-LABEL: <cbz_nophi>:
-; X64:       <L0>:
+; X64:         push rbp
+; X64-NEXT:    mov rbp, rsp
+; X64-NEXT:  <L0>:
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    xor eax, eax
@@ -567,13 +569,16 @@ define void @cbz_nophi(i32 %param) {
 ; X64-NEXT:    lea eax, [1*rax]
 ; X64-NEXT:    test edi, edi
 ; X64-NEXT:    je <L2>
-; X64-NEXT:    jmp <cbz_nophi>
+; X64-NEXT:    mov dword ptr [rbp - 0x2c], edx
+; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L2>:
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    jmp <L1>
 ;
 ; ARM64-LABEL: <cbz_nophi>:
-; ARM64:       <L0>:
+; ARM64:         stp x29, x30, [sp, #-0xb0]!
+; ARM64-NEXT:    mov x29, sp
+; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    mov w2, #0x0 // =0
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    mov w1, #0x0 // =0
@@ -586,7 +591,8 @@ define void @cbz_nophi(i32 %param) {
 ; ARM64-NEXT:    add w1, w1, #0x0
 ; ARM64-NEXT:    mov w1, w0
 ; ARM64-NEXT:    cbz w1, <L2>
-; ARM64-NEXT:    b <cbz_nophi>
+; ARM64-NEXT:    str w2, [x29, #0xa0]
+; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    mov w2, #0x0 // =0
 ; ARM64-NEXT:    b <L1>
@@ -607,7 +613,9 @@ define void @cbz_nophi(i32 %param) {
 
 define void @cbz_phi() {
 ; X64-LABEL: <cbz_phi>:
-; X64:       <L0>:
+; X64:         push rbp
+; X64-NEXT:    mov rbp, rsp
+; X64-NEXT:  <L0>:
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    xor eax, eax
@@ -620,13 +628,16 @@ define void @cbz_phi() {
 ; X64-NEXT:    lea eax, [1*rax]
 ; X64-NEXT:    test edx, edx
 ; X64-NEXT:    je <L2>
-; X64-NEXT:    jmp <cbz_phi>
+; X64-NEXT:    mov dword ptr [rbp - 0x2c], edx
+; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L2>:
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    jmp <L1>
 ;
 ; ARM64-LABEL: <cbz_phi>:
-; ARM64:       <L0>:
+; ARM64:         stp x29, x30, [sp, #-0xb0]!
+; ARM64-NEXT:    mov x29, sp
+; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    mov w2, #0x0 // =0
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    mov w0, #0x0 // =0
@@ -639,7 +650,8 @@ define void @cbz_phi() {
 ; ARM64-NEXT:    add w0, w0, #0x0
 ; ARM64-NEXT:    mov w16, w2
 ; ARM64-NEXT:    cbz w16, <L2>
-; ARM64-NEXT:    b <cbz_phi>
+; ARM64-NEXT:    str w2, [x29, #0xa0]
+; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    mov w2, #0x0 // =0
 ; ARM64-NEXT:    b <L1>

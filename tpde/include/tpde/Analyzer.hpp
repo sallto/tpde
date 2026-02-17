@@ -314,6 +314,7 @@ namespace tpde {
 
         static constexpr u32 DEF_BIT = 1u << 31;
         static constexpr u32 INF = std::numeric_limits<u32>::max();
+        static constexpr u32 LOOP_EXIT_PENALTY = 10'000'000u;
 
         struct PreciseLivenessInfo {
             // val_local_idx -> list of next-use distances from the start of each block.
@@ -322,6 +323,9 @@ namespace tpde {
 
         // pro block liveness info
         util::SmallVector<PreciseLivenessInfo, 32> precise_liveness;
+        /// Initial working set selected at block entry for loop headers.
+        std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx>>
+            initial_working_set_by_block = {};
         // If a value is spilled at any point, it is marked here. During codegen we
         // spill immediately after definition to avoid storing the spill location.
         util::SmallBitSet<SMALL_VALUE_NUM> spilled_values;
@@ -1088,7 +1092,6 @@ void Analyzer<Adaptor, CompilerType>::compute_precise_liveness() noexcept {
   const u32 num_blocks = static_cast<u32>(block_layout.size());
   // if the next use is "across" a loop, assign a penaltiy to encorouge
   // spilling this var before the loop.
-  static constexpr u32 LOOP_EXIT_PENALTY = 10'000'000u;
 
   // todo(salto): think about epoch system like in og liveness analysis?
   precise_liveness.resize(num_blocks);
@@ -1743,6 +1746,16 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       W_entry_freq;
   util::SmallVector<u32, 16> W_max_entry_freq;
   W_max_entry_freq.resize(block_layout.size(), 0u);
+  initial_working_set_by_block.clear();
+  util::SmallBitSet<SMALL_BLOCK_NUM> loop_header_blocks;
+  loop_header_blocks.resize(static_cast<u32>(block_layout.size()));
+  loop_header_blocks.zero();
+  for (u32 loop_idx = 1; loop_idx < loops.size(); ++loop_idx) {
+    const auto header_idx = static_cast<u32>(loops[loop_idx].begin);
+    if (header_idx < block_layout.size()) {
+      loop_header_blocks.mark_set(header_idx);
+    }
+  }
 
   for (u32 i = 0; i < this->block_layout.size(); ++i) {
     // TODO(salto): Handle register arguments in entry block
@@ -1753,6 +1766,9 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
     // generation, so we can't easily determine this here without
     // duplicating the CCAssigner logic.
     const auto block = this->block_layout[i];
+    const BlockIndex block_idx_cur = block_idx(block);
+    const u32 block_idx_u32 = static_cast<u32>(block_idx_cur);
+    const bool is_loop_header_block = loop_header_blocks.is_set(block_idx_u32);
     if (Adaptor::TPDE_LIVENESS_VISIT_ARGS && i == 0) {
       assert(block_layout[0] == compiler->adaptor->cur_entry_block());
       // TODO: Query cc_assigner to determine which args are in registers
@@ -1786,14 +1802,28 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       // We need to choose which values to keep in W across the multiple
       // incoming edges. prefer values that are used in many predecessors.
       util::SmallVector<ValLocalIdx, 16> incoming_from_all;
-      const u32 max_seen_freq =
-          W_max_entry_freq[static_cast<u32>(block_idx(block))];
-      std::array<u8, 2> from_all_registers = {0u, 0u};
-      for (const auto [val_idx, freq] : W_entry_freq[block_idx(block)]) {
+      const u32 max_seen_freq = W_max_entry_freq[block_idx_u32];
+      for (const auto [val_idx, freq] : W_entry_freq[block_idx_cur]) {
         if (freq != max_seen_freq) {
           continue;
         }
         incoming_from_all.push_back(val_idx);
+      }
+
+      if (is_loop_header_block) {
+        util::SmallVector<ValLocalIdx, 16> loop_local_values;
+        for (const auto val_idx : incoming_from_all) {
+          const auto entry_next_use =
+              get_current_and_next_use(precise_liveness[block_idx_u32], val_idx, 0).first;
+          if (entry_next_use < LOOP_EXIT_PENALTY) {
+            loop_local_values.push_back(val_idx);
+          }
+        }
+        incoming_from_all.clear();
+        incoming_from_all.append(loop_local_values.begin(), loop_local_values.end());
+      }
+      std::array<u8, 2> from_all_registers = {0u, 0u};
+      for (const auto val_idx : incoming_from_all) {
         const auto parts = working_set.num_parts(val_idx);
         from_all_registers[0] += parts[0];
         from_all_registers[1] += parts[1];
@@ -1807,12 +1837,12 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
             incoming_from_all.end(),
             [&](const auto &a, const auto &b) {
               return get_current_and_next_use(
-                         precise_liveness[static_cast<u32>(block_idx(block))],
+                         precise_liveness[block_idx_u32],
                          a,
                          0)
                          .first <
                      get_current_and_next_use(
-                         precise_liveness[static_cast<u32>(block_idx(block))],
+                         precise_liveness[block_idx_u32],
                          b,
                          0)
                          .first;
@@ -1829,6 +1859,11 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       }
     }
 
+    if (is_loop_header_block) {
+      auto &initial_working_set = initial_working_set_by_block[block_idx_cur];
+      initial_working_set.clear();
+      initial_working_set.insert(working_set.begin(), working_set.end());
+    }
     // W is the working set. The values in registers
     // keep used registers seperately, since one value can use multiple
     // registers.
