@@ -1789,23 +1789,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
           ap.assignment()->references_left <= 1) {
         if (source_regs & (1ull << cca.reg.id())) {
           // our target is a already used source register.
-          auto temp = compiler.register_file.find_first_free_excluding(
-              cca.bank, source_regs);
-          TPDE_LOG_TRACE(
-              "Target reg {} is already used as source, using temp {}",
-              cca.reg.id(),
-              temp.id());
-          if (!temp.valid()) {
-            temp = compiler.select_reg(cca.bank, source_regs);
-          }
-          compiler.mov(temp, cca.reg, 8);
-          source_regs |= (1ull << temp.id());
-          for (auto &pending_arg : pending_args) {
-            if (pending_arg.kind == PendingArg::Kind::REG_TO_REG &&
-                pending_arg.source_reg == cca.reg) {
-              pending_arg.source_reg = temp;
-            }
-          }
+          flush_pending_args();
         }
 
         // load immediately since we could lose our stack slot.
@@ -1826,23 +1810,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
       // todo(salto): test unlikely
       if (source_regs & (1ull << cca.reg.id())) {
         // our target is a already used source register.
-        auto temp = compiler.register_file.find_first_free_excluding(
-            cca.bank, source_regs);
-        TPDE_LOG_TRACE("Target var-ref/sret reg {} is already used as source, "
-                       "using temp {}",
-                       cca.reg.id(),
-                       temp.id());
-        if (!temp.valid()) {
-          temp = compiler.select_reg(cca.bank, source_regs);
-        }
-        compiler.mov(temp, cca.reg, 8);
-        source_regs |= (1ull << temp.id());
-        for (auto &pending_arg : pending_args) {
-          if (pending_arg.kind == PendingArg::Kind::REG_TO_REG &&
-              pending_arg.source_reg == cca.reg) {
-            pending_arg.source_reg = temp;
-          }
-        }
+        flush_pending_args();
       }
 
       //  not worth optimizing
