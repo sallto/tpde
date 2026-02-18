@@ -3408,11 +3408,7 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
 
   // const auto spilled = this->spill_before_branch(true);
   this->begin_branch_region();
-  AsmReg tmp_reg = this->select_reg(Config::GP_BANK,
-                                    used_phi_regs_global |
-                                    derived()->phi_nonallocatable_mask());
-  ScratchReg tmp_scratch{this};
-  tmp_scratch.alloc_specific(tmp_reg);
+  AsmReg tmp_reg = branch_scratch_reg(Config::GP_BANK);
   tpde::util::SmallVector<tpde::Label, 64> case_labels;
   // Labels that need an intermediate block to setup registers. This is
   // separate, because most switch targets don't need this.
@@ -3501,7 +3497,6 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
 
   // release scratch registers before phi resolution
   cond.reset();
-  tmp_scratch.reset();
 
 
   // write out the labels
