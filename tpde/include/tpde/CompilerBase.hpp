@@ -1210,8 +1210,7 @@ public:
                                                 [[maybe_unused]] u32 part_idx,
                                                 AssignmentPartRef ap,
                                                 bool force_spill = false) {
-      if (ap.fixed_assignment() || ap.variable_ref() || !ap.register_valid() ||
-          ap.stack_valid()) {
+      if (ap.fixed_assignment() || ap.variable_ref() || !ap.register_valid()) {
         return;
       }
 
@@ -1225,11 +1224,6 @@ public:
         return;
       }
 
-
-      if (spill_reg == ap.get_reg()) {
-        spill(ap);
-        return;
-      }
 
       allocate_spill_slot(ap);
       derived()->spill_reg(spill_reg, ap.frame_off(), ap.part_size());
@@ -1317,7 +1311,7 @@ public:
       };
       auto &target_state = block_regs[target];
       // todo(salto): how to represent stack vars here?
-      if (has_initial_working_set) {
+      if (false && has_initial_working_set) {
         util::SmallVector<ValLocalIdx, 16> working_set_values;
         for (const auto local_idx: initial_working_set_it->second) {
           if (local_idx == INVALID_VAL_LOCAL_IDX) {
@@ -1532,10 +1526,14 @@ public:
       }
 
       if (incoming_part.is_const()) {
+        register_file.allocatable &= ~phi_regs;
+        // todo(salto): use the phi scratch per default for float constants
         derived()->materialize_constant(incoming_part.const_data().data(),
                                         incoming_part.bank(),
                                         deferred.size,
                                         dst);
+        register_file.allocatable |= phi_regs;
+
         return true;
       }
 
@@ -1570,17 +1568,7 @@ public:
       derived()->load_from_stack(dst, ap.frame_off(), deferred.size);
       return true;
     };
-    for (const auto &deferred: deferred_phi_stack_materializations) {
-      // need to do this now since one of the moves could need our temp_reg.
-      const Reg tmp_reg = deferred.temp_reg;
-      if (!tmp_reg.valid()) [[unlikely]] {
-        TPDE_FATAL("missing deferred temporary register for phi spill");
-      }
-      if (emit_deferred_phi_source_to_reg(deferred, tmp_reg)) {
-        derived()->spill_reg(tmp_reg, deferred.stack_off, deferred.size);
-        register_file.mark_clobbered(tmp_reg);
-      }
-    }
+
 
     MoveList ordered = sequentialize_readonly(
       moves, phi_regs | unallocatable_regs, false, &branch_scratch_regs);
@@ -1593,12 +1581,24 @@ public:
       }
     }
 
-
     for (const auto &deferred: deferred_phi_reg_materializations) {
       if (emit_deferred_phi_source_to_reg(deferred, deferred.dst_reg)) {
         register_file.mark_clobbered(deferred.dst_reg);
       }
     }
+
+    for (const auto &deferred: deferred_phi_stack_materializations) {
+      // need to do this now since one of the moves could need our temp_reg.
+      const Reg tmp_reg = branch_scratch_reg(Config::GP_BANK);
+      if (!tmp_reg.valid()) [[unlikely]] {
+        TPDE_FATAL("missing deferred temporary register for phi spill");
+      }
+      if (emit_deferred_phi_source_to_reg(deferred, tmp_reg)) {
+        derived()->spill_reg(tmp_reg, deferred.stack_off, deferred.size);
+        register_file.mark_clobbered(tmp_reg);
+      }
+    }
+
 
     for (const auto &deferred: deferred_loads) {
       ValueAssignment *assignment = val_assignment(deferred.local_idx);
@@ -1641,7 +1641,7 @@ public:
   /// a direct jump to the block is not possible.
   bool branch_needs_split(IRBlockRef target) {
     // for now, if the target has PHI-nodes, we split
-    return analyzer.block_has_phis(target);
+    return analyzer.block_has_phis(target) | true;
   }
 
   /// @}
