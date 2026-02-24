@@ -252,6 +252,14 @@ struct CompilerBase {
     std::optional<ValuePartRef> incoming_part;
   };
 
+  struct DeferredPhiRegSpill {
+    Reg reg = Reg::make_invalid();
+    i32 stack_off = 0;
+    u32 size = 0;
+  };
+
+  using DeferredPhiRegSpillList = util::SmallVector<DeferredPhiRegSpill, 16>;
+
   using DeferredPhiRegMaterializationList =
   util::SmallVector<DeferredPhiRegMaterialization, 16>;
   using DeferredPhiStackMaterializationList =
@@ -1159,6 +1167,7 @@ public:
     DeferredEdgeLoadList deferred_loads;
     DeferredPhiRegMaterializationList deferred_phi_reg_materializations;
     DeferredPhiStackMaterializationList deferred_phi_stack_materializations;
+    DeferredPhiRegSpillList deferred_phi_reg_spills;
 
     typename RegisterFile::RegBitSet phi_regs = 0;
     typename RegisterFile::RegBitSet unallocatable_regs = 0;
@@ -1167,7 +1176,8 @@ public:
           move_to_phi_nodes_impl(target,
                                  moves,
                                  deferred_phi_reg_materializations,
-                                 deferred_phi_stack_materializations);
+                                 deferred_phi_stack_materializations,
+                                 deferred_phi_reg_spills);
       phi_regs = phi_regs_;
       unallocatable_regs = unallocatable_regs_;
     }
@@ -1581,11 +1591,6 @@ public:
       }
     }
 
-    for (const auto &deferred: deferred_phi_reg_materializations) {
-      if (emit_deferred_phi_source_to_reg(deferred, deferred.dst_reg)) {
-        register_file.mark_clobbered(deferred.dst_reg);
-      }
-    }
 
     for (const auto &deferred: deferred_phi_stack_materializations) {
       // need to do this now since one of the moves could need our temp_reg.
@@ -1599,7 +1604,18 @@ public:
       }
     }
 
+    for (const auto &deferred: deferred_phi_reg_spills) {
+      if (deferred.reg.valid()) {
+        derived()->spill_reg(deferred.reg, deferred.stack_off, deferred.size);
+        register_file.mark_clobbered(deferred.reg);
+      }
+    }
 
+    for (const auto &deferred: deferred_phi_reg_materializations) {
+      if (emit_deferred_phi_source_to_reg(deferred, deferred.dst_reg)) {
+        register_file.mark_clobbered(deferred.dst_reg);
+      }
+    }
     for (const auto &deferred: deferred_loads) {
       ValueAssignment *assignment = val_assignment(deferred.local_idx);
       if (!assignment || deferred.part_idx >= assignment->part_count) {
@@ -1622,7 +1638,8 @@ public:
     MoveList &moves,
     DeferredPhiRegMaterializationList &deferred_phi_reg_materializations,
     DeferredPhiStackMaterializationList
-    &deferred_phi_stack_materializations);
+    &deferred_phi_stack_materializations,
+    DeferredPhiRegSpillList &deferred_phi_reg_spills);
 
   /// Count available registers in a specific bank
   u32 count_available_registers(RegBank bank) const {
@@ -1736,7 +1753,14 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     const auto abi_arg_regs = assigner.get_ccinfo().arg_regs;
     auto blocked_arg_regs = compiler.register_file.allocatable & abi_arg_regs;
     // compiler.register_file.allocatable &= ~abi_arg_regs;
-
+    if (!vp.has_reg()) {
+      auto reg = compiler.register_file.find_first_free_excluding(vp.bank(), source_regs);
+      if (!reg.valid()) {
+        flush_pending_args();
+      } else {
+        vp.reload_into_specific_fixed(&compiler, reg);
+      }
+    }
     if (needs_ext) {
       auto ext = std::move(vp).into_extended(&compiler, ext_sign, ext_bits, 64);
       derived()->add_arg_stack(ext, cca);
@@ -2040,6 +2064,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     emit_reg_moves();
   }
   compiler.register_file.allocatable |= source_regs & (~arg_regs);
+  source_regs = 0;
   pending_args.clear();
 }
 
@@ -3494,7 +3519,7 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
   MoveList &moves,
   DeferredPhiRegMaterializationList &deferred_phi_reg_materializations,
   DeferredPhiStackMaterializationList
-  &deferred_phi_stack_materializations) {
+  &deferred_phi_stack_materializations, DeferredPhiRegSpillList &deferred_phi_reg_spills) {
   // PHI-nodes are always moved to their stack-slot (unless they are fixed)
   //
   // However, we need to take care of PHI-dependencies (cycles and chains)
@@ -3654,6 +3679,15 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
     deferred.incoming_part.emplace(std::move(incoming_part));
     deferred_phi_reg_materializations.push_back(std::move(deferred));
   };
+  const auto defer_reg_spill =
+      [&](Reg reg, i32 stack_off, u32 size) {
+    DeferredPhiRegSpill deferred{};
+    deferred.reg = reg;
+    deferred.stack_off = stack_off;
+    deferred.size = size;
+    deferred_phi_reg_spills.push_back(std::move(deferred));
+  };
+
 
   const auto defer_stack_value_part_materialization =
       [&](Reg temp_reg,
@@ -3718,8 +3752,10 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
     }
 
     if (incoming_reg.valid()) {
-      derived()->spill_reg(
-        incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
+      mark_reg_unallocatable(incoming_reg);
+      defer_reg_spill(incoming_reg,
+                      phi_ap.frame_off(),
+                      phi_ap.part_size());
     } else {
       Reg tmp_reg = branch_scratch_reg(phi_ap.bank());
 
