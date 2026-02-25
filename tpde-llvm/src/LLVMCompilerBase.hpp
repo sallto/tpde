@@ -4296,7 +4296,7 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_invoke(
   auto *unwind_block = invoke->getUnwindDest();
   llvm::LandingPadInst *landing_pad = nullptr;
   auto unwind_block_has_phi = false;
-
+  this->begin_branch_region();
   for (auto it = unwind_block->begin(), end = unwind_block->end(); it != end;
        ++it) {
     llvm::Instruction *inst = &*it;
@@ -4369,7 +4369,7 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_invoke(
                                          off_after_call - off_before_call,
                                          unwind_label,
                                          only_cleanup);
-
+  this->end_branch_region();
   if (only_cleanup) {
     // no clause so we are done
     return true;
