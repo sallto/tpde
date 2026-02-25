@@ -1065,10 +1065,6 @@ define void @f2(ptr %0, ptr %1, ptr %2, ptr %3, ptr %4, ptr %5, ptr %6, ptr %7, 
 ; X64-NEXT:    mov qword ptr [rbp - 0x9d08], rax
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    mov qword ptr [rbp - 0x9d10], rax
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rsp], rax
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rsp + 0x8], rax
 ; X64-NEXT:    xor edi, edi
 ; X64-NEXT:    mov qword ptr [rbp - 0x9d18], rsi
 ; X64-NEXT:    xor esi, esi
@@ -1080,6 +1076,10 @@ define void @f2(ptr %0, ptr %1, ptr %2, ptr %3, ptr %4, ptr %5, ptr %6, ptr %7, 
 ; X64-NEXT:    xor r8d, r8d
 ; X64-NEXT:    mov qword ptr [rbp - 0x9d38], r9
 ; X64-NEXT:    xor r9d, r9d
+; X64-NEXT:    xor eax, eax
+; X64-NEXT:    mov qword ptr [rsp], rax
+; X64-NEXT:    xor eax, eax
+; X64-NEXT:    mov qword ptr [rsp + 0x8], rax
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    mov qword ptr [rsp + 0x10], rax
 ; X64-NEXT:    xor eax, eax
@@ -1278,30 +1278,36 @@ define void @f2(ptr %0, ptr %1, ptr %2, ptr %3, ptr %4, ptr %5, ptr %6, ptr %7, 
 ; ARM64-NEXT:    str x16, [sp, #0xb0]
 ; ARM64-NEXT:    mov x16, x25
 ; ARM64-NEXT:    str x16, [sp, #0xb8]
-; ARM64-NEXT:    add x16, x29, #0x9, lsl #12 // =0x9000
-; ARM64-NEXT:    ldr x16, [x16, #0xd28]
-; ARM64-NEXT:    str x16, [sp, #0xc0]
+; ARM64-NEXT:    add x9, x29, #0x9, lsl #12 // =0x9000
+; ARM64-NEXT:    ldr x9, [x9, #0xd28]
+; ARM64-NEXT:    str x9, [sp, #0xc0]
 ; ARM64-NEXT:    mov x16, x8
 ; ARM64-NEXT:    str x16, [sp, #0xc8]
 ; ARM64-NEXT:    mov x16, x26
 ; ARM64-NEXT:    str x16, [sp, #0xd0]
-; ARM64-NEXT:    add x16, x29, #0x9, lsl #12 // =0x9000
-; ARM64-NEXT:    ldr x16, [x16, #0xd38]
+; ARM64-NEXT:    add x8, x29, #0x9, lsl #12 // =0x9000
+; ARM64-NEXT:    ldr x8, [x8, #0xd38]
+; ARM64-NEXT:    mov x16, x8
 ; ARM64-NEXT:    str x16, [sp, #0xd8]
-; ARM64-NEXT:    add x16, x29, #0x9, lsl #12 // =0x9000
-; ARM64-NEXT:    ldr x16, [x16, #0xd40]
+; ARM64-NEXT:    add x8, x29, #0x9, lsl #12 // =0x9000
+; ARM64-NEXT:    ldr x8, [x8, #0xd40]
+; ARM64-NEXT:    mov x16, x8
 ; ARM64-NEXT:    str x16, [sp, #0xe0]
-; ARM64-NEXT:    add x16, x29, #0x9, lsl #12 // =0x9000
-; ARM64-NEXT:    ldr x16, [x16, #0xd48]
+; ARM64-NEXT:    add x8, x29, #0x9, lsl #12 // =0x9000
+; ARM64-NEXT:    ldr x8, [x8, #0xd48]
+; ARM64-NEXT:    mov x16, x8
 ; ARM64-NEXT:    str x16, [sp, #0xe8]
-; ARM64-NEXT:    add x16, x29, #0x9, lsl #12 // =0x9000
-; ARM64-NEXT:    ldr x16, [x16, #0xd50]
+; ARM64-NEXT:    add x8, x29, #0x9, lsl #12 // =0x9000
+; ARM64-NEXT:    ldr x8, [x8, #0xd50]
+; ARM64-NEXT:    mov x16, x8
 ; ARM64-NEXT:    str x16, [sp, #0xf0]
-; ARM64-NEXT:    add x16, x29, #0x9, lsl #12 // =0x9000
-; ARM64-NEXT:    ldr x16, [x16, #0xd58]
+; ARM64-NEXT:    add x8, x29, #0x9, lsl #12 // =0x9000
+; ARM64-NEXT:    ldr x8, [x8, #0xd58]
+; ARM64-NEXT:    mov x16, x8
 ; ARM64-NEXT:    str x16, [sp, #0xf8]
-; ARM64-NEXT:    add x16, x29, #0x9, lsl #12 // =0x9000
-; ARM64-NEXT:    ldr x16, [x16, #0xd60]
+; ARM64-NEXT:    add x8, x29, #0x9, lsl #12 // =0x9000
+; ARM64-NEXT:    ldr x8, [x8, #0xd60]
+; ARM64-NEXT:    mov x16, x8
 ; ARM64-NEXT:    str x16, [sp, #0x100]
 ; ARM64-NEXT:    mov x16, x27
 ; ARM64-NEXT:    str x16, [sp, #0x108]

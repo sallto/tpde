@@ -1220,7 +1220,7 @@ public:
                                                 [[maybe_unused]] u32 part_idx,
                                                 AssignmentPartRef ap,
                                                 bool force_spill = false) {
-      if (ap.fixed_assignment() || ap.variable_ref() || !ap.register_valid()) {
+      if (ap.fixed_assignment() || ap.variable_ref() || !ap.register_valid() || ap.stack_valid()) {
         return;
       }
 
@@ -1321,7 +1321,7 @@ public:
       };
       auto &target_state = block_regs[target];
       // todo(salto): how to represent stack vars here?
-      if (false && has_initial_working_set) {
+      if (has_initial_working_set) {
         util::SmallVector<ValLocalIdx, 16> working_set_values;
         for (const auto local_idx: initial_working_set_it->second) {
           if (local_idx == INVALID_VAL_LOCAL_IDX) {
@@ -1594,7 +1594,7 @@ public:
 
     for (const auto &deferred: deferred_phi_stack_materializations) {
       // need to do this now since one of the moves could need our temp_reg.
-      const Reg tmp_reg = branch_scratch_reg(Config::GP_BANK);
+      const Reg tmp_reg = branch_scratch_reg(register_file.reg_bank(deferred.temp_reg));
       if (!tmp_reg.valid()) [[unlikely]] {
         TPDE_FATAL("missing deferred temporary register for phi spill");
       }
@@ -1753,12 +1753,12 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     const auto abi_arg_regs = assigner.get_ccinfo().arg_regs;
     auto blocked_arg_regs = compiler.register_file.allocatable & abi_arg_regs;
     // compiler.register_file.allocatable &= ~abi_arg_regs;
-    if (!vp.has_reg()) {
+    if (!vp.cur_reg_unlocked().valid()) {
       auto reg = compiler.register_file.find_first_free_excluding(vp.bank(), source_regs);
       if (!reg.valid()) {
         flush_pending_args();
       } else {
-        vp.reload_into_specific_fixed(&compiler, reg);
+        vp.load_to_specific(&compiler, reg);
       }
     }
     if (needs_ext) {

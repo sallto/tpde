@@ -248,7 +248,6 @@ define i32 @phi_last_use(i1 %c, i32 %a, i32 %b) {
 ; X64-NEXT:    lea eax, [rbx + 0x1]
 ; X64-NEXT:    test eax, eax
 ; X64-NEXT:    je <L1>
-; X64-NEXT:    mov dword ptr [rbp - 0x2c], eax
 ; X64-NEXT:    jmp <L0>
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    mov r12d, eax
@@ -260,7 +259,7 @@ define i32 @phi_last_use(i1 %c, i32 %a, i32 %b) {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <phi_last_use>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
+; ARM64:         stp x29, x30, [sp, #-0xa0]!
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    stp x19, x20, [sp, #0x10]
 ; ARM64-NEXT:    mov w19, w1
@@ -272,14 +271,13 @@ define i32 @phi_last_use(i1 %c, i32 %a, i32 %b) {
 ; ARM64-NEXT:    add w0, w19, #0x1
 ; ARM64-NEXT:    mov w1, w0
 ; ARM64-NEXT:    cbz w1, <L1>
-; ARM64-NEXT:    str w0, [x29, #0xa0]
 ; ARM64-NEXT:    b <L0>
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    mov w20, w0
 ; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    mov w0, w20
 ; ARM64-NEXT:    ldp x19, x20, [sp, #0x10]
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
 entry:
   br i1 %c, label %ret, label %loop

@@ -184,10 +184,10 @@ define i32 @switch_table(i32 %0) {
 ; X64:         80: 83 ff 06 cmp edi, 0x6
 ; X64-NEXT:    83: 0f 87 14 00 00 00 ja <L0>
 ; X64-NEXT:    89: 89 ff mov edi, edi
-; X64-NEXT:    8b: 48 8d 15 7e 00 00 00 lea rdx, <switch_table+0x90>
-; X64-NEXT:    92: 8b 3c ba mov edi, dword ptr [rdx + 4*rdi]
-; X64-NEXT:    95: 48 29 fa sub rdx, rdi
-; X64-NEXT:    98: ff e2 jmp rdx
+; X64-NEXT:    8b: 48 8d 05 7e 00 00 00 lea rax, <switch_table+0x90>
+; X64-NEXT:    92: 8b 3c b8 mov edi, dword ptr [rax + 4*rdi]
+; X64-NEXT:    95: 48 29 f8 sub rax, rdi
+; X64-NEXT:    98: ff e0 jmp rax
 ; X64-NEXT:    9a: 0f 1f 00 nop dword ptr [rax]
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    9d: e9 68 00 00 00 jmp <L7>
@@ -242,15 +242,15 @@ define i32 @switch_table(i32 %0) {
 ; ARM64-LABEL: <switch_table>:
 ; ARM64:         cmp w0, #0x6
 ; ARM64-NEXT:    b.hi <L1>
-; ARM64-NEXT:    adrp x2, 0x0 <empty_switch>
+; ARM64-NEXT:    adrp x1, 0x0 <empty_switch>
 ; ARM64-NEXT:     R_AARCH64_ADR_PREL_PG_HI21
-; ARM64-NEXT:    add x2, x2, #0x0
+; ARM64-NEXT:    add x1, x1, #0x0
 ; ARM64-NEXT:     R_AARCH64_ADD_ABS_LO12_NC
-; ARM64-NEXT:    ldrb w0, [x2, w0, uxtw #0]
+; ARM64-NEXT:    ldrb w0, [x1, w0, uxtw #0]
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    adr x2, <L0>
-; ARM64-NEXT:    add x2, x2, x0, lsl #2
-; ARM64-NEXT:    br x2
+; ARM64-NEXT:    adr x1, <L0>
+; ARM64-NEXT:    add x1, x1, x0, lsl #2
+; ARM64-NEXT:    br x1
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    b <L8>
 ; ARM64-NEXT:    udf #0x0
@@ -316,10 +316,10 @@ define i32 @switch_table2(i32 %0) {
 ; X64:         130: 83 ef 03 sub edi, 0x3
 ; X64-NEXT:    133: 83 ff 06 cmp edi, 0x6
 ; X64-NEXT:    136: 0f 87 12 00 00 00 ja <L0>
-; X64-NEXT:    13c: 48 8d 15 81 00 00 00 lea rdx, <switch_table2+0x94>
-; X64-NEXT:    143: 8b 3c ba mov edi, dword ptr [rdx + 4*rdi]
-; X64-NEXT:    146: 48 29 fa sub rdx, rdi
-; X64-NEXT:    149: ff e2 jmp rdx
+; X64-NEXT:    13c: 48 8d 05 81 00 00 00 lea rax, <switch_table2+0x94>
+; X64-NEXT:    143: 8b 3c b8 mov edi, dword ptr [rax + 4*rdi]
+; X64-NEXT:    146: 48 29 f8 sub rax, rdi
+; X64-NEXT:    149: ff e0 jmp rax
 ; X64-NEXT:    14b: 0f 1f 00 nop dword ptr [rax]
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    14e: e9 6a 00 00 00 jmp <L7>
@@ -376,15 +376,15 @@ define i32 @switch_table2(i32 %0) {
 ; ARM64:         sub w0, w0, #0x3
 ; ARM64-NEXT:    cmp w0, #0x6
 ; ARM64-NEXT:    b.hi <L1>
-; ARM64-NEXT:    adrp x2, 0x0 <empty_switch>
+; ARM64-NEXT:    adrp x1, 0x0 <empty_switch>
 ; ARM64-NEXT:     R_AARCH64_ADR_PREL_PG_HI21
-; ARM64-NEXT:    add x2, x2, #0x0
+; ARM64-NEXT:    add x1, x1, #0x0
 ; ARM64-NEXT:     R_AARCH64_ADD_ABS_LO12_NC
-; ARM64-NEXT:    ldrb w0, [x2, w0, uxtw #0]
+; ARM64-NEXT:    ldrb w0, [x1, w0, uxtw #0]
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    adr x2, <L0>
-; ARM64-NEXT:    add x2, x2, x0, lsl #2
-; ARM64-NEXT:    br x2
+; ARM64-NEXT:    adr x1, <L0>
+; ARM64-NEXT:    add x1, x1, x0, lsl #2
+; ARM64-NEXT:    br x1
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    b <L8>
 ; ARM64-NEXT:    b <L2>
@@ -452,19 +452,19 @@ define i32 @switch_table3(i32 %0) {
 ; X64-NEXT:    1f2: 83 ef 01 sub edi, 0x1
 ; X64-NEXT:    1f5: 83 ff 05 cmp edi, 0x5
 ; X64-NEXT:    1f8: 0f 87 33 00 00 00 ja <L1>
-; X64-NEXT:    1fe: 48 8d 15 bb 00 00 00 lea rdx, <switch_table3+0xe0>
-; X64-NEXT:    205: 8b 3c ba mov edi, dword ptr [rdx + 4*rdi]
-; X64-NEXT:    208: 48 29 fa sub rdx, rdi
-; X64-NEXT:    20b: ff e2 jmp rdx
+; X64-NEXT:    1fe: 48 8d 05 bb 00 00 00 lea rax, <switch_table3+0xe0>
+; X64-NEXT:    205: 8b 3c b8 mov edi, dword ptr [rax + 4*rdi]
+; X64-NEXT:    208: 48 29 f8 sub rax, rdi
+; X64-NEXT:    20b: ff e0 jmp rax
 ; X64-NEXT:    20d: 0f 1f 00 nop dword ptr [rax]
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    210: 81 ef ea 03 00 00 sub edi, 0x3ea
 ; X64-NEXT:    216: 83 ff 04 cmp edi, 0x4
 ; X64-NEXT:    219: 0f 87 12 00 00 00 ja <L1>
-; X64-NEXT:    21f: 48 8d 15 b2 00 00 00 lea rdx, <switch_table3+0xf8>
-; X64-NEXT:    226: 8b 3c ba mov edi, dword ptr [rdx + 4*rdi]
-; X64-NEXT:    229: 48 29 fa sub rdx, rdi
-; X64-NEXT:    22c: ff e2 jmp rdx
+; X64-NEXT:    21f: 48 8d 05 b2 00 00 00 lea rax, <switch_table3+0xf8>
+; X64-NEXT:    226: 8b 3c b8 mov edi, dword ptr [rax + 4*rdi]
+; X64-NEXT:    229: 48 29 f8 sub rax, rdi
+; X64-NEXT:    22c: ff e0 jmp rax
 ; X64-NEXT:    22e: 0f 1f 00 nop dword ptr [rax]
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    231: e9 81 00 00 00 jmp <L6>
@@ -535,28 +535,28 @@ define i32 @switch_table3(i32 %0) {
 ; ARM64-NEXT:    sub w0, w0, #0x1
 ; ARM64-NEXT:    cmp w0, #0x5
 ; ARM64-NEXT:    b.hi <L3>
-; ARM64-NEXT:    adrp x2, 0x0 <empty_switch>
+; ARM64-NEXT:    adrp x1, 0x0 <empty_switch>
 ; ARM64-NEXT:     R_AARCH64_ADR_PREL_PG_HI21
-; ARM64-NEXT:    add x2, x2, #0x0
+; ARM64-NEXT:    add x1, x1, #0x0
 ; ARM64-NEXT:     R_AARCH64_ADD_ABS_LO12_NC
-; ARM64-NEXT:    ldrb w0, [x2, w0, uxtw #0]
+; ARM64-NEXT:    ldrb w0, [x1, w0, uxtw #0]
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    adr x2, <L0>
-; ARM64-NEXT:    add x2, x2, x0, lsl #2
-; ARM64-NEXT:    br x2
+; ARM64-NEXT:    adr x1, <L0>
+; ARM64-NEXT:    add x1, x1, x0, lsl #2
+; ARM64-NEXT:    br x1
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    sub w0, w0, #0x3ea
 ; ARM64-NEXT:    cmp w0, #0x4
 ; ARM64-NEXT:    b.hi <L3>
-; ARM64-NEXT:    adrp x2, 0x0 <empty_switch>
+; ARM64-NEXT:    adrp x1, 0x0 <empty_switch>
 ; ARM64-NEXT:     R_AARCH64_ADR_PREL_PG_HI21
-; ARM64-NEXT:    add x2, x2, #0x0
+; ARM64-NEXT:    add x1, x1, #0x0
 ; ARM64-NEXT:     R_AARCH64_ADD_ABS_LO12_NC
-; ARM64-NEXT:    ldrb w0, [x2, w0, uxtw #0]
+; ARM64-NEXT:    ldrb w0, [x1, w0, uxtw #0]
 ; ARM64-NEXT:  <L2>:
-; ARM64-NEXT:    adr x2, <L2>
-; ARM64-NEXT:    add x2, x2, x0, lsl #2
-; ARM64-NEXT:    br x2
+; ARM64-NEXT:    adr x1, <L2>
+; ARM64-NEXT:    add x1, x1, x0, lsl #2
+; ARM64-NEXT:    br x1
 ; ARM64-NEXT:  <L3>:
 ; ARM64-NEXT:    b <L8>
 ; ARM64-NEXT:    b <L5>
@@ -909,10 +909,10 @@ define i32 @switch_to_self() {
 ; X64-NEXT:    451: 83 e8 0a sub eax, 0xa
 ; X64-NEXT:    454: 83 f8 2a cmp eax, 0x2a
 ; X64-NEXT:    457: 0f 87 4f 00 00 00 ja <L3>
-; X64-NEXT:    45d: 48 8d 15 c8 00 00 00 lea rdx, <switch_to_self+0xec>
-; X64-NEXT:    464: 8b 04 82 mov eax, dword ptr [rdx + 4*rax]
-; X64-NEXT:    467: 48 29 c2 sub rdx, rax
-; X64-NEXT:    46a: ff e2 jmp rdx
+; X64-NEXT:    45d: 48 8d 0d c8 00 00 00 lea rcx, <switch_to_self+0xec>
+; X64-NEXT:    464: 8b 04 81 mov eax, dword ptr [rcx + 4*rax]
+; X64-NEXT:    467: 48 29 c1 sub rcx, rax
+; X64-NEXT:    46a: ff e1 jmp rcx
 ; X64-NEXT:    46c: 0f 1f 00 nop dword ptr [rax]
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    46f: 83 f8 62 cmp eax, 0x62
@@ -1034,15 +1034,15 @@ define i32 @switch_to_self() {
 ; ARM64-NEXT:    sub w0, w0, #0xa
 ; ARM64-NEXT:    cmp w0, #0x2a
 ; ARM64-NEXT:    b.hi <L4>
-; ARM64-NEXT:    adrp x2, 0x0 <empty_switch>
+; ARM64-NEXT:    adrp x1, 0x0 <empty_switch>
 ; ARM64-NEXT:     R_AARCH64_ADR_PREL_PG_HI21
-; ARM64-NEXT:    add x2, x2, #0x0
+; ARM64-NEXT:    add x1, x1, #0x0
 ; ARM64-NEXT:     R_AARCH64_ADD_ABS_LO12_NC
-; ARM64-NEXT:    ldrb w0, [x2, w0, uxtw #0]
+; ARM64-NEXT:    ldrb w0, [x1, w0, uxtw #0]
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    adr x2, <L1>
-; ARM64-NEXT:    add x2, x2, x0, lsl #2
-; ARM64-NEXT:    br x2
+; ARM64-NEXT:    adr x1, <L1>
+; ARM64-NEXT:    add x1, x1, x0, lsl #2
+; ARM64-NEXT:    br x1
 ; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    cmp w0, #0x62
 ; ARM64-NEXT:    b.eq <L8>

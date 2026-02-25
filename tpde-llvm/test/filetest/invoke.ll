@@ -15,8 +15,8 @@ define i32 @invoke_manyargs() personality ptr @__gxx_personality_v0 {
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    sub rsp, 0x30
-; X64-NEXT:    sub rsp, 0x20
 ; X64-NEXT:    mov eax, 0x7
+; X64-NEXT:    sub rsp, 0x20
 ; X64-NEXT:    mov dword ptr [rsp], eax
 ; X64-NEXT:    mov eax, 0x8
 ; X64-NEXT:    mov dword ptr [rsp + 0x8], eax
@@ -58,10 +58,12 @@ define i32 @invoke_manyargs() personality ptr @__gxx_personality_v0 {
 ; ARM64-NEXT:    mov x5, #0x6 // =6
 ; ARM64-NEXT:    mov x6, #0x7 // =7
 ; ARM64-NEXT:    mov x7, #0x8 // =8
+; ARM64-NEXT:    mov x8, #0x9 // =9
 ; ARM64-NEXT:    sub sp, sp, #0x10
-; ARM64-NEXT:    mov x16, #0x9 // =9
+; ARM64-NEXT:    mov w16, w8
 ; ARM64-NEXT:    str w16, [sp]
-; ARM64-NEXT:    mov x16, #0xa // =10
+; ARM64-NEXT:    mov x8, #0xa // =10
+; ARM64-NEXT:    mov w16, w8
 ; ARM64-NEXT:    str w16, [sp, #0x8]
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>

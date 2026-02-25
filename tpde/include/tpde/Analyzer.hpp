@@ -1860,9 +1860,14 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
     }
 
     if (is_loop_header_block) {
-      auto &initial_working_set = initial_working_set_by_block[block_idx_cur];
-      initial_working_set.clear();
+        auto loop_idx = block_loop_idx(block_idx_cur);
+        auto loop = loop_from_idx(loop_idx);
+        //todo(salto): tune
+        if (loop.level < 3) {
+        auto &initial_working_set = initial_working_set_by_block[block_idx_cur];
+        initial_working_set.clear();
       initial_working_set.insert(working_set.begin(), working_set.end());
+        }
     }
     // W is the working set. The values in registers
     // keep used registers seperately, since one value can use multiple
