@@ -470,8 +470,18 @@ void Analyzer<Adaptor, CompilerType>::switch_func([[maybe_unused]] IRFuncRef fun
   build_block_layout();
   compute_liveness();
   //todo(salto): add options to disable precise liveness / spill computation
+    compiler->derived()->analysis_precise_liveness_start();
+  
   compute_precise_liveness();
+
+    compiler->derived()->analysis_precise_liveness_end();
+
+    compiler->derived()->analysis_spills_start();
+  
   compute_spills();
+
+    compiler->derived()->analysis_spills_end();
+  
 }
 
     template<IRAdaptor Adaptor, typename CompilerType>

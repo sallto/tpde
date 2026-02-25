@@ -1673,6 +1673,14 @@ public:
 
   void analysis_end() {}
 
+  void analysis_precise_liveness_start() {}
+
+  void analysis_precise_liveness_end() {}
+
+  void analysis_spills_start() {}
+
+  void analysis_spills_end() {}
+
   void reloc_text(SymRef sym, u32 type, u64 offset, i64 addend = 0) {
     this->assembler.reloc_sec(
         text_writer.get_sec_ref(), sym, type, offset, addend);

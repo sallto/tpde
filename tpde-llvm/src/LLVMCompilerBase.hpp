@@ -230,6 +230,8 @@ struct LLVMCompilerBase : public LLVMCompiler,
   std::array<SymRef, static_cast<size_t>(LibFunc::MAX)> libfunc_syms;
 
   llvm::TimeTraceProfilerEntry *time_entry;
+  llvm::TimeTraceProfilerEntry *precise_liveness_time_entry;
+  llvm::TimeTraceProfilerEntry *spills_time_entry;
 
   LLVMCompilerBase(LLVMAdaptor *adaptor) : Base{adaptor} {
     static_assert(tpde::Compiler<Derived, Config>);
@@ -250,6 +252,10 @@ struct LLVMCompilerBase : public LLVMCompiler,
 
   void analysis_start();
   void analysis_end();
+  void analysis_precise_liveness_start();
+  void analysis_precise_liveness_end();
+  void analysis_spills_start();
+  void analysis_spills_end();
 
   LLVMAdaptor::ValueParts val_parts(IRValueRef val) const {
     return this->adaptor->val_parts(val);
@@ -388,6 +394,8 @@ public:
 
   bool compile_func(IRFuncRef func, u32 idx) {
     time_entry = nullptr;
+    precise_liveness_time_entry = nullptr;
+    spills_time_entry = nullptr;
 
     // Reuse/release memory for stored constants from previous function
     const_allocator.reset();
@@ -407,6 +415,15 @@ public:
     // cause the flag in the adaptor to be set. In such cases, return false.
     const bool res =
         (Base::compile_func(func, idx) && !this->adaptor->func_unsupported);
+
+    if (spills_time_entry) {
+      llvm::timeTraceProfilerEnd(spills_time_entry);
+      spills_time_entry = nullptr;
+    }
+    if (precise_liveness_time_entry) {
+      llvm::timeTraceProfilerEnd(precise_liveness_time_entry);
+      precise_liveness_time_entry = nullptr;
+    }
 
     // end the TPDE_CodeGen time trace entry
     if (time_entry) {
@@ -526,6 +543,37 @@ void LLVMCompilerBase<Adaptor, Derived, Config>::analysis_end() {
   if (time_entry) {
     llvm::timeTraceProfilerEnd(time_entry);
     time_entry = llvm::timeTraceProfilerBegin("TPDE_CodeGen", "");
+  }
+}
+
+template <typename Adaptor, typename Derived, typename Config>
+void LLVMCompilerBase<Adaptor, Derived, Config>::analysis_precise_liveness_start() {
+  if (time_entry) {
+    precise_liveness_time_entry =
+        llvm::timeTraceProfilerBegin("TPDE_compute_precise_liveness", "");
+  }
+}
+
+template <typename Adaptor, typename Derived, typename Config>
+void LLVMCompilerBase<Adaptor, Derived, Config>::analysis_precise_liveness_end() {
+  if (precise_liveness_time_entry) {
+    llvm::timeTraceProfilerEnd(precise_liveness_time_entry);
+    precise_liveness_time_entry = nullptr;
+  }
+}
+
+template <typename Adaptor, typename Derived, typename Config>
+void LLVMCompilerBase<Adaptor, Derived, Config>::analysis_spills_start() {
+  if (time_entry) {
+    spills_time_entry = llvm::timeTraceProfilerBegin("TPDE_compute_spills", "");
+  }
+}
+
+template <typename Adaptor, typename Derived, typename Config>
+void LLVMCompilerBase<Adaptor, Derived, Config>::analysis_spills_end() {
+  if (spills_time_entry) {
+    llvm::timeTraceProfilerEnd(spills_time_entry);
+    spills_time_entry = nullptr;
   }
 }
 
@@ -5404,4 +5452,3 @@ JITMapper LLVMCompilerBase<Adaptor, Derived, Config>::compile_and_map(
 }
 
 } // namespace tpde_llvm
-
