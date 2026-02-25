@@ -4296,7 +4296,7 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_invoke(
   auto *unwind_block = invoke->getUnwindDest();
   llvm::LandingPadInst *landing_pad = nullptr;
   auto unwind_block_has_phi = false;
-  this->begin_branch_region();
+
   for (auto it = unwind_block->begin(), end = unwind_block->end(); it != end;
        ++it) {
     llvm::Instruction *inst = &*it;
@@ -4323,13 +4323,14 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_invoke(
   // if the unwind block has phi-nodes, we need more code to propagate values
   // to it so do the propagation logic
   if (unwind_block_has_phi) {
+    this->begin_branch_region();
     // generate the jump to the normal successor but don't allow
     // fall-through
     derived()->generate_branch_to_block(Derived::Jump::jmp,
                                         normal_block_ref,
                                         /* split */ false,
                                         /* last_inst */ false);
-
+    this->end_branch_region();
     this->release_spilled_regs(spilled);
 
     unwind_label = this->text_writer.label_create();
@@ -4342,13 +4343,14 @@ bool LLVMCompilerBase<Adaptor, Derived, Config>::compile_invoke(
     assert(!this->register_file.is_used(Derived::LANDING_PAD_RES_REGS[1]));
     scratch1.alloc_specific(Derived::LANDING_PAD_RES_REGS[0]);
     scratch2.alloc_specific(Derived::LANDING_PAD_RES_REGS[1]);
-
+    this->begin_branch_region();
     derived()->generate_branch_to_block(Derived::Jump::jmp,
                                         unwind_block_ref,
                                         /* split */ false,
                                         /* last_inst */ false);
   } else {
     this->release_spilled_regs(spilled);
+    this->begin_branch_region();
     // allow fall-through
     derived()->generate_branch_to_block(Derived::Jump::jmp,
                                         normal_block_ref,
