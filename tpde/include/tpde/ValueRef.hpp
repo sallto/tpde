@@ -96,8 +96,9 @@ public:
 
   /// @brief  Return wether this value will be destroyed after this use.
   bool last_ref() {
-    return !has_assignment() ||
-           (state.a.assignment->references_left <= 1 && !state.a.assignment->delay_free); // todo(salto) ==1?
+    return state.a.mode > 0 && (!has_assignment() ||
+                                (state.a.assignment->references_left <= 1 && !state.a.assignment->delay_free));
+    // todo(salto) ==1?
   }
 
   [[nodiscard]] ValueAssignment *assignment() const {

@@ -1579,7 +1579,12 @@ public:
       return true;
     };
 
-
+    for (const auto &deferred: deferred_phi_reg_spills) {
+      if (deferred.reg.valid()) {
+        derived()->spill_reg(deferred.reg, deferred.stack_off, deferred.size);
+        register_file.mark_clobbered(deferred.reg);
+      }
+    }
     MoveList ordered = sequentialize_readonly(
       moves, phi_regs | unallocatable_regs, false, &branch_scratch_regs);
     for (const auto &move: ordered) {
@@ -1604,12 +1609,6 @@ public:
       }
     }
 
-    for (const auto &deferred: deferred_phi_reg_spills) {
-      if (deferred.reg.valid()) {
-        derived()->spill_reg(deferred.reg, deferred.stack_off, deferred.size);
-        register_file.mark_clobbered(deferred.reg);
-      }
-    }
 
     for (const auto &deferred: deferred_phi_reg_materializations) {
       if (emit_deferred_phi_source_to_reg(deferred, deferred.dst_reg)) {
