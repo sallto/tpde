@@ -1240,7 +1240,7 @@ public:
 
       allocate_spill_slot(ap);
       derived()->spill_reg(spill_reg, ap.frame_off(), ap.part_size());
-      ap.set_stack_valid();
+      //ap.set_stack_valid();
     };
 
 
@@ -1261,6 +1261,8 @@ public:
           AssignmentPartRef ap{va, i};
           Reg target_reg = state.registers[i];
           if (!target_reg.valid()) {
+            if (ap.stack_valid())
+              continue;
             spill_assignment_if_needed(state.val_local_idx, i, ap);
             continue;
           }
@@ -1308,6 +1310,9 @@ public:
         }
 
         AssignmentPartRef ap{assignment, part};
+        if (ap.stack_valid()) {
+          continue;
+        }
         spill_assignment_if_needed(local_idx, part, ap);
       }
     } else {
