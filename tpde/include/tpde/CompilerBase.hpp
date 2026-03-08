@@ -239,6 +239,7 @@ struct CompilerBase {
     bool allow_uninitialized = false;
     Reg dst_reg = Reg::make_invalid();
     u32 size = 0;
+    std::optional<i32> staged_stack_off;
     std::optional<ValueRef> incoming_ref;
     std::optional<ValuePartRef> incoming_part;
   };
@@ -248,6 +249,7 @@ struct CompilerBase {
     Reg temp_reg = Reg::make_invalid();
     i32 stack_off = 0;
     u32 size = 0;
+    std::optional<i32> staged_stack_off;
     std::optional<ValueRef> incoming_ref;
     std::optional<ValuePartRef> incoming_part;
   };
@@ -1169,6 +1171,7 @@ public:
     DeferredPhiStackMaterializationList deferred_phi_stack_materializations;
     DeferredPhiRegSpillList deferred_phi_reg_spills;
 
+
     typename RegisterFile::RegBitSet phi_regs = 0;
     typename RegisterFile::RegBitSet unallocatable_regs = 0;
     if (analyzer.block_has_phis(target)) {
@@ -1220,7 +1223,7 @@ public:
                                                 [[maybe_unused]] u32 part_idx,
                                                 AssignmentPartRef ap,
                                                 bool force_spill = false) {
-      if (ap.fixed_assignment() || ap.variable_ref() || !ap.register_valid() || ap.stack_valid()) {
+      if (ap.fixed_assignment() || ap.variable_ref() || !ap.register_valid()) {
         return;
       }
 
@@ -1394,6 +1397,7 @@ public:
 
             if (!target_reg.valid()) {
               spill_assignment_if_needed(local_idx, i, ap, true);
+
               continue;
             }
             target_state_regs |= (1ull << target_reg.id());
@@ -1528,6 +1532,13 @@ public:
       register_file.allocatable &= ~unallocatable_regs;
 
       const ValuePartRef &incoming_part = deferred.incoming_part.value();
+      if (deferred.staged_stack_off.has_value()) {
+        derived()->load_from_stack(dst,
+                                   deferred.staged_stack_off.value(),
+                                   deferred.size);
+        return true;
+      }
+
       if (Reg src = incoming_part.cur_reg_unlocked(); src.valid()) {
         if (src != dst) {
           derived()->mov(dst, src, deferred.size);
@@ -1579,10 +1590,131 @@ public:
       return true;
     };
 
+    struct StackSlotRange {
+      i32 stack_off = 0;
+      u32 size = 0;
+    };
+
+    const auto stack_ranges_overlap = [](const StackSlotRange &lhs,
+                                         const StackSlotRange &rhs) {
+      const i64 lhs_start = lhs.stack_off;
+      const i64 lhs_end = lhs_start + static_cast<i64>(lhs.size);
+      const i64 rhs_start = rhs.stack_off;
+      const i64 rhs_end = rhs_start + static_cast<i64>(rhs.size);
+      return lhs_start < rhs_end && rhs_start < lhs_end;
+    };
+
+    util::SmallVector<StackSlotRange, 16> phi_written_stack_ranges;
+    for (const auto &deferred: deferred_phi_reg_spills) {
+      phi_written_stack_ranges.push_back(
+        StackSlotRange{deferred.stack_off, deferred.size});
+    }
+    for (const auto &deferred: deferred_phi_stack_materializations) {
+      phi_written_stack_ranges.push_back(
+        StackSlotRange{deferred.stack_off, deferred.size});
+    }
+
+    const auto deferred_stack_read_range =
+        [&](const auto &deferred) -> std::optional<StackSlotRange> {
+      if (!deferred.incoming_part.has_value()) {
+        return std::nullopt;
+      }
+
+      const ValuePartRef &incoming_part = deferred.incoming_part.value();
+      if (incoming_part.cur_reg_unlocked().valid()) {
+        return std::nullopt;
+      }
+      if (incoming_part.is_const() || !incoming_part.has_assignment()) {
+        return std::nullopt;
+      }
+
+      AssignmentPartRef incoming_ap = incoming_part.assignment();
+      if (incoming_ap.variable_ref() || !incoming_ap.stack_valid()) {
+        return std::nullopt;
+      }
+
+      return StackSlotRange{incoming_ap.frame_off(), deferred.size};
+    };
+
+    const auto is_hazardous_phi_stack_read =
+        [&](const StackSlotRange &read_range) {
+      for (const auto &write_range: phi_written_stack_ranges) {
+        if (stack_ranges_overlap(read_range, write_range)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    std::map<std::pair<i32, u32>, i32> staged_stack_slots;
+    util::SmallVector<std::pair<i32, u32>, 8> staged_stack_slot_allocations;
+
+    const auto stage_hazardous_phi_stack_read = [&](auto &deferred,
+                                                    Reg temp_reg) {
+      auto read_range_opt = deferred_stack_read_range(deferred);
+      if (!read_range_opt.has_value()) {
+        return;
+      }
+
+      const StackSlotRange read_range = read_range_opt.value();
+      if (!is_hazardous_phi_stack_read(read_range)) {
+        return;
+      }
+
+      const auto source_key =
+          std::make_pair(read_range.stack_off, read_range.size);
+      if (auto it = staged_stack_slots.find(source_key);
+        it != staged_stack_slots.end()) {
+        deferred.staged_stack_off = it->second;
+        return;
+      }
+
+      i32 staged_stack_off = allocate_stack_slot(read_range.size);
+      derived()->load_from_stack(
+        temp_reg, read_range.stack_off, read_range.size);
+      derived()->spill_reg(temp_reg, staged_stack_off, read_range.size);
+      register_file.mark_clobbered(temp_reg);
+
+      staged_stack_slots.emplace(source_key, staged_stack_off);
+      staged_stack_slot_allocations.emplace_back(staged_stack_off,
+                                                 read_range.size);
+      deferred.staged_stack_off = staged_stack_off;
+    };
+
+    for (auto &deferred: deferred_phi_stack_materializations) {
+      const Reg tmp_reg =
+          branch_scratch_reg(register_file.reg_bank(deferred.temp_reg));
+      if (!tmp_reg.valid()) [[unlikely]] {
+        TPDE_FATAL("missing deferred temporary register for phi spill");
+      }
+      stage_hazardous_phi_stack_read(deferred, tmp_reg);
+    }
+
+    for (auto &deferred: deferred_phi_reg_materializations) {
+      const Reg tmp_reg =
+          branch_scratch_reg(register_file.reg_bank(deferred.dst_reg));
+      if (!tmp_reg.valid()) [[unlikely]] {
+        TPDE_FATAL(
+          "missing deferred temporary register for phi materialization");
+      }
+      stage_hazardous_phi_stack_read(deferred, tmp_reg);
+    }
+
     for (const auto &deferred: deferred_phi_reg_spills) {
       if (deferred.reg.valid()) {
         derived()->spill_reg(deferred.reg, deferred.stack_off, deferred.size);
         register_file.mark_clobbered(deferred.reg);
+      }
+    }
+    for (const auto &deferred: deferred_phi_stack_materializations) {
+      // need to do this now since one of the moves could need our temp_reg.
+      const Reg tmp_reg = branch_scratch_reg(register_file.reg_bank(deferred.temp_reg));
+      if (!tmp_reg.valid()) [[unlikely]] {
+        TPDE_FATAL("missing deferred temporary register for phi spill");
+      }
+      if (emit_deferred_phi_source_to_reg(deferred, tmp_reg)) {
+        derived()->spill_reg(tmp_reg, deferred.stack_off, deferred.size);
+        register_file.mark_clobbered(tmp_reg);
       }
     }
     MoveList ordered = sequentialize_readonly(
@@ -1593,19 +1725,6 @@ public:
       if (move.dst != move.src) {
         derived()->mov(move.dst, move.src, move.size);
         register_file.mark_clobbered(move.dst);
-      }
-    }
-
-
-    for (const auto &deferred: deferred_phi_stack_materializations) {
-      // need to do this now since one of the moves could need our temp_reg.
-      const Reg tmp_reg = branch_scratch_reg(register_file.reg_bank(deferred.temp_reg));
-      if (!tmp_reg.valid()) [[unlikely]] {
-        TPDE_FATAL("missing deferred temporary register for phi spill");
-      }
-      if (emit_deferred_phi_source_to_reg(deferred, tmp_reg)) {
-        derived()->spill_reg(tmp_reg, deferred.stack_off, deferred.size);
-        register_file.mark_clobbered(tmp_reg);
       }
     }
 
@@ -1625,6 +1744,10 @@ public:
         deferred.dst, ap, /*allow_uninitialized=*/true)) {
         register_file.mark_clobbered(deferred.dst);
       }
+    }
+
+    for (const auto &[slot, size]: staged_stack_slot_allocations) {
+      free_stack_slot(slot, size);
     }
 
     register_file.allocatable |= unallocatable_regs;
