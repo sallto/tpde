@@ -428,6 +428,8 @@ struct CompilerBase {
   using PhiRegList = util::SmallVector<Reg>;
   using PhiRegMap = std::unordered_map<ValLocalIdx, PhiRegList>;
   std::unordered_map<BlockIndex, PhiRegMap> phi_regs;
+  std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx> >
+  block_spilled_values;
 
 #ifndef NDEBUG
   VIR<Adaptor> verification_ir;
@@ -1170,6 +1172,7 @@ public:
     DeferredPhiRegMaterializationList deferred_phi_reg_materializations;
     DeferredPhiStackMaterializationList deferred_phi_stack_materializations;
     DeferredPhiRegSpillList deferred_phi_reg_spills;
+    auto &spilled_values = block_spilled_values[target];
 
 
     typename RegisterFile::RegBitSet phi_regs = 0;
@@ -1240,7 +1243,7 @@ public:
 
       allocate_spill_slot(ap);
       derived()->spill_reg(spill_reg, ap.frame_off(), ap.part_size());
-      //ap.set_stack_valid();
+      spilled_values.insert(local_idx);
     };
 
 
@@ -1316,6 +1319,7 @@ public:
         spill_assignment_if_needed(local_idx, part, ap);
       }
     } else {
+      spilled_values.clear();
       const auto initial_working_set_it =
           analyzer.initial_working_set_by_block.find(target);
       const bool has_initial_working_set =
@@ -4405,6 +4409,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
   block_states.resize(analyzer.block_layout.size());
   block_regs.clear();
   phi_regs.clear();
+  block_spilled_values.clear();
   used_phi_regs_global = 0;
   branch_scratch_regs.fill(Reg::make_invalid());
   branch_scratch_mask = 0;
@@ -4658,6 +4663,21 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
 #endif
     }
   }
+  auto spilled_values_it = block_spilled_values.find(cur_block_idx);
+
+  if (spilled_values_it == block_spilled_values.end())
+    return dirtied_values;
+  for (ValLocalIdx idx: spilled_values_it->second) {
+    if (idx == INVALID_VAL_LOCAL_IDX)
+      continue;
+    ValueAssignment *va = val_assignment(idx);
+    if (!va)
+      continue;
+    for (u32 i = 0; i < va->part_count; i++) {
+      AssignmentPartRef ap{va, i};
+      ap.set_stack_valid();
+    }
+  }
 
   if (state_it == block_regs.end()) {
     return dirtied_values;
@@ -4695,7 +4715,6 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
           }
           ap.set_register_valid(false);
         }
-        ap.set_stack_valid();
         continue;
       }
       if (ap.register_valid() && ap.get_reg() != reg) {
