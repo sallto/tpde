@@ -3518,7 +3518,6 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
   AsmReg cmp_reg = cond.cur_reg();
   if ((1ull << cmp_reg.id()) & derived()->phi_nonallocatable_mask()) {
     cmp_reg = this->select_reg(register_file.reg_bank(cmp_reg),
-                               used_phi_regs_global |
                                derived()->phi_nonallocatable_mask());
     ScratchReg new_reg{this};
     new_reg.alloc_specific(cmp_reg);
