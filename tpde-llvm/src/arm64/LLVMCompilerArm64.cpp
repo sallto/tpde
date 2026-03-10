@@ -392,21 +392,22 @@ bool LLVMCompilerArm64::compile_icmp(const llvm::Instruction *inst,
         // (otherwise the resolution routine will find a free register)
         // If lhs_reg is used somewhere as a phi, we move it to the permananet scratch which will not be used for phis.
           ScratchReg res_scratch{this};
-          if(this->used_phi_regs_global & (1ULL << lhs_reg.id())) {
-            res_scratch.alloc_specific(permanent_scratch_reg);
-            this->mov(permanent_scratch_reg, lhs_reg, int_width <= 32 ? 4 : 8);
-            lhs_reg = permanent_scratch_reg;
-          }else if (!lhs_op.can_salvage()) {
-            AsmReg src_reg = lhs_reg;
-            lhs_reg = res_scratch.alloc_gp();
-            this->mov(lhs_reg, src_reg, int_width <= 32 ? 4 : 8);
-          } else {
-            res_scratch.alloc_specific(lhs_op.salvage());
-          }
-          lhs_op.reset();
-          rhs_op.reset();
-          lhs.reset();
-          rhs.reset();
+        if (this->used_phi_regs_global & (1ULL << lhs_reg.id()) || this->phi_nonallocatable_mask() & (
+              1ULL << lhs_reg.id())) {
+          res_scratch.alloc_specific(permanent_scratch_reg);
+          this->mov(permanent_scratch_reg, lhs_reg, int_width <= 32 ? 4 : 8);
+          lhs_reg = permanent_scratch_reg;
+        } else if (!lhs_op.can_salvage()) {
+          AsmReg src_reg = lhs_reg;
+          lhs_reg = res_scratch.alloc_specific(permanent_scratch_reg);
+          this->mov(lhs_reg, src_reg, int_width <= 32 ? 4 : 8);
+        } else {
+          res_scratch.alloc_specific(lhs_op.salvage());
+        }
+        lhs_op.reset();
+        rhs_op.reset();
+        lhs.reset();
+        rhs.reset();
         
 
         auto jump_kind = jump == Jump::Jeq ? Jump::Cbz : Jump::Cbnz;
