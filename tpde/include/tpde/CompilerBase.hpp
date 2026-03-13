@@ -935,7 +935,7 @@ public:
           TPDE_FATAL("failed to allocate branch scratch register");
         }
 
-        scratch = Reg{util::cnt_tz(bank_phi_mask)};
+        scratch = this->select_reg(bank, used_phi_regs_global);
         if (register_file.is_used(scratch)) {
           if (register_file.is_fixed(scratch)) [[unlikely]] {
             TPDE_FATAL("failed to evict PHI-forbidden branch scratch register");
@@ -2553,7 +2553,7 @@ void CompilerBase<Adaptor, Derived, Config>::init_assignment(
 
       // TODO: if the register is used, we can free it most of the time, but not
       // always, e.g. for PHI nodes. Detect this case and free_reg otherwise.
-      if (!reg.invalid() && !(used_phi_regs_global & (1ull << reg.id())) &&
+      if (false && !reg.invalid() && !(used_phi_regs_global & (1ull << reg.id())) &&
           !register_file.is_used(reg)) {
         TPDE_LOG_TRACE("Assigning fixed assignment to reg {} for value {}",
                        reg.id(),
