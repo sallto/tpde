@@ -1841,8 +1841,6 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
 
           const u32 half_gp_regs = NUM_GP_REGS / 2;
           const u32 half_fp_regs = NUM_FP_REGS / 2;
-          if (loop_local_gp_regs <= half_gp_regs ||
-              loop_local_fp_regs <= half_fp_regs) {
               std::unordered_set<ValLocalIdx> header_phi_defs;
               for (const auto phi: adaptor->block_phis(block)) {
                   if (adaptor->val_ignore_in_liveness_analysis(phi)) {
@@ -1864,6 +1862,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
               struct HeaderCandidate {
                   ValLocalIdx val_idx;
                   u32 entry_next_use;
+                  u32 num_parts;
               };
 
               util::SmallVector<HeaderCandidate, 16> header_candidates;
@@ -1906,37 +1905,40 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
                   }
                   working_set.ensure_parts_cached(val_idx, parts);
                   header_candidates.push_back(
-                      HeaderCandidate{.val_idx = val_idx, .entry_next_use = entry_next_use});
+                      HeaderCandidate{
+                          .val_idx = val_idx, .entry_next_use = entry_next_use, .num_parts = parts[0] + parts[1]
+                      });
               }
 
               std::sort(header_candidates.begin(),
                         header_candidates.end(),
                         [](const auto &a, const auto &b) {
                             if (a.entry_next_use == b.entry_next_use) {
-                                return a.val_idx < b.val_idx;
+                                return a.num_parts < b.num_parts;
                             }
                             return a.entry_next_use < b.entry_next_use;
                         });
-
-              for (const auto &candidate: header_candidates) {
-                  if (loop_local_gp_regs > NUM_GP_REGS - 2 &&
-                      loop_local_fp_regs > NUM_FP_REGS - 2) {
-                      break;
-                  }
-                  const auto parts = working_set.num_parts(candidate.val_idx);
-                  const bool gp_has_budget = loop_local_gp_regs < NUM_GP_REGS - 2;
-                  const bool fp_has_budget = loop_local_fp_regs < NUM_FP_REGS - 2;
-                  if ((!gp_has_budget && parts[0] > 0) ||
-                      (!fp_has_budget && parts[1] > 0)) {
-                      continue;
-                  }
-
-                  loop_local_values.push_back(candidate.val_idx);
-                  selected_values.insert(candidate.val_idx);
-                  loop_local_gp_regs += parts[0];
-                  loop_local_fp_regs += parts[1];
+          const auto gp_threshold = NUM_GP_REGS - block_pressure[block_idx_u32].gp_pressure - 2;
+          const auto fp_threshold = NUM_FP_REGS - block_pressure[block_idx_u32].fp_pressure - 1;
+          for (const auto &candidate: header_candidates) {
+              if (loop_local_gp_regs > gp_threshold ||
+                  loop_local_fp_regs > fp_threshold) {
+                  break;
               }
+              const auto parts = working_set.num_parts(candidate.val_idx);
+              const bool gp_has_budget = loop_local_gp_regs < gp_threshold;
+              const bool fp_has_budget = loop_local_fp_regs < fp_threshold;
+              if ((!gp_has_budget && parts[0] > 0) ||
+                  (!fp_has_budget && parts[1] > 0)) {
+                  continue;
+              }
+
+              loop_local_values.push_back(candidate.val_idx);
+              selected_values.insert(candidate.val_idx);
+              loop_local_gp_regs += parts[0];
+              loop_local_fp_regs += parts[1];
           }
+
 
           incoming_from_all.clear();
           incoming_from_all.append(loop_local_values.begin(), loop_local_values.end());
