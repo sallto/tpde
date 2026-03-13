@@ -4674,6 +4674,7 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
         used_phi_regs_global |= (1ull << reg.id());
         ap.set_reg(reg);
         ap.set_register_valid(true);
+        ap.set_modified(true);
         if (register_file.is_used(reg)) {
           if (register_file.reg_local_idx(reg) != INVALID_VAL_LOCAL_IDX &&
               register_file.reg_local_idx(reg) != phi_idx) {
