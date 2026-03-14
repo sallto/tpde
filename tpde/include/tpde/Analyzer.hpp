@@ -1906,7 +1906,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
                   working_set.ensure_parts_cached(val_idx, parts);
                   header_candidates.push_back(
                       HeaderCandidate{
-                          .val_idx = val_idx, .entry_next_use = entry_next_use, .num_parts = parts[0] + parts[1]
+                          .val_idx = val_idx, .entry_next_use = entry_next_use, .num_parts = u32(parts[0] + parts[1])
                       });
               }
 
