@@ -589,7 +589,11 @@ bool LLVMCompilerX64::handle_intrin(const llvm::IntrinsicInst *inst) {
     res.alloc_reg();
     auto op = llvm::cast<llvm::ConstantInt>(inst->getOperand(0));
     if (op->isZeroValue()) {
-      ASM(MOV64rm, res.cur_reg(), FE_MEM(FE_BP, 0, FE_NOREG, 8));
+      if (!register_file.is_clobbered(tpde::Reg{AsmReg::BP})) {
+        ASM(MOV64rm, res.cur_reg(), FE_MEM(FE_SP, 0, FE_NOREG, 8));
+      } else {
+        ASM(MOV64rm, res.cur_reg(), FE_MEM(FE_BP, 0, FE_NOREG, 8));
+      }
     } else {
       ASM(XOR32rr, res.cur_reg(), res.cur_reg());
     }
