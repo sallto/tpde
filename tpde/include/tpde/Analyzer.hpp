@@ -1832,11 +1832,11 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
               if (entry_next_use >= LOOP_EXIT_PENALTY) {
                   continue;
               }
-              loop_local_values.push_back(val_idx);
-              selected_values.insert(val_idx);
+              //loop_local_values.push_back(val_idx);
+              //selected_values.insert(val_idx);
               const auto parts = working_set.num_parts(val_idx);
-              loop_local_gp_regs += parts[0];
-              loop_local_fp_regs += parts[1];
+              //loop_local_gp_regs += parts[0];
+              //loop_local_fp_regs += parts[1];
           }
 
           const u32 half_gp_regs = NUM_GP_REGS / 2;

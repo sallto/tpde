@@ -2999,6 +2999,7 @@ Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(RegBank bank,
 
   Reg candidate = Reg::make_invalid();
   u32 max_score = 0;
+  const auto &pli = analyzer.precise_liveness[static_cast<u32>(cur_block_idx)];
   for (auto reg_id : util::BitSetIterator<>(candidates)) {
     Reg reg{reg_id};
     if (register_file.is_fixed(reg)) {
@@ -3029,29 +3030,13 @@ Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(RegBank bank,
       break;
     }
 
-    u32 score = 0;
-    if (ap.stack_valid()) {
-      score = -1;
+
+    auto [c,n] = analyzer.get_current_and_next_use(pli, local_idx, cur_instr_idx);
+    if (c == u32(-1)) {
+      candidate = reg;
+      break;
     }
-
-    const auto &liveness = analyzer.liveness_info(local_idx);
-    u32 last_use_dist = u32(liveness.last) - u32(cur_block_idx);
-    score |= (last_use_dist < 0x8000 ? 0x8000 - last_use_dist : 0) << 16;
-
-    u32 refs_left = va->pending_free ? 0 : va->references_left;
-    score |= (refs_left < 0xffff ? 0x10000 - refs_left : 1);
-
-    TPDE_LOG_DBG("  r{} ({}:{}) rc={}/{} live={}-{}{} spilled={} score={:#x}",
-                 reg_id,
-                 static_cast<u32>(local_idx),
-                 part,
-                 refs_left,
-                 liveness.ref_count,
-                 u32(liveness.first),
-                 u32(liveness.last),
-                 &"*"[!liveness.last_full],
-                 ap.stack_valid(),
-                 score);
+    u32 score = 1 + c;
 
     assert(score != 0);
     if (score > max_score) {
@@ -4726,6 +4711,10 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
     for (u32 i = 0; i < va->part_count; i++) {
       AssignmentPartRef ap{va, i};
       ap.set_stack_valid();
+      if (ap.register_valid()) {
+        register_file.unmark_used(ap.get_reg());
+        ap.set_register_valid(false);
+      }
     }
   }
 
