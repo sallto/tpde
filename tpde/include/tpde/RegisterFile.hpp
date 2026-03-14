@@ -202,12 +202,16 @@ public:
         }
 
         const u8 bank_id = bank.id();
-        //const u8 start = last_used_reg[bank_id] + 1;
-        //todo(salto): reimplement round-robin properly
+        const u8 start = last_used_reg[bank_id] + 1;
         // Prefer caller-saved registers (NOT callee-saved)
         const RegBitSet caller_saved_sel = selectable & ~callee_saved;
-        const RegBitSet search_set = caller_saved_sel != 0 ? caller_saved_sel : selectable;
+        const RegBitSet total_search_set = caller_saved_sel != 0 ? caller_saved_sel : selectable;
+        RegBitSet search_set = total_search_set & ~((1ull << start) - 1);
+        if (search_set == 0) {
+          search_set = total_search_set;
+        }
         const u8 found = static_cast<u8>(util::cnt_tz(search_set));
+
 
         last_used_reg[bank_id] = found;
         return Reg{found};
