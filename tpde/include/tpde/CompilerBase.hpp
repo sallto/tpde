@@ -1193,19 +1193,24 @@ public:
     DeferredPhiRegSpillList deferred_phi_reg_spills;
     auto &spilled_values = block_spilled_values[target];
 
+    auto block_state_it = block_regs.find(target);
+    const auto initial_working_set_it =
+        analyzer.initial_working_set_by_block.find(target);
+    const bool has_initial_working_set =
+        initial_working_set_it != analyzer.initial_working_set_by_block.end();
+    const auto value_in_initial_working_set =
+        [&](ValLocalIdx local_idx) -> bool {
+      if (!has_initial_working_set) {
+        return true;
+      }
+      return initial_working_set_it->second.contains(local_idx);
+    };
+
 
     typename RegisterFile::RegBitSet phi_regs = 0;
     typename RegisterFile::RegBitSet unallocatable_regs = 0;
-    if (analyzer.block_has_phis(target)) {
-      auto [phi_regs_, unallocatable_regs_] =
-          move_to_phi_nodes_impl(target,
-                                 moves,
-                                 deferred_phi_reg_materializations,
-                                 deferred_phi_stack_materializations,
-                                 deferred_phi_reg_spills);
-      phi_regs = phi_regs_;
-      unallocatable_regs = unallocatable_regs_;
-    }
+    typename RegisterFile::RegBitSet pre_freed_regs = 0;
+    typename RegisterFile::RegBitSet reusable_freed_regs = 0;
 
     const auto emit_assignment_part_to_reg = [&](Reg dst,
                                                  AssignmentPartRef ap,
@@ -1266,7 +1271,55 @@ public:
     };
 
 
-    auto block_state_it = block_regs.find(target);
+    if (block_state_it == block_regs.end() && has_initial_working_set) {
+      spilled_values.clear();
+      for (auto reg: register_file.used_regs()) {
+        const Reg current_reg{reg};
+        const ValLocalIdx local_idx = register_file.reg_local_idx(current_reg);
+        if (local_idx == INVALID_VAL_LOCAL_IDX ||
+            value_in_initial_working_set(local_idx) ||
+            this->phi_regs[target].contains(local_idx)) {
+          continue;
+        }
+
+        ValueAssignment *assignment = val_assignment(local_idx);
+        if (!assignment) {
+          continue;
+        }
+
+        const u32 part = register_file.reg_part(current_reg);
+        if (part >= assignment->part_count || assignment->variable_ref) {
+          continue;
+        }
+
+        AssignmentPartRef ap{assignment, part};
+        if (ap.fixed_assignment()) {
+          continue;
+        }
+
+        pre_freed_regs |= (1ull << reg);
+
+        const auto &liveness = analyzer.liveness_info(local_idx);
+        if (liveness.last < target || liveness.first > target) {
+          continue;
+        }
+
+        spill_assignment_if_needed(local_idx, part, ap, true);
+      }
+    }
+
+    if (analyzer.block_has_phis(target)) {
+      auto [phi_regs_, unallocatable_regs_] =
+          move_to_phi_nodes_impl(target,
+                                 moves,
+                                 deferred_phi_reg_materializations,
+                                 deferred_phi_stack_materializations,
+                                 deferred_phi_reg_spills,
+                                 0);
+      phi_regs = phi_regs_;
+      unallocatable_regs = unallocatable_regs_;
+    }
+
     if (block_state_it != block_regs.end()) {
       std::unordered_set<ValLocalIdx> seen_local_idxs;
       seen_local_idxs.reserve(block_state_it->second.size());
@@ -1338,18 +1391,6 @@ public:
         spill_assignment_if_needed(local_idx, part, ap);
       }
     } else {
-      spilled_values.clear();
-      const auto initial_working_set_it =
-          analyzer.initial_working_set_by_block.find(target);
-      const bool has_initial_working_set =
-          initial_working_set_it != analyzer.initial_working_set_by_block.end();
-      const auto value_in_initial_working_set =
-          [&](ValLocalIdx local_idx) -> bool {
-        if (!has_initial_working_set) {
-          return true;
-        }
-        return initial_working_set_it->second.contains(local_idx);
-      };
       auto &target_state = block_regs[target];
       // todo(salto): how to represent stack vars here?
       if (has_initial_working_set) {
@@ -1385,11 +1426,16 @@ public:
           return register_file.reg_local_idx(reg) == local_idx &&
                  register_file.reg_part(reg) == part_idx;
         };
-        typename RegisterFile::RegBitSet freed_regs = 0;
+        typename RegisterFile::RegBitSet freed_regs = pre_freed_regs;
         for (auto reg: register_file.used_regs()) {
+          const auto reg_mask = (1ull << reg);
           const auto local_idx = register_file.reg_local_idx(Reg{reg});
           if (local_idx == INVALID_VAL_LOCAL_IDX ||
               value_in_initial_working_set(local_idx)) {
+            continue;
+          }
+
+          if (pre_freed_regs & reg_mask) {
             continue;
           }
 
@@ -1418,7 +1464,7 @@ public:
           if (ap.fixed_assignment()) {
             continue;
           }
-          freed_regs |= (1ull << reg);
+          freed_regs |= reg_mask;
           if (part >= assignment->part_count || assignment->variable_ref) {
             continue;
           }
@@ -1818,7 +1864,8 @@ public:
     DeferredPhiRegMaterializationList &deferred_phi_reg_materializations,
     DeferredPhiStackMaterializationList
     &deferred_phi_stack_materializations,
-    DeferredPhiRegSpillList &deferred_phi_reg_spills);
+    DeferredPhiRegSpillList &deferred_phi_reg_spills,
+    typename RegisterFile::RegBitSet pre_freed_regs);
 
   /// Count available registers in a specific bank
   u32 count_available_registers(RegBank bank) const {
@@ -3692,7 +3739,9 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
   MoveList &moves,
   DeferredPhiRegMaterializationList &deferred_phi_reg_materializations,
   DeferredPhiStackMaterializationList
-  &deferred_phi_stack_materializations, DeferredPhiRegSpillList &deferred_phi_reg_spills) {
+  &deferred_phi_stack_materializations,
+  DeferredPhiRegSpillList &deferred_phi_reg_spills,
+  typename RegisterFile::RegBitSet pre_freed_regs) {
   // PHI-nodes are always moved to their stack-slot (unless they are fixed)
   //
   // However, we need to take care of PHI-dependencies (cycles and chains)
@@ -3785,6 +3834,7 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
   register_file.allocatable &= ~derived()->phi_nonallocatable_mask();
 
   typename RegisterFile::RegBitSet used_phi_regs = 0;
+  typename RegisterFile::RegBitSet reusable_freed_regs = pre_freed_regs;
 
   const auto mark_reg_unallocatable = [&](Reg reg) {
     unallocatable_regs |= (1ull << reg.id());
@@ -4144,6 +4194,15 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
         selected = incoming_reg;
       } else {
         selected = register_file.find_first_free_excluding(bank, exclusion);
+        if (selected.invalid()) {
+          auto reusable_candidates = reusable_freed_regs &
+                                     register_file.bank_regs(bank) &
+                                     ~exclusion;
+          if (reusable_candidates) {
+            selected = Reg{util::cnt_tz(reusable_candidates)};
+            reusable_freed_regs &= ~(1ull << selected.id());
+          }
+        }
       }
 
       // we ran out of registers

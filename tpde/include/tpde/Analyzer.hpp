@@ -1826,99 +1826,102 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
           u32 loop_local_gp_regs = 0;
           u32 loop_local_fp_regs = 0;
 
-          for (const auto val_idx: incoming_from_all) {
-              const auto entry_next_use =
-                      get_current_and_next_use(precise_liveness[block_idx_u32], val_idx, 0).first;
-              if (entry_next_use >= LOOP_EXIT_PENALTY) {
-                  continue;
-              }
-              //loop_local_values.push_back(val_idx);
-              //selected_values.insert(val_idx);
-              const auto parts = working_set.num_parts(val_idx);
-              //loop_local_gp_regs += parts[0];
-              //loop_local_fp_regs += parts[1];
-          }
 
           const u32 half_gp_regs = NUM_GP_REGS / 2;
           const u32 half_fp_regs = NUM_FP_REGS / 2;
-              std::unordered_set<ValLocalIdx> header_phi_defs;
-              for (const auto phi: adaptor->block_phis(block)) {
-                  if (adaptor->val_ignore_in_liveness_analysis(phi)) {
-                      continue;
-                  }
-                  header_phi_defs.insert(adaptor->val_local_idx(phi));
+          std::array<u8, 2> phi_parts = {0u, 0u};
+          std::unordered_set<ValLocalIdx> header_phi_defs;
+          for (const auto phi: adaptor->block_phis(block)) {
+              if (adaptor->val_ignore_in_liveness_analysis(phi)) {
+                  continue;
               }
-
-              std::unordered_set<ValLocalIdx> header_local_defs;
-              for (const auto inst: adaptor->block_insts(block)) {
-                  for (const auto result: adaptor->inst_results(inst)) {
-                      if (adaptor->val_ignore_in_liveness_analysis(result)) {
-                          continue;
-                      }
-                      header_local_defs.insert(adaptor->val_local_idx(result));
+              header_phi_defs.insert(adaptor->val_local_idx(phi));
+              std::array<u8, 2> parts = {0u, 0u};
+              const auto value_parts = adaptor->val_parts(phi);
+              for (u32 part_idx = 0; part_idx < value_parts.count(); ++part_idx) {
+                  const u8 bank_id = value_parts.reg_bank(part_idx).id();
+                  if (bank_id < parts.size()) {
+                      ++parts[bank_id];
                   }
               }
+              working_set.ensure_parts_cached(adaptor->val_local_idx(phi), parts);
+              phi_parts[0] += parts[0];
+              phi_parts[1] += parts[1];
+          }
+          if (phi_parts[0] > NUM_GP_REGS - 4) {
+              phi_parts[0] = half_gp_regs;
+          }
 
-              struct HeaderCandidate {
-                  ValLocalIdx val_idx;
-                  u32 entry_next_use;
-                  u32 num_parts;
-              };
+          std::unordered_set<ValLocalIdx> header_local_defs;
+          for (const auto inst: adaptor->block_insts(block)) {
+              for (const auto result: adaptor->inst_results(inst)) {
+                  if (adaptor->val_ignore_in_liveness_analysis(result)) {
+                      continue;
+                  }
+                  header_local_defs.insert(adaptor->val_local_idx(result));
+              }
+          }
 
-              util::SmallVector<HeaderCandidate, 16> header_candidates;
-              const auto &header_pli = precise_liveness[block_idx_u32];
-              for (const auto &entry: header_pli.next_uses) {
-                  const auto val_idx = entry.first;
-                  if (selected_values.contains(val_idx) ||
-                      header_phi_defs.contains(val_idx) ||
-                      header_local_defs.contains(val_idx)) {
-                      continue;
-                  }
+          struct HeaderCandidate {
+              ValLocalIdx val_idx;
+              u32 entry_next_use;
+              u32 num_parts;
+          };
 
-                  const u32 entry_next_use =
-                          get_current_and_next_use(header_pli, val_idx, 0).first;
-                  if (entry_next_use >= LOOP_EXIT_PENALTY || entry_next_use == INF) {
-                      continue;
-                  }
-                  if (entry_next_use & DEF_BIT) {
-                      continue;
-                  }
-                  if (entry_next_use > std::ranges::distance(adaptor->block_insts(
-                          block_ref(BlockIndex{block_idx_u32})))) {
-                      continue;
-                  }
-
-                  if (static_cast<u32>(val_idx) >= value_parts_cache.size()) {
-                      continue;
-                  }
-                  const auto &vpi = value_parts_cache[static_cast<u32>(val_idx)];
-                  if (vpi.count == 0) {
-                      continue;
-                  }
-
-                  std::array<u8, 2> parts = {0u, 0u};
-                  for (u32 part_i = 0; part_i < vpi.count; ++part_i) {
-                      const u8 bank_id = vpi.bank_ids[part_i];
-                      if (bank_id < parts.size()) {
-                          ++parts[bank_id];
-                      }
-                  }
-                  working_set.ensure_parts_cached(val_idx, parts);
-                  header_candidates.push_back(
-                      HeaderCandidate{
-                          .val_idx = val_idx, .entry_next_use = entry_next_use, .num_parts = u32(parts[0] + parts[1])
-                      });
+          util::SmallVector<HeaderCandidate, 16> header_candidates;
+          const auto &header_pli = precise_liveness[block_idx_u32];
+          for (const auto &entry: header_pli.next_uses) {
+              const auto val_idx = entry.first;
+              if (selected_values.contains(val_idx) ||
+                  header_phi_defs.contains(val_idx) ||
+                  header_local_defs.contains(val_idx)) {
+                  continue;
               }
 
-              std::sort(header_candidates.begin(),
-                        header_candidates.end(),
-                        [](const auto &a, const auto &b) {
-                            if (a.entry_next_use == b.entry_next_use) {
-                                return a.num_parts < b.num_parts;
-                            }
-                            return a.entry_next_use < b.entry_next_use;
-                        });
-          const auto gp_threshold = NUM_GP_REGS - block_pressure[block_idx_u32].gp_pressure - 2;
+              const u32 entry_next_use =
+                      get_current_and_next_use(header_pli, val_idx, 0).first;
+              if (entry_next_use >= LOOP_EXIT_PENALTY || entry_next_use == INF) {
+                  continue;
+              }
+              if (entry_next_use & DEF_BIT) {
+                  continue;
+              }
+              if (entry_next_use > std::ranges::distance(adaptor->block_insts(
+                      block_ref(BlockIndex{block_idx_u32})))) {
+                  continue;
+              }
+
+              if (static_cast<u32>(val_idx) >= value_parts_cache.size()) {
+                  continue;
+              }
+              const auto &vpi = value_parts_cache[static_cast<u32>(val_idx)];
+              if (vpi.count == 0) {
+                  continue;
+              }
+
+              std::array<u8, 2> parts = {0u, 0u};
+              for (u32 part_i = 0; part_i < vpi.count; ++part_i) {
+                  const u8 bank_id = vpi.bank_ids[part_i];
+                  if (bank_id < parts.size()) {
+                      ++parts[bank_id];
+                  }
+              }
+              working_set.ensure_parts_cached(val_idx, parts);
+              header_candidates.push_back(
+                  HeaderCandidate{
+                      .val_idx = val_idx, .entry_next_use = entry_next_use, .num_parts = u32(parts[0] + parts[1])
+                  });
+          }
+
+          std::sort(header_candidates.begin(),
+                    header_candidates.end(),
+                    [](const auto &a, const auto &b) {
+                        if (a.entry_next_use == b.entry_next_use) {
+                            return a.num_parts < b.num_parts;
+                        }
+                        return a.entry_next_use < b.entry_next_use;
+                    });
+          const auto gp_threshold = NUM_GP_REGS - block_pressure[block_idx_u32].gp_pressure - 1;
           const auto fp_threshold = NUM_FP_REGS - block_pressure[block_idx_u32].fp_pressure - 1;
           for (const auto &candidate: header_candidates) {
               if (loop_local_gp_regs > gp_threshold ||
@@ -1937,6 +1940,38 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
               selected_values.insert(candidate.val_idx);
               loop_local_gp_regs += parts[0];
               loop_local_fp_regs += parts[1];
+          }
+          if (false && loop_local_gp_regs < gp_threshold / 2 && loop_local_fp_regs < fp_threshold / 2) {
+              std::sort(incoming_from_all.begin(), incoming_from_all.end(), [&](const auto &a, const auto &b) {
+                  return get_current_and_next_use(
+                             precise_liveness[block_idx_u32],
+                             a,
+                             0)
+                         .first <
+                         get_current_and_next_use(
+                             precise_liveness[block_idx_u32],
+                             b,
+                             0)
+                         .first;
+              });
+              for (const auto val_idx: incoming_from_all) {
+                  if (selected_values.contains(val_idx))
+                      continue;
+                  const bool gp_has_budget = loop_local_gp_regs < gp_threshold / 2;
+                  const bool fp_has_budget = loop_local_fp_regs < fp_threshold / 2;
+                  if ((!gp_has_budget) ||
+                      (!fp_has_budget)) {
+                      break;
+                  }
+
+                  const auto entry_next_use =
+                          get_current_and_next_use(precise_liveness[block_idx_u32], val_idx, 0).first;
+                  loop_local_values.push_back(val_idx);
+                  selected_values.insert(val_idx);
+                  const auto parts = working_set.num_parts(val_idx);
+                  loop_local_gp_regs += parts[0];
+                  loop_local_fp_regs += parts[1];
+              }
           }
 
 
@@ -2232,8 +2267,12 @@ void Analyzer<Adaptor, CompilerType>::limit(
           break;
         }
         if (fp_needed > 0 && fp_freed >= fp_needed) {
-          break;
+            break;
         }
+      }
+      // Skip value if it is not in the needed bank
+      if ((gp_needed <= gp_freed && entry.parts[1] == 0) || (fp_needed <= fp_freed && entry.parts[0] == 0)) {
+          continue;
       }
 
 

@@ -203,7 +203,7 @@ public:
 
         const u8 bank_id = bank.id();
         const u8 start = last_used_reg[bank_id] + 1;
-        // Prefer caller-saved registers (NOT callee-saved)
+        // Prefer volatile registers (NOT callee-saved)
         const RegBitSet caller_saved_sel = selectable & ~callee_saved;
         const RegBitSet total_search_set = caller_saved_sel != 0 ? caller_saved_sel : selectable;
         RegBitSet search_set = total_search_set & ~((1ull << start) - 1);
