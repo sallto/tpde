@@ -278,6 +278,7 @@ struct CompilerBase {
   /// Pending argument for lazy CallBuilder execution
   struct PendingArg {
     enum class Kind : u8 {
+      INVALID,
       REG_TO_REG,   // Register-to-register move
       STACK_TO_REG, // Load from stack to register
       CONST_TO_REG, // Materialize constant to register
@@ -502,6 +503,8 @@ public:
 
     // Pending arguments for lazy execution
     PendingArgList pending_args{};
+    // Values that currently have pending STACK_TO_REG arguments.
+    std::unordered_set<ValLocalIdx> pending_stack_local_idxs{};
     // Track source registers to detect eviction
     RegisterFile::RegBitSet source_regs{};
     // Number of high-level call arguments added for this call.
@@ -2058,6 +2061,50 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
         arg_regs |= (1ull << cca.reg.id());
         source_regs |= (1ull << cca.reg.id());
         compiler.register_file.allocatable &= ~source_regs;
+        if (pending_stack_local_idxs.contains(vp.local_idx())) {
+          for (auto &pending_arg: pending_args) {
+            if (pending_arg.kind != PendingArg::Kind::STACK_TO_REG ||
+                pending_arg.local_idx != vp.local_idx()) {
+              continue;
+            }
+
+            if (pending_arg.target_reg != cca.reg) {
+              if (compiler.register_file.is_used(pending_arg.target_reg)) {
+                compiler.evict_reg(pending_arg.target_reg);
+              }
+              if (pending_arg.part_idx == vp.part()) {
+                pending_args.push_back(PendingArg{
+                  .kind = PendingArg::Kind::REG_TO_REG,
+                  .int_ext = pending_arg.int_ext,
+                  .size = pending_arg.size,
+                  .target_reg = pending_arg.target_reg,
+                  .source_reg = cca.reg,
+
+                  .local_idx = pending_arg.local_idx,
+                  .part_idx = pending_arg.part_idx
+
+                });
+              } else {
+                auto reg = compiler.select_reg(compiler.register_file.reg_bank(pending_arg.target_reg),
+                                               source_regs | arg_regs);
+                AssignmentPartRef other_ap{compiler.val_assignment(pending_arg.local_idx), pending_arg.part_idx};
+                compiler.reload_to_reg(reg, other_ap);
+                pending_args.push_back(PendingArg{
+                  .kind = PendingArg::Kind::REG_TO_REG,
+                  .int_ext = pending_arg.int_ext, .size = pending_arg.size,
+                  .target_reg = pending_arg.target_reg,
+                  .source_reg = reg,
+
+                  .local_idx = pending_arg.local_idx,
+                  .part_idx = pending_arg.part_idx,
+                });
+              }
+            }
+
+            lock_arg_reg(pending_arg.target_reg);
+            pending_arg.kind = PendingArg::Kind::INVALID;
+          }
+        }
         if (needs_ext) {
           apply_int_ext_if_needed(cca.reg, cca.reg, cca.int_ext);
         }
@@ -2095,6 +2142,10 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
   // todo(salto): alloca_call
 
   pending_args.push_back(arg);
+  if (arg.kind == PendingArg::Kind::STACK_TO_REG &&
+      arg.local_idx != INVALID_VAL_LOCAL_IDX) {
+    pending_stack_local_idxs.insert(arg.local_idx);
+  }
   if (immediate_emit_mode) {
     flush_pending_args();
   }
@@ -2155,11 +2206,12 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
 
   auto kind_sort_key = [](PendingArg::Kind kind) {
     switch (kind) {
-    case PendingArg::Kind::BYVAL: return u8{0};
-    case PendingArg::Kind::REG_TO_REG: return u8{1};
-    case PendingArg::Kind::STACK_TO_REG: return u8{2};
-    case PendingArg::Kind::CONST_TO_REG: return u8{3};
-    case PendingArg::Kind::TO_STACK: return u8{4};
+      case PendingArg::Kind::INVALID: return u8{0};
+      case PendingArg::Kind::BYVAL: return u8{0};
+      case PendingArg::Kind::REG_TO_REG: return u8{1};
+      case PendingArg::Kind::STACK_TO_REG: return u8{2};
+      case PendingArg::Kind::CONST_TO_REG: return u8{3};
+      case PendingArg::Kind::TO_STACK: return u8{4};
     }
     TPDE_UNREACHABLE("invalid pending arg kind");
     return u8{0};
@@ -2278,7 +2330,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
   };
 
   typename PendingArg::Kind prev_kind = pending_args.front().kind;
-  for (const auto &arg : pending_args) {
+  for (const auto &arg: pending_args) {
     if (arg.kind != prev_kind) {
       if (prev_kind == PendingArg::Kind::REG_TO_REG) {
         emit_reg_moves();
@@ -2287,11 +2339,16 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     }
 
     switch (arg.kind) {
-    case PendingArg::Kind::BYVAL: handle_byval(arg); break;
-    case PendingArg::Kind::REG_TO_REG: queue_reg_move(arg); break;
-    case PendingArg::Kind::STACK_TO_REG: handle_stack_to_reg(arg); break;
-    case PendingArg::Kind::CONST_TO_REG: handle_const_to_reg(arg); break;
-    case PendingArg::Kind::TO_STACK: break;
+      case PendingArg::Kind::INVALID: break;
+      case PendingArg::Kind::BYVAL: handle_byval(arg);
+        break;
+      case PendingArg::Kind::REG_TO_REG: queue_reg_move(arg);
+        break;
+      case PendingArg::Kind::STACK_TO_REG: handle_stack_to_reg(arg);
+        break;
+      case PendingArg::Kind::CONST_TO_REG: handle_const_to_reg(arg);
+        break;
+      case PendingArg::Kind::TO_STACK: break;
     }
   }
 
@@ -2300,6 +2357,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
   }
   compiler.register_file.allocatable |= source_regs & (~arg_regs);
   source_regs = 0;
+  pending_stack_local_idxs.clear();
   pending_args.clear();
 }
 
@@ -2370,6 +2428,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
   // assert((compiler.register_file.allocatable & arg_regs) == 0);
   compiler.register_file.allocatable |= arg_regs;
   compiler.register_file.allocatable |= source_regs;
+  pending_stack_local_idxs.clear();
   pending_args.clear();
   source_regs = 0;
   arg_regs = 0;
