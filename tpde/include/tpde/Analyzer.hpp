@@ -1917,6 +1917,9 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
                     header_candidates.end(),
                     [](const auto &a, const auto &b) {
                         if (a.entry_next_use == b.entry_next_use) {
+                            if (a.num_parts == b.num_parts) {
+                                return a.val_idx < b.val_idx;
+                            }
                             return a.num_parts < b.num_parts;
                         }
                         return a.entry_next_use < b.entry_next_use;
