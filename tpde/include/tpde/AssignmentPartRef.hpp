@@ -16,11 +16,10 @@ class AssignmentPartRef {
 
   // note for how parts are structured:
   // |15|14|13|12|11|10|09|08|07|06|05|04|03|02|01|00|
-  // |PF|   PS   |RV|  |IM|FA|  bank  |    reg_id    |
+  // |PH|   PS   |RV|  |IM|FA|  bank  |    reg_id    |
   //                         |      full_reg_id      |
   //
-  // PF: Part has a preferred register assignment (this is not fixed and may be
-  // ignored during codegen) PS: 1 << PS = part size (TODO(ts): maybe swap with
+  // PH: Part is a phi
   // NP so that it can be
   //     extracted easier?)
   // RV: Register Valid
@@ -170,6 +169,14 @@ public:
   }
 
   [[nodiscard]] uint32_t part_off() const { return va->max_part_size * part; }
+
+  void set_phi() const {
+    va->parts[part] |= (1u << 15);
+  }
+
+  [[nodiscard]] bool is_phi() const {
+    return (va->parts[part] & (1u << 15)) != 0;
+  }
 };
 
 } // namespace tpde

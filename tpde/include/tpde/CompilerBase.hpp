@@ -3803,6 +3803,7 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
     if (assignment) {
       for (u32 part = 0; part < assignment->part_count; ++part) {
         AssignmentPartRef ap{assignment, part};
+        ap.set_phi();
         RegBank bank = ap.bank();
         if (bank == Config::GP_BANK) {
           ++gp_parts;
@@ -4125,6 +4126,7 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
     bool allow_regs = !allocate_to_stack;
     for (u32 part = 0; part < phi_assignment->part_count; ++part) {
       AssignmentPartRef phi_ap{phi_assignment, part};
+      phi_ap.set_phi();
       ValuePartRef incoming_part =
           incoming_ref_owner.has_value()
             ? (incoming_ref_owner->list ==
@@ -4190,7 +4192,8 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
       if (incoming_last_ref && incoming_reg.valid() &&
           !register_file.is_fixed(incoming_reg) &&
           ((derived()->phi_nonallocatable_mask() &
-            (1ull << incoming_reg.id())) == 0)) {
+            (1ull << incoming_reg.id())) == 0) &&
+          !(used_phi_regs & (1ull << incoming_reg.id()))) {
         selected = incoming_reg;
       } else {
         selected = register_file.find_first_free_excluding(bank, exclusion);
@@ -4559,6 +4562,16 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
     // Init assignment for all arguments. This can be substituted for more
     // complex mappings of arguments to value parts.
     derived()->prologue_assign_arg(cc_assigner, arg_idx++, arg);
+    auto arg_val_idx = adaptor->val_local_idx(arg);
+    if (arg_val_idx != INVALID_VAL_LOCAL_IDX) {
+      if (!analyzer.spilled_values.is_set(static_cast<u32>(arg_val_idx))) {
+        continue;
+      }
+      for (u32 part_idx = 0; part_idx < adaptor->val_parts(arg).count(); ++part_idx) {
+        AssignmentPartRef ap{val_assignment(arg_val_idx), part_idx};
+        spill(ap);
+      }
+    }
   }
 #ifndef NDEBUG
   // After gen_func_prolog_and_args, explicitly capture all function arguments
