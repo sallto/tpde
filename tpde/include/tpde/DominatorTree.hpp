@@ -12,12 +12,9 @@
 
 namespace tpde {
 
-template <IRAdaptor Adaptor>
+template <IRAdaptor Adaptor, typename BlockIndex>
 struct DominatorTree {
   using IRBlockRef = typename Adaptor::IRBlockRef;
-
-  // Block index type - same as in Analyzer
-  enum class BlockIndex : u32 {};
   static constexpr BlockIndex INVALID_BLOCK_IDX = static_cast<BlockIndex>(~0u);
 
   // Storage indexed by BlockIndex
@@ -63,8 +60,7 @@ struct DominatorTree {
 
  private:
   // Helper: DFS traversal to assign DFS numbers (pre/post-order)
-  void assignDFSNumbers(BlockIndex node, Adaptor* adaptor,
-                        const util::SmallVector<IRBlockRef, 64>& block_layout);
+  void assignDFSNumbers(BlockIndex node);
 
   // Helper: compute immediate dominators using simplified Lengauer-Tarjan
   void computeIDom(Adaptor* adaptor,
@@ -72,8 +68,8 @@ struct DominatorTree {
 };
 
 // Implementation
-template <IRAdaptor Adaptor>
-void DominatorTree<Adaptor>::compute(
+template <IRAdaptor Adaptor, typename BlockIndex>
+void DominatorTree<Adaptor, BlockIndex>::compute(
     Adaptor* adaptor, const util::SmallVector<IRBlockRef, 64>& block_layout) noexcept {
   if (block_layout.empty()) {
     return;
@@ -81,10 +77,10 @@ void DominatorTree<Adaptor>::compute(
 
   // Initialize storage
   const u32 num_blocks = static_cast<u32>(block_layout.size());
-  idom.resize_uninitialized(num_blocks);
-  children.resize_uninitialized(num_blocks);
-  dfs_num_in.resize_uninitialized(num_blocks);
-  dfs_num_out.resize_uninitialized(num_blocks);
+  idom.resize(num_blocks);
+  children.resize(num_blocks);
+  dfs_num_in.resize(num_blocks);
+  dfs_num_out.resize(num_blocks);
 
   for (u32 i = 0; i < num_blocks; ++i) {
     idom[i] = INVALID_BLOCK_IDX;
@@ -108,11 +104,11 @@ void DominatorTree<Adaptor>::compute(
 
   // Assign DFS numbers via tree walk for O(1) dominates() queries
   dfs_counter = 0;
-  assignDFSNumbers(static_cast<BlockIndex>(0), adaptor, block_layout);
+  assignDFSNumbers(static_cast<BlockIndex>(0));
 }
 
-template <IRAdaptor Adaptor>
-void DominatorTree<Adaptor>::computeIDom(
+template <IRAdaptor Adaptor, typename BlockIndex>
+void DominatorTree<Adaptor, BlockIndex>::computeIDom(
     Adaptor* adaptor, const util::SmallVector<IRBlockRef, 64>& block_layout) noexcept {
   const u32 num_blocks = static_cast<u32>(block_layout.size());
 
@@ -126,6 +122,22 @@ void DominatorTree<Adaptor>::computeIDom(
     idom[i] = INVALID_BLOCK_IDX;
   }
 
+  const auto intersect = [&](BlockIndex lhs, BlockIndex rhs) {
+    u32 lhs_idx = static_cast<u32>(lhs);
+    u32 rhs_idx = static_cast<u32>(rhs);
+
+    while (lhs_idx != rhs_idx) {
+      while (lhs_idx > rhs_idx) {
+        lhs_idx = static_cast<u32>(idom[lhs_idx]);
+      }
+      while (rhs_idx > lhs_idx) {
+        rhs_idx = static_cast<u32>(idom[rhs_idx]);
+      }
+    }
+
+    return static_cast<BlockIndex>(lhs_idx);
+  };
+
   // Iterate until fixed point
   bool changed = true;
   while (changed) {
@@ -135,8 +147,7 @@ void DominatorTree<Adaptor>::computeIDom(
       const IRBlockRef block = block_layout[i];
       BlockIndex new_idom = INVALID_BLOCK_IDX;
 
-      // Process all predecessors of this block
-      bool first_pred = true;
+      // Process all predecessors of this block.
       for (u32 j = 0; j < num_blocks; ++j) {
         const IRBlockRef pred_candidate = block_layout[j];
         
@@ -155,33 +166,14 @@ void DominatorTree<Adaptor>::computeIDom(
 
         const auto pred_idx = static_cast<BlockIndex>(j);
 
-        if (first_pred) {
-          new_idom = pred_idx;
-          first_pred = false;
-        } else {
-          // Find common dominator: walk up from both until they meet
-          BlockIndex a = new_idom;
-          BlockIndex b = pred_idx;
+        if (idom[j] == INVALID_BLOCK_IDX) {
+          continue;
+        }
 
-          while (a != b) {
-            const auto a_val = static_cast<u32>(a);
-            const auto b_val = static_cast<u32>(b);
-            
-            // Walk up the one that's deeper (higher index in RPO = deeper in tree)
-            // This is a simple heuristic; proper implementation would use tree levels
-            if (a_val > b_val) {
-              a = idom[a_val];
-              if (a == INVALID_BLOCK_IDX) {
-                a = static_cast<BlockIndex>(0);  // Reached top
-              }
-            } else {
-              b = idom[b_val];
-              if (b == INVALID_BLOCK_IDX) {
-                b = static_cast<BlockIndex>(0);  // Reached top
-              }
-            }
-          }
-          new_idom = a;
+        if (new_idom == INVALID_BLOCK_IDX) {
+          new_idom = pred_idx;
+        } else {
+          new_idom = intersect(new_idom, pred_idx);
         }
       }
 
@@ -194,23 +186,22 @@ void DominatorTree<Adaptor>::computeIDom(
   }
 }
 
-template <IRAdaptor Adaptor>
-void DominatorTree<Adaptor>::assignDFSNumbers(
-    BlockIndex node, Adaptor* adaptor,
-    const util::SmallVector<IRBlockRef, 64>& block_layout) {
+template <IRAdaptor Adaptor, typename BlockIndex>
+void DominatorTree<Adaptor, BlockIndex>::assignDFSNumbers(
+    BlockIndex node) {
   const auto node_idx = static_cast<u32>(node);
   dfs_num_in[node_idx] = dfs_counter++;
 
   // Visit children in order
   for (const auto child : children[node_idx]) {
-    assignDFSNumbers(child, adaptor, block_layout);
+    assignDFSNumbers(child);
   }
 
   dfs_num_out[node_idx] = dfs_counter++;
 }
 
-template <IRAdaptor Adaptor>
-void DominatorTree<Adaptor>::print(
+template <IRAdaptor Adaptor, typename BlockIndex>
+void DominatorTree<Adaptor, BlockIndex>::print(
     std::ostream& os, Adaptor* adaptor,
     const util::SmallVector<IRBlockRef, 64>& block_layout) const {
   if (block_layout.empty()) {

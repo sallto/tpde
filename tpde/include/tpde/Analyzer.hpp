@@ -360,7 +360,7 @@ namespace tpde {
         util::SmallVector<BlockPressure, SMALL_BLOCK_NUM> block_pressure = {};
 
         /// Dominator tree for control flow analysis
-        DominatorTree<Adaptor> dominator_tree = {};
+        DominatorTree<Adaptor, BlockIndex> dominator_tree = {};
 
         explicit Analyzer(Adaptor *adaptor, CompilerType *compiler = nullptr)
             : adaptor(adaptor), compiler(compiler) {
@@ -412,6 +412,14 @@ namespace tpde {
   bool block_has_phis(IRBlockRef block_ref) const noexcept {
     return (adaptor->block_info2(block_ref) & 0b1'0000) != 0;
   }
+
+        BlockIndex immediate_dominator(BlockIndex idx) const noexcept {
+            return dominator_tree.get_idom(idx);
+        }
+
+        bool dominates(BlockIndex lhs, BlockIndex rhs) const noexcept {
+            return dominator_tree.dominates(lhs, rhs);
+        }
 
         void print_rpo(std::ostream &os) const;
 
@@ -635,6 +643,7 @@ typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
         loop_heads.mark_set(0);
 
         build_loop_tree_and_block_layout(block_rpo, loop_parent, loop_heads);
+        dominator_tree.compute(adaptor, block_layout);
     }
 
     template<IRAdaptor Adaptor, typename CompilerType>
