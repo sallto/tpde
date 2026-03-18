@@ -1880,10 +1880,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
           if (!precise_block_interval(block_idx, rhs_idx, rhs_first, rhs_last)) {
               continue;
           }
-
-          if (!(lhs_last < rhs_first || rhs_last < lhs_first)) {
               return true;
-          }
       }
 
       return false;
