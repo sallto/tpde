@@ -1748,151 +1748,219 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
   web_rank.resize(liveness_max_value + 1, 0u);
 
   for (u32 i = 0; i <= liveness_max_value; ++i) {
-    if (i < liveness.size() && liveness[i].epoch == liveness_epoch) {
-      web_parent[i] = i;
-    } else {
-      web_parent[i] = INVALID_WEB_IDX;
-    }
+      if (i < liveness.size() && liveness[i].epoch == liveness_epoch) {
+          web_parent[i] = i;
+      } else {
+          web_parent[i] = INVALID_WEB_IDX;
+      }
   }
 
   const auto web_find = [&](u32 idx, const auto &self) -> u32 {
-    const u32 parent = web_parent[idx];
-    if (parent == idx) {
-      return idx;
-    }
-    const u32 root = self(parent, self);
-    web_parent[idx] = root;
-    return root;
+      const u32 parent = web_parent[idx];
+      if (parent == idx) {
+          return idx;
+      }
+      const u32 root = self(parent, self);
+      web_parent[idx] = root;
+      return root;
   };
 
   const auto web_union = [&](const u32 lhs, const u32 rhs) {
-    if (lhs == rhs || lhs == INVALID_WEB_IDX || rhs == INVALID_WEB_IDX) {
-      return;
-    }
+      if (lhs == rhs || lhs == INVALID_WEB_IDX || rhs == INVALID_WEB_IDX) {
+          return;
+      }
 
-    u32 lhs_root = web_find(lhs, web_find);
-    u32 rhs_root = web_find(rhs, web_find);
-    if (lhs_root == rhs_root) {
-      return;
-    }
+      u32 lhs_root = web_find(lhs, web_find);
+      u32 rhs_root = web_find(rhs, web_find);
+      if (lhs_root == rhs_root) {
+          return;
+      }
 
-    if (web_rank[lhs_root] < web_rank[rhs_root]) {
-      std::swap(lhs_root, rhs_root);
-    }
-    web_parent[rhs_root] = lhs_root;
-    if (web_rank[lhs_root] == web_rank[rhs_root]) {
-      ++web_rank[lhs_root];
-    }
+      if (web_rank[lhs_root] < web_rank[rhs_root]) {
+          std::swap(lhs_root, rhs_root);
+      }
+      web_parent[rhs_root] = lhs_root;
+      if (web_rank[lhs_root] == web_rank[rhs_root]) {
+          ++web_rank[lhs_root];
+      }
+  };
+
+  const auto precise_block_interval =
+          [&](const u32 block_idx,
+              const ValLocalIdx val_idx,
+              u32 &interval_first,
+              u32 &interval_last) -> bool {
+      if (block_idx >= precise_liveness.size()) {
+          return false;
+      }
+
+      const auto &pli = precise_liveness[block_idx];
+      const auto it = pli.next_uses.find(val_idx);
+      if (it == pli.next_uses.end()) {
+          return false;
+      }
+
+      const auto &uses = it->second;
+      if (uses.empty()) {
+          return false;
+      }
+
+      u32 first = INF;
+      for (const auto use: uses) {
+          if (use != INF) {
+              first = use;
+              break;
+          }
+      }
+      if (first == INF) {
+          return false;
+      }
+
+      if ((first & DEF_BIT) != 0) {
+          interval_first = INF;
+          for (const auto use: uses) {
+              if (use != INF && (use & DEF_BIT) == 0) {
+                  interval_first = use;
+                  break;
+              }
+          }
+          if (interval_first == INF) {
+              return false;
+          }
+      } else {
+          // live-in values occupy the register from block entry
+          interval_first = 0;
+      }
+
+      interval_last = INF;
+      for (u32 i = uses.size(); i-- > 0;) {
+          if (uses[i] != INF) {
+              interval_last = uses[i] & ~DEF_BIT;
+              break;
+          }
+      }
+
+      return interval_last != INF;
   };
 
   const auto live_ranges_overlap =
-      [&](const ValLocalIdx lhs_idx, const ValLocalIdx rhs_idx) -> bool {
-    const u32 lhs = static_cast<u32>(lhs_idx);
-    const u32 rhs = static_cast<u32>(rhs_idx);
-    if (lhs >= liveness.size() || rhs >= liveness.size()) {
-      return true;
-    }
+          [&](const ValLocalIdx lhs_idx, const ValLocalIdx rhs_idx) -> bool {
+      const u32 lhs = static_cast<u32>(lhs_idx);
+      const u32 rhs = static_cast<u32>(rhs_idx);
+      if (lhs >= liveness.size() || rhs >= liveness.size()) {
+          return true;
+      }
 
-    const auto &lhs_liveness = liveness[lhs];
-    const auto &rhs_liveness = liveness[rhs];
-    if (lhs_liveness.epoch != liveness_epoch ||
-        rhs_liveness.epoch != liveness_epoch) {
-      return true;
-    }
+      const auto &lhs_liveness = liveness[lhs];
+      const auto &rhs_liveness = liveness[rhs];
+      if (lhs_liveness.epoch != liveness_epoch ||
+          rhs_liveness.epoch != liveness_epoch) {
+          return true;
+      }
 
-    // Same interval overlap check used in codegen, with boundary handling
-    // based on last_full.
-    if (lhs_liveness.last < rhs_liveness.first ||
-        rhs_liveness.last < lhs_liveness.first) {
+      // Fast coarse disjointness check on block intervals.
+      if (lhs_liveness.last < rhs_liveness.first ||
+          rhs_liveness.last < lhs_liveness.first) {
+          return false;
+      }
+
+      const u32 block_begin = std::max(static_cast<u32>(lhs_liveness.first),
+                                       static_cast<u32>(rhs_liveness.first));
+      const u32 block_end = std::min(static_cast<u32>(lhs_liveness.last),
+                                     static_cast<u32>(rhs_liveness.last));
+
+      for (u32 block_idx = block_begin; block_idx <= block_end; ++block_idx) {
+          u32 lhs_first = 0;
+          u32 lhs_last = 0;
+          u32 rhs_first = 0;
+          u32 rhs_last = 0;
+          if (!precise_block_interval(block_idx, lhs_idx, lhs_first, lhs_last)) {
+              continue;
+          }
+          if (!precise_block_interval(block_idx, rhs_idx, rhs_first, rhs_last)) {
+              continue;
+          }
+
+          if (!(lhs_last < rhs_first || rhs_last < lhs_first)) {
+              return true;
+          }
+      }
+
       return false;
-    }
-
-    if (lhs_liveness.last == rhs_liveness.first) {
-      return lhs_liveness.last_full;
-    }
-    if (rhs_liveness.last == lhs_liveness.first) {
-      return rhs_liveness.last_full;
-    }
-
-    return true;
   };
 
-  for (const IRBlockRef block : block_layout) {
-    for (const IRValueRef phi : adaptor->block_phis(block)) {
-      if (adaptor->val_ignore_in_liveness_analysis(phi)) {
-        continue;
+  for (const IRBlockRef block: block_layout) {
+      for (const IRValueRef phi: adaptor->block_phis(block)) {
+          if (adaptor->val_ignore_in_liveness_analysis(phi)) {
+              continue;
+          }
+
+          const auto phi_parts = adaptor->val_parts(phi);
+          if (phi_parts.count() != 1) {
+              // ignore multipart phis
+              continue;
+          }
+
+          const ValLocalIdx phi_idx = adaptor->val_local_idx(phi);
+          const u32 phi_idx_u32 = static_cast<u32>(phi_idx);
+          if (phi_idx_u32 >= web_parent.size() ||
+              web_parent[phi_idx_u32] == INVALID_WEB_IDX) {
+              continue;
+          }
+
+          const u8 phi_bank_id = phi_parts.reg_bank(0).id();
+          const u32 phi_part_size = phi_parts.size_bytes(0);
+
+          const auto phi_ref = adaptor->val_as_phi(phi);
+          const u32 slot_count = phi_ref.incoming_count();
+          for (u32 slot = 0; slot < slot_count; ++slot) {
+              const IRBlockRef incoming_block = phi_ref.incoming_block_for_slot(slot);
+
+              const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(slot);
+              if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+                  continue;
+              }
+
+              const auto incoming_parts = adaptor->val_parts(incoming_val);
+              if (incoming_parts.count() != 1) {
+                  continue;
+              }
+              if (incoming_parts.reg_bank(0).id() != phi_bank_id) {
+                  continue;
+              }
+              if (incoming_parts.size_bytes(0) != phi_part_size) {
+                  continue;
+              }
+
+              const ValLocalIdx incoming_idx = adaptor->val_local_idx(incoming_val);
+              const u32 incoming_idx_u32 = static_cast<u32>(incoming_idx);
+              if (incoming_idx_u32 >= web_parent.size() ||
+                  web_parent[incoming_idx_u32] == INVALID_WEB_IDX) {
+                  continue;
+              }
+
+              if (live_ranges_overlap(phi_idx, incoming_idx)) {
+                  continue;
+              }
+
+              web_union(phi_idx_u32, incoming_idx_u32);
+          }
       }
-
-      const auto phi_parts = adaptor->val_parts(phi);
-      if (phi_parts.count() != 1) {
-        // ignore multipart phis
-        continue;
-      }
-
-      const ValLocalIdx phi_idx = adaptor->val_local_idx(phi);
-      const u32 phi_idx_u32 = static_cast<u32>(phi_idx);
-      if (phi_idx_u32 >= web_parent.size() ||
-          web_parent[phi_idx_u32] == INVALID_WEB_IDX) {
-        continue;
-      }
-
-      const u8 phi_bank_id = phi_parts.reg_bank(0).id();
-      const u32 phi_part_size = phi_parts.size_bytes(0);
-
-      const auto phi_ref = adaptor->val_as_phi(phi);
-      const u32 slot_count = phi_ref.incoming_count();
-      for (u32 slot = 0; slot < slot_count; ++slot) {
-        const IRBlockRef incoming_block = phi_ref.incoming_block_for_slot(slot);
-        if (adaptor->block_info2(incoming_block) == 0) {
-          // ignore incoming from unreachable predecessor
-          continue;
-        }
-
-        const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(slot);
-        if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
-          continue;
-        }
-
-        const auto incoming_parts = adaptor->val_parts(incoming_val);
-        if (incoming_parts.count() != 1) {
-          continue;
-        }
-        if (incoming_parts.reg_bank(0).id() != phi_bank_id) {
-          continue;
-        }
-        if (incoming_parts.size_bytes(0) != phi_part_size) {
-          continue;
-        }
-
-        const ValLocalIdx incoming_idx = adaptor->val_local_idx(incoming_val);
-        const u32 incoming_idx_u32 = static_cast<u32>(incoming_idx);
-        if (incoming_idx_u32 >= web_parent.size() ||
-            web_parent[incoming_idx_u32] == INVALID_WEB_IDX) {
-          continue;
-        }
-
-        if (live_ranges_overlap(phi_idx, incoming_idx)) {
-          continue;
-        }
-
-        web_union(phi_idx_u32, incoming_idx_u32);
-      }
-    }
   }
 
   std::unordered_map<u32, u32> root_to_web_idx;
   root_to_web_idx.reserve(liveness_max_value + 1);
   for (u32 i = 0; i <= liveness_max_value; ++i) {
-    if (i >= liveness.size() || liveness[i].epoch != liveness_epoch ||
-        web_parent[i] == INVALID_WEB_IDX) {
-      continue;
-    }
+      if (i >= liveness.size() || liveness[i].epoch != liveness_epoch ||
+          web_parent[i] == INVALID_WEB_IDX) {
+          continue;
+      }
 
-    const u32 root = web_find(i, web_find);
-    auto [it, inserted] = root_to_web_idx.try_emplace(
-        root, static_cast<u32>(root_to_web_idx.size()));
-    (void)inserted;
-    val_local_to_web_idx[i] = it->second;
+      const u32 root = web_find(i, web_find);
+      auto [it, inserted] = root_to_web_idx.try_emplace(
+          root, static_cast<u32>(root_to_web_idx.size()));
+      (void) inserted;
+      val_local_to_web_idx[i] = it->second;
   }
 
   // todo(salto): multi-part values?
