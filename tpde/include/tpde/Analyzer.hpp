@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <iostream>
 #include <limits>
 #include <llvm/ADT/SetVector.h>
 #include <ostream>
@@ -634,7 +635,7 @@ typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
         build_rpo_block_order(block_rpo);
 
         util::SmallVector<u32, SMALL_BLOCK_NUM> loop_parent{};
-        util::SmallBitSet < 256 > loop_heads{};
+        util::SmallBitSet<256> loop_heads{};
 
         // TODO(ts): print out this step?
         identify_loops(block_rpo, loop_parent, loop_heads);
@@ -644,6 +645,8 @@ typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
 
         build_loop_tree_and_block_layout(block_rpo, loop_parent, loop_heads);
         dominator_tree.compute(adaptor, block_layout);
+        dominator_tree.print(std::cout, adaptor, block_layout);
+        assert(loop_parent.size() == block_rpo.size());
     }
 
     template<IRAdaptor Adaptor, typename CompilerType>

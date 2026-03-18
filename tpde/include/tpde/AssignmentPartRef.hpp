@@ -135,7 +135,9 @@ public:
     return (va->parts[part] & (1u << 9)) == 0;
   }
 
-  void set_stack_valid() { set_modified(false); }
+  void set_stack_valid() {
+    set_modified(false);
+  }
 
   [[nodiscard]] uint32_t part_size() const {
     return 1u << ((va->parts[part] >> 12) & 0b111);

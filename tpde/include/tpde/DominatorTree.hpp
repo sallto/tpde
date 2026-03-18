@@ -68,9 +68,9 @@ struct DominatorTree {
 };
 
 // Implementation
-template <IRAdaptor Adaptor, typename BlockIndex>
+template<IRAdaptor Adaptor, typename BlockIndex>
 void DominatorTree<Adaptor, BlockIndex>::compute(
-    Adaptor* adaptor, const util::SmallVector<IRBlockRef, 64>& block_layout) noexcept {
+  Adaptor *adaptor, const util::SmallVector<IRBlockRef, 64> &block_layout) noexcept {
   if (block_layout.empty()) {
     return;
   }
@@ -107,9 +107,9 @@ void DominatorTree<Adaptor, BlockIndex>::compute(
   assignDFSNumbers(static_cast<BlockIndex>(0));
 }
 
-template <IRAdaptor Adaptor, typename BlockIndex>
+template<IRAdaptor Adaptor, typename BlockIndex>
 void DominatorTree<Adaptor, BlockIndex>::computeIDom(
-    Adaptor* adaptor, const util::SmallVector<IRBlockRef, 64>& block_layout) noexcept {
+  Adaptor *adaptor, const util::SmallVector<IRBlockRef, 64> &block_layout) noexcept {
   const u32 num_blocks = static_cast<u32>(block_layout.size());
 
   // Simple algorithm: iterate until convergence
@@ -148,6 +148,7 @@ void DominatorTree<Adaptor, BlockIndex>::computeIDom(
       BlockIndex new_idom = INVALID_BLOCK_IDX;
 
       // Process all predecessors of this block.
+      //todo(salto): super inefficient
       for (u32 j = 0; j < num_blocks; ++j) {
         const IRBlockRef pred_candidate = block_layout[j];
         
@@ -186,9 +187,9 @@ void DominatorTree<Adaptor, BlockIndex>::computeIDom(
   }
 }
 
-template <IRAdaptor Adaptor, typename BlockIndex>
+template<IRAdaptor Adaptor, typename BlockIndex>
 void DominatorTree<Adaptor, BlockIndex>::assignDFSNumbers(
-    BlockIndex node) {
+  BlockIndex node) {
   const auto node_idx = static_cast<u32>(node);
   dfs_num_in[node_idx] = dfs_counter++;
 
@@ -202,8 +203,8 @@ void DominatorTree<Adaptor, BlockIndex>::assignDFSNumbers(
 
 template <IRAdaptor Adaptor, typename BlockIndex>
 void DominatorTree<Adaptor, BlockIndex>::print(
-    std::ostream& os, Adaptor* adaptor,
-    const util::SmallVector<IRBlockRef, 64>& block_layout) const {
+  std::ostream &os, Adaptor *adaptor,
+  const util::SmallVector<IRBlockRef, 64> &block_layout) const {
   if (block_layout.empty()) {
     return;
   }

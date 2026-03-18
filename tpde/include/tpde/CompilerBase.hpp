@@ -431,6 +431,8 @@ struct CompilerBase {
   std::unordered_map<BlockIndex, PhiRegMap> phi_regs;
   std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx> >
   block_spilled_values;
+  std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx> >
+  block_stack_valid_single_part_values;
 
 #ifndef NDEBUG
   VIR<Adaptor> verification_ir;
@@ -3257,7 +3259,10 @@ void CompilerBase<Adaptor, Derived, Config>::spill(AssignmentPartRef ap) {
     allocate_spill_slot(ap);
     // argument stack slot will remain valid
     derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
-
+    auto val_idx = register_file.reg_local_idx(ap.get_reg());
+    if (val_idx != INVALID_VAL_LOCAL_IDX && ap.part_size() == 1 && ap.assignment()->part_count == 1) {
+      block_stack_valid_single_part_values[cur_block_idx].insert(val_idx);
+    }
     ap.set_stack_valid();
 #ifndef NDEBUG
     {
@@ -4565,6 +4570,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
   block_regs.clear();
   phi_regs.clear();
   block_spilled_values.clear();
+  block_stack_valid_single_part_values.clear();
   used_phi_regs_global = 0;
   branch_scratch_regs.fill(Reg::make_invalid());
   branch_scratch_mask = 0;
@@ -4754,6 +4760,18 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
   auto phi_block_it = phi_regs.find(cur_block_idx);
   const PhiRegMap *phi_reg_map =
       phi_block_it != phi_regs.end() ? &phi_block_it->second : nullptr;
+  std::unordered_set<ValLocalIdx> block_phi_local_idxs;
+  for (IRValueRef phi: adaptor->block_phis(block)) {
+    block_phi_local_idxs.insert(adaptor->val_local_idx(phi));
+  }
+
+  const BlockIndex idom_block = analyzer.immediate_dominator(cur_block_idx);
+  const auto idom_stack_valid_it =
+      block_stack_valid_single_part_values.find(idom_block);
+  const std::unordered_set<ValLocalIdx> *idom_stack_valid_single_part_values =
+      idom_stack_valid_it != block_stack_valid_single_part_values.end()
+        ? &idom_stack_valid_it->second
+        : nullptr;
 
   for (auto reg: register_file.used_regs()) {
     if (register_file.reg_local_idx(Reg{reg}) == INVALID_VAL_LOCAL_IDX ||
@@ -4895,8 +4913,18 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
         }
       }
       if (!ap.variable_ref() && ap.stack_valid()) {
-        ap.set_modified(true);
-        dirtied_values.insert(state.val_local_idx);
+        bool mark_modified = true;
+        if (i == 0 && assignment->part_count == 1 &&
+            !block_phi_local_idxs.contains(state.val_local_idx) &&
+            idom_stack_valid_single_part_values &&
+            idom_stack_valid_single_part_values->contains(state.val_local_idx) && !(ap.is_phi())) {
+          mark_modified = false;
+          TPDE_LOG_ERR("Skipping modification for {}", static_cast<u32>(state.val_local_idx));
+        }
+        if (mark_modified) {
+          ap.set_modified(true);
+          dirtied_values.insert(state.val_local_idx);
+        }
       }
       if (register_file.is_fixed(reg)) {
         // fixed assignment took our spot. Due to domination, it can't be used
@@ -4930,7 +4958,18 @@ template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 bool CompilerBase<Adaptor, Derived, Config>::compile_block(
   const IRBlockRef block, const u32 block_idx) {
   cur_block_idx = static_cast<BlockIndex>(block_idx);
-
+  auto &stack_valid_single_part_values =
+      block_stack_valid_single_part_values[cur_block_idx];
+  stack_valid_single_part_values.clear();
+  auto idom = analyzer.dominator_tree.get_idom(cur_block_idx);
+  if (idom != cur_block_idx) {
+    auto &idom_single_part_values =
+        block_stack_valid_single_part_values[idom];
+    //todo(salto): perforamnce
+    for (auto idx: idom_single_part_values) {
+      stack_valid_single_part_values.insert(idx);
+    }
+  }
   label_place(block_labels[block_idx]);
 #ifndef NDEBUG
   verification_ir.set_current_block(cur_block_idx);
@@ -5024,7 +5063,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
         const u32 part_count = parts.count();
         for (u32 part_idx = 0; part_idx < part_count; ++part_idx) {
           AssignmentPartRef ap{assignment, part_idx};
-          if (ap.register_valid()) {
+          if (ap.register_valid() && !ap.stack_valid()) {
             spill(ap);
           }
         }
@@ -5118,6 +5157,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
     }
   }
 
+
   for (ValLocalIdx local_idx: dirtied_values) {
     ValueAssignment *assignment = val_assignment(local_idx);
     if (!assignment) {
@@ -5140,7 +5180,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
       list_entry = next_entry;
     }
   }
+
+
   return true;
 }
-
 } // namespace tpde
