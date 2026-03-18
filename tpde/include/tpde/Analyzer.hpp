@@ -1960,6 +1960,85 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       val_local_to_web_idx[i] = it->second;
   }
 
+#ifdef TPDE_LOGGING
+  std::unordered_map<u32, util::SmallVector<ValLocalIdx, 8>> web_members;
+  web_members.reserve(root_to_web_idx.size());
+  for (u32 i = 0; i <= liveness_max_value; ++i) {
+    const u32 web_idx = val_local_to_web_idx[i];
+    if (web_idx == INVALID_WEB_IDX) {
+      continue;
+    }
+    web_members[web_idx].push_back(static_cast<ValLocalIdx>(i));
+  }
+
+  std::unordered_map<ValLocalIdx, IRValueRef> val_idx_to_value_ref;
+  val_idx_to_value_ref.reserve(liveness_max_value + 1);
+  const auto remember_value = [&](const IRValueRef value) {
+    if (adaptor->val_ignore_in_liveness_analysis(value)) {
+      return;
+    }
+    const ValLocalIdx val_idx = adaptor->val_local_idx(value);
+    if (static_cast<u32>(val_idx) <= liveness_max_value) {
+      val_idx_to_value_ref.try_emplace(val_idx, value);
+    }
+  };
+
+  for (const IRValueRef arg : adaptor->cur_args()) {
+    remember_value(arg);
+  }
+  for (const IRBlockRef block : block_layout) {
+    for (const IRValueRef phi : adaptor->block_phis(block)) {
+      remember_value(phi);
+    }
+    for (const IRInstRef inst : adaptor->block_insts(block)) {
+      for (const IRValueRef result : adaptor->inst_results(inst)) {
+        remember_value(result);
+      }
+      for (const IRValueRef operand : adaptor->inst_operands(inst)) {
+        remember_value(operand);
+      }
+    }
+  }
+
+  util::SmallVector<u32, SMALL_VALUE_NUM> sorted_web_indices;
+  sorted_web_indices.reserve(web_members.size());
+  for (const auto &[web_idx, _] : web_members) {
+    (void)_;
+    sorted_web_indices.push_back(web_idx);
+  }
+  std::sort(sorted_web_indices.begin(), sorted_web_indices.end());
+
+  TPDE_LOG_TRACE("PHI webs after build:");
+  for (const u32 web_idx : sorted_web_indices) {
+    auto &members = web_members[web_idx];
+    std::sort(members.begin(),
+              members.end(),
+              [](const ValLocalIdx lhs, const ValLocalIdx rhs) {
+                return static_cast<u32>(lhs) < static_cast<u32>(rhs);
+              });
+
+    std::string web_fmt = "{ ";
+    for (u32 i = 0; i < members.size(); ++i) {
+      if (i != 0) {
+        web_fmt += ", ";
+      }
+
+      const ValLocalIdx val_idx = members[i];
+      std::string value_name = "<unknown>";
+      if (const auto it = val_idx_to_value_ref.find(val_idx);
+          it != val_idx_to_value_ref.end()) {
+        value_name = std::format("{}", adaptor->value_fmt_ref(it->second));
+      }
+
+      web_fmt +=
+          std::format("({}, {})", static_cast<u32>(val_idx), value_name);
+    }
+    web_fmt += " }";
+
+    TPDE_LOG_TRACE("  web {}: {}", web_idx, web_fmt);
+  }
+#endif
+
   // todo(salto): multi-part values?
   // todo(salto): ordered set for W
   constexpr u32 NUM_GP_REGS = CompilerType::ConfigType::SPILL_NUM_GP_REGS;
