@@ -469,8 +469,18 @@ bool LLVMCompilerX64::compile_icmp(const llvm::Instruction *inst,
   if (fuse_br) {
     if (!single_use) {
       (void)result_ref(cmp); // ref-count for branch
+      auto cmp_ref = result_ref(cmp);
+      auto cmp_reg = cmp_ref.part(0).alloc_reg();
+
+
       generate_raw_set(
-          jump, result_ref(cmp).part(0).alloc_reg(), /*zext=*/false);
+        jump, cmp_reg, /*zext=*/false);
+      // if we need the cmp value spilled, it needs to be spilled now, before the branches
+      if (cmp_ref.local_idx() != INVALID_VAL_LOCAL_IDX && analyzer.spilled_values.is_set(
+            static_cast<u32>(cmp_ref.local_idx()))) {
+        tpde::AssignmentPartRef ap{val_assignment(cmp_ref.local_idx()), 0};
+        spill(ap);
+      }
     }
     auto true_block = adaptor->block_lookup_idx(fuse_br->getSuccessor(0));
     auto false_block = adaptor->block_lookup_idx(fuse_br->getSuccessor(1));
