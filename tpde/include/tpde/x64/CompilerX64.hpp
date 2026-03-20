@@ -773,7 +773,7 @@ void CompilerX64<Adaptor, Derived, BaseTy, Config>::finish_func(u32 func_idx) {
     // the stack space we used for the saved registers
     u32 final_frame_size =
         util::align_up(this->stack.frame_size + max_callee_stack_arg_size, 16);
-    rsp_adjustment = final_frame_size - num_saved_regs * 8;
+    rsp_adjustment = final_frame_size + num_saved_regs * 8;
     bool needs_rsp_adjustment = this->stack.generated_call ||
                                 this->stack.has_dynamic_alloca ||
                                 rsp_adjustment > ccinfo.red_zone_size;
