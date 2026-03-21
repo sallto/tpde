@@ -10,6 +10,7 @@
 #include <limits>
 #include <llvm/ADT/SetVector.h>
 #include <ostream>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -436,7 +437,16 @@ namespace tpde {
 
         void print_precise_liveness(std::ostream &os) const;
 
-      protected:
+        void print_phi_webs(std::ostream &os) const;
+
+    protected:
+        using PhiWebMembers = std::unordered_map<u32, util::SmallVector<ValLocalIdx, 8> >;
+
+        void collect_phi_web_members(PhiWebMembers &web_members) const;
+
+        void collect_value_refs(
+            std::unordered_map<ValLocalIdx, IRValueRef> &value_refs) const;
+
         // for use during liveness analysis
         LivenessInfo &liveness_maybe(const IRValueRef val) noexcept;
 
@@ -615,6 +625,103 @@ void Analyzer<Adaptor, CompilerType>::switch_func([[maybe_unused]] IRFuncRef fun
     }
 
 template <IRAdaptor Adaptor, typename CompilerType>
+void Analyzer<Adaptor, CompilerType>::collect_phi_web_members(
+    PhiWebMembers &web_members) const {
+    web_members.clear();
+    for (u32 i = 0; i <= liveness_max_value; ++i) {
+        if (i >= val_local_to_web_idx.size()) {
+            break;
+        }
+
+        const u32 web_idx = val_local_to_web_idx[i];
+        if (web_idx == INVALID_WEB_IDX) {
+            continue;
+        }
+        web_members[web_idx].push_back(static_cast<ValLocalIdx>(i));
+    }
+}
+
+template<IRAdaptor Adaptor, typename CompilerType>
+void Analyzer<Adaptor, CompilerType>::collect_value_refs(
+    std::unordered_map<ValLocalIdx, IRValueRef> &value_refs) const {
+    value_refs.clear();
+    value_refs.reserve(liveness_max_value + 1);
+
+    const auto remember_value = [&](const IRValueRef value) {
+        if (adaptor->val_ignore_in_liveness_analysis(value)) {
+            return;
+        }
+        const ValLocalIdx val_idx = adaptor->val_local_idx(value);
+        if (static_cast<u32>(val_idx) <= liveness_max_value) {
+            value_refs.try_emplace(val_idx, value);
+        }
+    };
+
+    for (const IRValueRef arg: adaptor->cur_args()) {
+        remember_value(arg);
+    }
+    for (const IRBlockRef block: block_layout) {
+        for (const IRValueRef phi: adaptor->block_phis(block)) {
+            remember_value(phi);
+        }
+        for (const IRInstRef inst: adaptor->block_insts(block)) {
+            for (const IRValueRef result: adaptor->inst_results(inst)) {
+                remember_value(result);
+            }
+            for (const IRValueRef operand: adaptor->inst_operands(inst)) {
+                remember_value(operand);
+            }
+        }
+    }
+}
+
+template<IRAdaptor Adaptor, typename CompilerType>
+void Analyzer<Adaptor, CompilerType>::print_phi_webs(std::ostream &os) const {
+    PhiWebMembers web_members;
+    collect_phi_web_members(web_members);
+
+    std::unordered_map<ValLocalIdx, IRValueRef> value_refs;
+    collect_value_refs(value_refs);
+
+    util::SmallVector<u32, SMALL_VALUE_NUM> sorted_web_indices;
+    sorted_web_indices.reserve(web_members.size());
+    for (const auto &[web_idx, _]: web_members) {
+        (void) _;
+        sorted_web_indices.push_back(web_idx);
+    }
+    std::sort(sorted_web_indices.begin(), sorted_web_indices.end());
+
+    for (const u32 web_idx: sorted_web_indices) {
+        auto &members = web_members[web_idx];
+        if (members.size() < 2) {
+            continue;
+        }
+
+        std::sort(members.begin(),
+                  members.end(),
+                  [](const ValLocalIdx lhs, const ValLocalIdx rhs) {
+                      return static_cast<u32>(lhs) < static_cast<u32>(rhs);
+                  });
+
+        os << std::format("  web {}: {{ ", web_idx);
+        for (u32 i = 0; i < members.size(); ++i) {
+            if (i != 0) {
+                os << ", ";
+            }
+
+            const ValLocalIdx val_idx = members[i];
+            std::string_view value_name = "<unknown>";
+            if (const auto it = value_refs.find(val_idx); it != value_refs.end()) {
+                value_name = adaptor->value_fmt_ref(it->second);
+            }
+
+            os << std::format("({}, {})", static_cast<u32>(val_idx), value_name);
+        }
+        os << " }\n";
+    }
+}
+
+template<IRAdaptor Adaptor, typename CompilerType>
 typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
     Analyzer<Adaptor, CompilerType>::liveness_maybe(const IRValueRef val) noexcept {
   const ValLocalIdx val_idx = adaptor->val_local_idx(val);
@@ -2013,84 +2120,12 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
 
 
 #ifdef TPDE_LOGGING
-  std::unordered_map<u32, util::SmallVector<ValLocalIdx, 8> > web_members;
-  web_members.reserve(root_to_web_idx.size());
-  for (u32 i = 0; i <= liveness_max_value; ++i) {
-      const u32 web_idx = val_local_to_web_idx[i];
-      if (web_idx == INVALID_WEB_IDX) {
-          continue;
-      }
-      web_members[web_idx].push_back(static_cast<ValLocalIdx>(i));
-  }
-
-  std::unordered_map<ValLocalIdx, IRValueRef> val_idx_to_value_ref;
-  val_idx_to_value_ref.reserve(liveness_max_value + 1);
-  const auto remember_value = [&](const IRValueRef value) {
-      if (adaptor->val_ignore_in_liveness_analysis(value)) {
-          return;
-      }
-      const ValLocalIdx val_idx = adaptor->val_local_idx(value);
-      if (static_cast<u32>(val_idx) <= liveness_max_value) {
-          val_idx_to_value_ref.try_emplace(val_idx, value);
-      }
-  };
-
-  for (const IRValueRef arg: adaptor->cur_args()) {
-      remember_value(arg);
-  }
-  for (const IRBlockRef block: block_layout) {
-      for (const IRValueRef phi: adaptor->block_phis(block)) {
-          remember_value(phi);
-      }
-      for (const IRInstRef inst: adaptor->block_insts(block)) {
-          for (const IRValueRef result: adaptor->inst_results(inst)) {
-              remember_value(result);
-          }
-          for (const IRValueRef operand: adaptor->inst_operands(inst)) {
-              remember_value(operand);
-          }
-      }
-  }
-
-  util::SmallVector<u32, SMALL_VALUE_NUM> sorted_web_indices;
-  sorted_web_indices.reserve(web_members.size());
-  for (const auto &[web_idx, _]: web_members) {
-      (void) _;
-      sorted_web_indices.push_back(web_idx);
-  }
-  std::sort(sorted_web_indices.begin(), sorted_web_indices.end());
-
   TPDE_LOG_TRACE("PHI webs after build:");
-  for (const u32 web_idx: sorted_web_indices) {
-      auto &members = web_members[web_idx];
-      if (members.size() < 2) {
-          continue;
-      }
-      std::sort(members.begin(),
-                members.end(),
-                [](const ValLocalIdx lhs, const ValLocalIdx rhs) {
-                    return static_cast<u32>(lhs) < static_cast<u32>(rhs);
-                });
-
-      std::string web_fmt = "{ ";
-      for (u32 i = 0; i < members.size(); ++i) {
-          if (i != 0) {
-              web_fmt += ", ";
-          }
-
-          const ValLocalIdx val_idx = members[i];
-          std::string value_name = "<unknown>";
-          if (const auto it = val_idx_to_value_ref.find(val_idx);
-              it != val_idx_to_value_ref.end()) {
-              value_name = std::format("{}", adaptor->value_fmt_ref(it->second));
-          }
-
-          web_fmt +=
-                  std::format("({}, {})", static_cast<u32>(val_idx), value_name);
-      }
-      web_fmt += " }";
-
-      TPDE_LOG_TRACE("  web {}: {}", web_idx, web_fmt);
+  std::ostringstream phi_web_dump;
+  print_phi_webs(phi_web_dump);
+  std::istringstream phi_web_lines(phi_web_dump.str());
+  for (std::string line; std::getline(phi_web_lines, line);) {
+    TPDE_LOG_TRACE("{}", line);
   }
 #endif
 
@@ -2404,6 +2439,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
             initial_working_set.insert(working_set.begin(), working_set.end());
         }
     }
+
     // W is the working set. The values in registers
     // keep used registers seperately, since one value can use multiple
     // registers.

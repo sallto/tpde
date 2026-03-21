@@ -1,0 +1,40 @@
+; SPDX-FileCopyrightText: 2025 Contributors to TPDE <https://tpde.org>
+;
+; SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+; RUN: %tpde_test --run-until=analyzer --print-phi-webs %s | FileCheck %s --dump-input always
+
+; CHECK: Phi Webs for simple
+; CHECK-NEXT: web 0: { (0, a), (4, c) }
+; CHECK-NEXT: web 1: { (1, const), (3, b) }
+; CHECK-NEXT: End Phi Webs
+simple(%a) {
+entry:
+  %const =
+  jump ^loop
+loop:
+  %b = phi [^entry, %const], [^loop, %e]
+  %c = phi [^entry, %a], [^loop, %f]
+  %d = %c
+  %e = %b, %d
+  %f = %c
+  jump ^loop, ^ret
+ret:
+  %ret = %b
+  terminate
+}
+
+; CHECK: Phi Webs for singleton
+; CHECK-NEXT: web 0: { (0, a), (4, p) }
+; CHECK-NEXT: End Phi Webs
+singleton(%a) {
+entry:
+  jump ^left, ^right
+left:
+  jump ^merge
+right:
+  jump ^merge
+merge:
+  %p = phi [^left, %a], [^right, %a]
+  ret %p
+}
