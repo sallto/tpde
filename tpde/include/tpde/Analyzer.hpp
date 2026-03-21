@@ -649,7 +649,7 @@ typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
 
         build_loop_tree_and_block_layout(block_rpo, loop_parent, loop_heads);
         dominator_tree.compute(adaptor, block_layout);
-        dominator_tree.print(std::cout, adaptor, block_layout);
+        //dominator_tree.print(std::cout, adaptor, block_layout);
         assert(loop_parent.size() == block_rpo.size());
     }
 
@@ -1765,25 +1765,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       return root;
   };
 
-  const auto web_union = [&](const u32 lhs, const u32 rhs) {
-      if (lhs == rhs || lhs == INVALID_WEB_IDX || rhs == INVALID_WEB_IDX) {
-          return;
-      }
 
-      u32 lhs_root = web_find(lhs, web_find);
-      u32 rhs_root = web_find(rhs, web_find);
-      if (lhs_root == rhs_root) {
-          return;
-      }
-
-      if (web_rank[lhs_root] < web_rank[rhs_root]) {
-          std::swap(lhs_root, rhs_root);
-      }
-      web_parent[rhs_root] = lhs_root;
-      if (web_rank[lhs_root] == web_rank[rhs_root]) {
-          ++web_rank[lhs_root];
-      }
-  };
 
   const auto precise_block_interval =
           [&](const u32 block_idx,
@@ -1825,7 +1807,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
               }
           }
           if (interval_first == INF) {
-              return false;
+              return true;
           }
       } else {
           // live-in values occupy the register from block entry
@@ -1864,9 +1846,9 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
           return false;
       }
 
-      const u32 block_begin = std::max(static_cast<u32>(lhs_liveness.first),
+      const u32 block_begin = std::min(static_cast<u32>(lhs_liveness.first),
                                        static_cast<u32>(rhs_liveness.first));
-      const u32 block_end = std::min(static_cast<u32>(lhs_liveness.last),
+      const u32 block_end = std::max(static_cast<u32>(lhs_liveness.last),
                                      static_cast<u32>(rhs_liveness.last));
 
       for (u32 block_idx = block_begin; block_idx <= block_end; ++block_idx) {
@@ -1884,6 +1866,29 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       }
 
       return false;
+  };
+  const auto web_union = [&](const u32 lhs, const u32 rhs) {
+      if (lhs == rhs || lhs == INVALID_WEB_IDX || rhs == INVALID_WEB_IDX) {
+          return;
+      }
+
+      u32 lhs_root = web_find(lhs, web_find);
+      u32 rhs_root = web_find(rhs, web_find);
+      if (lhs_root == rhs_root) {
+          return;
+      }
+
+      if (live_ranges_overlap(ValLocalIdx(lhs_root), ValLocalIdx(rhs_root))) {
+          return;
+      }
+
+      if (web_rank[lhs_root] < web_rank[rhs_root]) {
+          std::swap(lhs_root, rhs_root);
+      }
+      web_parent[rhs_root] = lhs_root;
+      if (web_rank[lhs_root] == web_rank[rhs_root]) {
+          ++web_rank[lhs_root];
+      }
   };
 
   for (const IRBlockRef block: block_layout) {
@@ -1960,6 +1965,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       val_local_to_web_idx[i] = it->second;
   }
 
+
 #ifdef TPDE_LOGGING
   std::unordered_map<u32, util::SmallVector<ValLocalIdx, 8> > web_members;
   web_members.reserve(root_to_web_idx.size());
@@ -2011,6 +2017,9 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
   TPDE_LOG_TRACE("PHI webs after build:");
   for (const u32 web_idx: sorted_web_indices) {
       auto &members = web_members[web_idx];
+      if (members.size() < 2) {
+          continue;
+      }
       std::sort(members.begin(),
                 members.end(),
                 [](const ValLocalIdx lhs, const ValLocalIdx rhs) {
@@ -2038,6 +2047,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       TPDE_LOG_TRACE("  web {}: {}", web_idx, web_fmt);
   }
 #endif
+
 
   // todo(salto): multi-part values?
   // todo(salto): ordered set for W

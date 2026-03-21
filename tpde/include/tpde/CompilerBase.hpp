@@ -172,6 +172,10 @@ struct CompilerBase {
     /// Free-Lists for all other sizes
     // TODO(ts): think about which data structure we want here
     std::unordered_map<u32, std::vector<i32>> dynamic_free_lists{};
+    /// Reference counts for spill slots that are shared between assignments.
+    std::unordered_map<i32, u32> spill_slot_ref_counts{};
+    /// Size of managed spill slots, keyed by frame offset.
+    std::unordered_map<i32, u32> spill_slot_sizes{};
   } stack = {};
 
   BlockIndex cur_block_idx;
@@ -837,7 +841,8 @@ public:
   void reload_to_reg(AsmReg dst, AssignmentPartRef ap);
 
   /// Allocate a stack slot for an assignment.
-  void allocate_spill_slot(AssignmentPartRef ap);
+  void allocate_spill_slot(AssignmentPartRef ap,
+                           ValLocalIdx local_idx = INVALID_VAL_LOCAL_IDX);
 
   /// Ensure the value is spilled in its stack slot (except variable refs).
   void spill(AssignmentPartRef ap);
@@ -1037,9 +1042,8 @@ public:
           break;
         }
         case MoveStatus::MOVING: {
-          auto tmp =
-              derived()->select_reg(register_file.reg_bank(moves[j].src),
-                                    temp_exclusion);
+          auto tmp = derived()->select_reg(register_file.reg_bank(moves[j].src),
+                                           temp_exclusion);
           if (tmp.invalid() || ((temp_exclusion & (1ull << tmp.id())) != 0))
           [[unlikely]] {
             TPDE_FATAL("failed to select temporary register for parallel move "
@@ -1268,6 +1272,12 @@ public:
       if (this->phi_regs[target].contains(local_idx)) {
         return;
       }
+      if (ap.is_phi() && ap.assignment()->frame_off != 0) {
+        auto it = stack.spill_slot_ref_counts.find(ap.assignment()->frame_off);
+        if (it != stack.spill_slot_ref_counts.end() && it->second > 1) {
+          return;
+        }
+      }
 
 
       allocate_spill_slot(ap);
@@ -1341,8 +1351,9 @@ public:
           AssignmentPartRef ap{va, i};
           Reg target_reg = state.registers[i];
           if (!target_reg.valid()) {
-            if (ap.stack_valid())
+            if (ap.stack_valid()) {
               continue;
+            }
             spill_assignment_if_needed(state.val_local_idx, i, ap);
             continue;
           }
@@ -1524,8 +1535,10 @@ public:
                 ap.bank(), target_state_regs | unallocatable_regs | phi_regs);
             }
             if (!target_reg.valid()) {
-              auto candidates = freed_regs & ~(unallocatable_regs | phi_regs | target_state_regs) & register_file.
-                                bank_regs(ap.bank());
+              auto candidates =
+                  freed_regs &
+                  ~(unallocatable_regs | phi_regs | target_state_regs) &
+                  register_file.bank_regs(ap.bank());
               if (candidates) {
                 target_reg = Reg{util::cnt_tz(candidates)};
                 freed_regs &= ~((1ull << target_reg.id()));
@@ -1558,7 +1571,9 @@ public:
           util::SmallVector<ValueState> &saved_states = block_regs[target];
           for (auto &saved: saved_states) {
             for (Reg &reg: saved.registers) {
-              if (!reg.valid()) continue;
+              if (!reg.valid()) {
+                continue;
+              }
               assert(!regs.contains(reg.id()));
               regs.insert(reg.id());
             }
@@ -1641,9 +1656,8 @@ public:
 
       const ValuePartRef &incoming_part = deferred.incoming_part.value();
       if (deferred.staged_stack_off.has_value()) {
-        derived()->load_from_stack(dst,
-                                   deferred.staged_stack_off.value(),
-                                   deferred.size);
+        derived()->load_from_stack(
+          dst, deferred.staged_stack_off.value(), deferred.size);
         return true;
       }
 
@@ -1816,7 +1830,8 @@ public:
     }
     for (const auto &deferred: deferred_phi_stack_materializations) {
       // need to do this now since one of the moves could need our temp_reg.
-      const Reg tmp_reg = branch_scratch_reg(register_file.reg_bank(deferred.temp_reg));
+      const Reg tmp_reg =
+          branch_scratch_reg(register_file.reg_bank(deferred.temp_reg));
       if (!tmp_reg.valid()) [[unlikely]] {
         TPDE_FATAL("missing deferred temporary register for phi spill");
       }
@@ -1993,7 +2008,8 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     auto blocked_arg_regs = compiler.register_file.allocatable & abi_arg_regs;
     // compiler.register_file.allocatable &= ~abi_arg_regs;
     if (!vp.cur_reg_unlocked().valid()) {
-      auto reg = compiler.register_file.find_first_free_excluding(vp.bank(), source_regs);
+      auto reg = compiler.register_file.find_first_free_excluding(vp.bank(),
+                                                                  source_regs);
       if (!reg.valid()) {
         flush_pending_args();
       } else {
@@ -2075,25 +2091,31 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
                 compiler.evict_reg(pending_arg.target_reg);
               }
               if (pending_arg.part_idx == vp.part()) {
+                pending_args.push_back(
+                  PendingArg{
+                    .kind = PendingArg::Kind::REG_TO_REG,
+                    .int_ext = pending_arg.int_ext,
+                    .size = pending_arg.size,
+                    .target_reg = pending_arg.target_reg,
+                    .source_reg = cca.reg,
+
+                    .local_idx = pending_arg.local_idx,
+                    .part_idx = pending_arg.part_idx
+
+                  });
+              } else {
+                auto reg = compiler.select_reg(
+                  compiler.register_file.reg_bank(pending_arg.target_reg),
+                  source_regs | arg_regs);
+                AssignmentPartRef other_ap{
+                  compiler.val_assignment(pending_arg.local_idx),
+                  pending_arg.part_idx
+                };
+                compiler.reload_to_reg(reg, other_ap);
                 pending_args.push_back(PendingArg{
                   .kind = PendingArg::Kind::REG_TO_REG,
                   .int_ext = pending_arg.int_ext,
                   .size = pending_arg.size,
-                  .target_reg = pending_arg.target_reg,
-                  .source_reg = cca.reg,
-
-                  .local_idx = pending_arg.local_idx,
-                  .part_idx = pending_arg.part_idx
-
-                });
-              } else {
-                auto reg = compiler.select_reg(compiler.register_file.reg_bank(pending_arg.target_reg),
-                                               source_regs | arg_regs);
-                AssignmentPartRef other_ap{compiler.val_assignment(pending_arg.local_idx), pending_arg.part_idx};
-                compiler.reload_to_reg(reg, other_ap);
-                pending_args.push_back(PendingArg{
-                  .kind = PendingArg::Kind::REG_TO_REG,
-                  .int_ext = pending_arg.int_ext, .size = pending_arg.size,
                   .target_reg = pending_arg.target_reg,
                   .source_reg = reg,
 
@@ -2160,9 +2182,9 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     CBDerived>::add_arg(const CallArg &arg, u32 part_count) {
   ++arg_value_count;
   if (!immediate_emit_mode && arg_value_count > 8) {
-    //immediate_emit_mode = true;
-    //auto spilled = compiler.spill_caller_saved_before_call(arg_regs);
-    //flush_pending_args();
+    // immediate_emit_mode = true;
+    // auto spilled = compiler.spill_caller_saved_before_call(arg_regs);
+    // flush_pending_args();
   }
 
   ValueRef vr = compiler.val_ref(arg.value);
@@ -2171,9 +2193,9 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     assert(part_count == 1);
     add_arg(vr.part(0),
             CCAssignment{
-                .byval = true,
-                .align = arg.byval_align,
-                .size = arg.byval_size,
+              .byval = true,
+              .align = arg.byval_align,
+              .size = arg.byval_size,
             });
     return;
   }
@@ -2595,6 +2617,8 @@ void CompilerBase<Adaptor, Derived, Config>::reset() {
     e.clear();
   }
   stack.dynamic_free_lists.clear();
+  stack.spill_slot_ref_counts.clear();
+  stack.spill_slot_sizes.clear();
 
   assembler.reset();
   func_syms.clear();
@@ -2661,7 +2685,8 @@ void CompilerBase<Adaptor, Derived, Config>::init_assignment(
 
       // TODO: if the register is used, we can free it most of the time, but not
       // always, e.g. for PHI nodes. Detect this case and free_reg otherwise.
-      if (false && !reg.invalid() && !(used_phi_regs_global & (1ull << reg.id())) &&
+      if (false && !reg.invalid() &&
+          !(used_phi_regs_global & (1ull << reg.id())) &&
           !register_file.is_used(reg)) {
         TPDE_LOG_TRACE("Assigning fixed assignment to reg {} for value {}",
                        reg.id(),
@@ -2740,13 +2765,30 @@ void CompilerBase<Adaptor, Derived, Config>::free_assignment(
   bool has_stack = Config::FRAME_INDEXING_NEGATIVE ? assignment->frame_off < 0
                                                    : assignment->frame_off != 0;
   if (!is_var_ref && has_stack) {
-    free_stack_slot(assignment->frame_off, assignment->size());
+    const i32 frame_off = assignment->frame_off;
+    const u32 size = assignment->size();
+    if (auto ref_it = stack.spill_slot_ref_counts.find(frame_off);
+      ref_it != stack.spill_slot_ref_counts.end()) {
+      if (auto size_it = stack.spill_slot_sizes.find(frame_off);
+        size_it != stack.spill_slot_sizes.end()) {
+        assert(size_it->second == size && "managed spill slot size mismatch");
+      }
+
+      assert(ref_it->second > 0 && "managed spill slot underflow");
+      if (--ref_it->second == 0) {
+        stack.spill_slot_ref_counts.erase(ref_it);
+        stack.spill_slot_sizes.erase(frame_off);
+        free_stack_slot(frame_off, size);
+      }
+    } else {
+      free_stack_slot(frame_off, size);
+    }
   }
 
   assignments.allocator.deallocate(assignment);
 }
 
-template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 [[gnu::noinline]] void
     CompilerBase<Adaptor, Derived, Config>::release_assignment(
         ValLocalIdx local_idx, ValueAssignment *assignment) {
@@ -3100,10 +3142,11 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
 }
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
-Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(RegBank bank,
-                                                             u64 exclusion_mask) {
+Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(
+  RegBank bank, u64 exclusion_mask) {
   TPDE_LOG_DBG("select_reg_evict for bank {}", bank.id());
-  auto candidates = register_file.used & register_file.bank_regs(bank) & ~exclusion_mask;
+  auto candidates =
+      register_file.used & register_file.bank_regs(bank) & ~exclusion_mask;
 
   Reg candidate = Reg::make_invalid();
   u32 max_score = 0;
@@ -3139,7 +3182,8 @@ Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(RegBank bank,
     }
 
 
-    auto [c,n] = analyzer.get_current_and_next_use(pli, local_idx, cur_instr_idx);
+    auto [c, n] =
+        analyzer.get_current_and_next_use(pli, local_idx, cur_instr_idx);
     if (c == u32(-1)) {
       candidate = reg;
       break;
@@ -3242,16 +3286,67 @@ void CompilerBase<Adaptor, Derived, Config>::reload_to_reg(
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::allocate_spill_slot(
-    AssignmentPartRef ap) {
+  AssignmentPartRef ap, ValLocalIdx local_idx) {
   assert(!ap.variable_ref() && "cannot allocate spill slot for variable ref");
   if (ap.assignment()->frame_off == 0) {
     assert(!ap.stack_valid() && "stack-valid set without spill slot");
-    ap.assignment()->frame_off = allocate_stack_slot(ap.assignment()->size());
+
+    bool reused_web_slot = false;
+    if (local_idx != INVALID_VAL_LOCAL_IDX &&
+        static_cast<u32>(local_idx) < analyzer.val_local_to_web_idx.size()) {
+      const u32 web_idx =
+          analyzer.val_local_to_web_idx[static_cast<u32>(local_idx)];
+      if (web_idx != Analyzer::INVALID_WEB_IDX) {
+        const u32 num_values =
+            static_cast<u32>(std::min(assignments.value_ptrs.size(),
+                                      analyzer.val_local_to_web_idx.size()));
+        for (u32 candidate_u32 = 0; candidate_u32 < num_values;
+             ++candidate_u32) {
+          if (candidate_u32 == static_cast<u32>(local_idx) ||
+              analyzer.val_local_to_web_idx[candidate_u32] != web_idx) {
+            continue;
+          }
+
+          ValueAssignment *candidate = assignments.value_ptrs[candidate_u32];
+          if (!candidate || candidate->variable_ref ||
+              candidate->size() != ap.assignment()->size()) {
+            continue;
+          }
+
+          const bool candidate_has_stack = Config::FRAME_INDEXING_NEGATIVE
+                                             ? candidate->frame_off < 0
+                                             : candidate->frame_off != 0;
+          if (!candidate_has_stack) {
+            continue;
+          }
+
+          const i32 candidate_slot = candidate->frame_off;
+          ap.assignment()->frame_off = candidate_slot;
+
+          if (auto ref_it = stack.spill_slot_ref_counts.find(candidate_slot);
+            ref_it != stack.spill_slot_ref_counts.end()) {
+            ++ref_it->second;
+          } else {
+            stack.spill_slot_ref_counts.insert_or_assign(candidate_slot, 2);
+            stack.spill_slot_sizes.insert_or_assign(candidate_slot,
+                                                    candidate->size());
+          }
+
+          reused_web_slot = true;
+          break;
+        }
+      }
+    }
+
+    if (!reused_web_slot) {
+      ap.assignment()->frame_off = allocate_stack_slot(ap.assignment()->size());
+    }
+
     assert(ap.assignment()->frame_off != 0);
   }
 }
 
-template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
+template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 void CompilerBase<Adaptor, Derived, Config>::spill(AssignmentPartRef ap) {
   assert(may_change_value_state());
   if (!ap.stack_valid() && !ap.variable_ref()) {
@@ -3260,7 +3355,8 @@ void CompilerBase<Adaptor, Derived, Config>::spill(AssignmentPartRef ap) {
     // argument stack slot will remain valid
     derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
     auto val_idx = register_file.reg_local_idx(ap.get_reg());
-    if (val_idx != INVALID_VAL_LOCAL_IDX && ap.part_size() == 1 && ap.assignment()->part_count == 1) {
+    if (false && val_idx != INVALID_VAL_LOCAL_IDX && ap.part_size() == 1 &&
+        ap.assignment()->part_count == 1) {
       block_stack_valid_single_part_values[cur_block_idx].insert(val_idx);
     }
     ap.set_stack_valid();
@@ -3967,8 +4063,7 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
     deferred.incoming_part.emplace(std::move(incoming_part));
     deferred_phi_reg_materializations.push_back(std::move(deferred));
   };
-  const auto defer_reg_spill =
-      [&](Reg reg, i32 stack_off, u32 size) {
+  const auto defer_reg_spill = [&](Reg reg, i32 stack_off, u32 size) {
     DeferredPhiRegSpill deferred{};
     deferred.reg = reg;
     deferred.stack_off = stack_off;
@@ -4034,16 +4129,15 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
           std::optional<DeferredIncomingOwner> &incoming_ref_owner,
           u32 part_idx,
           ValuePartRef &incoming_part,
-          Reg incoming_reg) {
+          Reg incoming_reg,
+          ValLocalIdx phi_local_idx) {
     if (!phi_ap.stack_valid()) {
-      allocate_spill_slot(phi_ap);
+      allocate_spill_slot(phi_ap, phi_local_idx);
     }
 
     if (incoming_reg.valid()) {
       mark_reg_unallocatable(incoming_reg);
-      defer_reg_spill(incoming_reg,
-                      phi_ap.frame_off(),
-                      phi_ap.part_size());
+      defer_reg_spill(incoming_reg, phi_ap.frame_off(), phi_ap.part_size());
     } else {
       Reg tmp_reg = branch_scratch_reg(phi_ap.bank());
 
@@ -4116,6 +4210,10 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
                  .incoming_ref.value()
                  .part(part))
             : incoming_ref.part(part);
+      if (incoming_part.has_assignment() && incoming_part.local_idx() == phi_local_idx && incoming_part.part() ==
+          part) {
+        continue;
+      }
       Reg incoming_reg = incoming_part.cur_reg_unlocked();
       Reg target_reg = Reg::make_invalid();
       if (target_regs.size() > part) {
@@ -4153,7 +4251,8 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
                                 incoming_ref_owner,
                                 part,
                                 incoming_part,
-                                incoming_reg);
+                                incoming_reg,
+                                phi_local_idx);
         continue;
       }
       assert((derived()->phi_nonallocatable_mask() &
@@ -4243,7 +4342,8 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
                                 incoming_ref_owner,
                                 part,
                                 incoming_part,
-                                incoming_reg);
+                                incoming_reg,
+                                phi_local_idx);
         continue;
       }
 
@@ -4262,9 +4362,8 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
       } else {
         selected = register_file.find_first_free_excluding(bank, exclusion);
         if (selected.invalid()) {
-          auto reusable_candidates = reusable_freed_regs &
-                                     register_file.bank_regs(bank) &
-                                     ~exclusion;
+          auto reusable_candidates =
+              reusable_freed_regs & register_file.bank_regs(bank) & ~exclusion;
           if (reusable_candidates) {
             selected = Reg{util::cnt_tz(reusable_candidates)};
             reusable_freed_regs &= ~(1ull << selected.id());
@@ -4281,7 +4380,8 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
                                 incoming_ref_owner,
                                 part,
                                 incoming_part,
-                                incoming_reg);
+                                incoming_reg,
+                                phi_local_idx);
         continue;
       }
 
@@ -4546,6 +4646,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
     e.clear();
   }
   stack.dynamic_free_lists.clear();
+  stack.spill_slot_ref_counts.clear();
+  stack.spill_slot_sizes.clear();
   // TODO: sort out the inconsistency about adaptor vs. compiler methods.
   stack.has_dynamic_alloca = this->adaptor->cur_has_dynamic_alloca();
   stack.is_leaf_function = !derived()->cur_func_may_emit_calls();
@@ -4632,7 +4734,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
       if (!analyzer.spilled_values.is_set(static_cast<u32>(arg_val_idx))) {
         continue;
       }
-      for (u32 part_idx = 0; part_idx < adaptor->val_parts(arg).count(); ++part_idx) {
+      for (u32 part_idx = 0; part_idx < adaptor->val_parts(arg).count();
+           ++part_idx) {
         AssignmentPartRef ap{val_assignment(arg_val_idx), part_idx};
         spill(ap);
       }
@@ -4642,7 +4745,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
   // After gen_func_prolog_and_args, explicitly capture all function arguments
   // to ensure they appear first in the verification IR according to calling
   // convention Iterate through arguments and capture their register assignments
-  for (const IRValueRef arg : adaptor->cur_args()) {
+  for (const IRValueRef arg: adaptor->cur_args()) {
     ValLocalIdx arg_idx = adaptor->val_local_idx(arg);
     if (arg_idx == INVALID_VAL_LOCAL_IDX) {
       continue;
@@ -4831,7 +4934,7 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
         }
         if (!ap.stack_valid()) {
           if (!ap.variable_ref()) {
-            allocate_spill_slot(ap);
+            allocate_spill_slot(ap, phi_idx);
           }
           ap.set_stack_valid();
         }
@@ -4849,14 +4952,17 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
   }
   auto spilled_values_it = block_spilled_values.find(cur_block_idx);
 
-  if (spilled_values_it == block_spilled_values.end())
+  if (spilled_values_it == block_spilled_values.end()) {
     return dirtied_values;
+  }
   for (ValLocalIdx idx: spilled_values_it->second) {
-    if (idx == INVALID_VAL_LOCAL_IDX)
+    if (idx == INVALID_VAL_LOCAL_IDX) {
       continue;
+    }
     ValueAssignment *va = val_assignment(idx);
-    if (!va)
+    if (!va) {
       continue;
+    }
     for (u32 i = 0; i < va->part_count; i++) {
       AssignmentPartRef ap{va, i};
       ap.set_stack_valid();
@@ -4917,9 +5023,11 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
         if (i == 0 && assignment->part_count == 1 &&
             !block_phi_local_idxs.contains(state.val_local_idx) &&
             idom_stack_valid_single_part_values &&
-            idom_stack_valid_single_part_values->contains(state.val_local_idx) && !(ap.is_phi())) {
+            idom_stack_valid_single_part_values->contains(
+              state.val_local_idx)) {
           mark_modified = false;
-          TPDE_LOG_ERR("Skipping modification for {}", static_cast<u32>(state.val_local_idx));
+          TPDE_LOG_ERR("Skipping modification for {}",
+                       static_cast<u32>(state.val_local_idx));
         }
         if (mark_modified) {
           ap.set_modified(true);
@@ -4963,9 +5071,8 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
   stack_valid_single_part_values.clear();
   auto idom = analyzer.dominator_tree.get_idom(cur_block_idx);
   if (idom != cur_block_idx) {
-    auto &idom_single_part_values =
-        block_stack_valid_single_part_values[idom];
-    //todo(salto): perforamnce
+    auto &idom_single_part_values = block_stack_valid_single_part_values[idom];
+    // todo(salto): perforamnce
     for (auto idx: idom_single_part_values) {
       stack_valid_single_part_values.insert(idx);
     }
