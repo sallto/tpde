@@ -1744,8 +1744,10 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
 
   util::SmallVector<u32, SMALL_VALUE_NUM> web_parent;
   util::SmallVector<u8, SMALL_VALUE_NUM> web_rank;
+  util::SmallVector<util::SmallVector<u32, 2>, SMALL_VALUE_NUM> web_phi_blocks;
   web_parent.resize(liveness_max_value + 1);
   web_rank.resize(liveness_max_value + 1, 0u);
+  web_phi_blocks.resize(liveness_max_value + 1);
 
   for (u32 i = 0; i <= liveness_max_value; ++i) {
       if (i < liveness.size() && liveness[i].epoch == liveness_epoch) {
@@ -1763,6 +1765,46 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       const u32 root = self(parent, self);
       web_parent[idx] = root;
       return root;
+  };
+
+  for (u32 block_idx_u32 = 0; block_idx_u32 < block_layout.size(); ++block_idx_u32) {
+      const IRBlockRef block = block_layout[block_idx_u32];
+      for (const IRValueRef phi : adaptor->block_phis(block)) {
+          if (adaptor->val_ignore_in_liveness_analysis(phi)) {
+              continue;
+          }
+
+          const u32 phi_idx_u32 = static_cast<u32>(adaptor->val_local_idx(phi));
+          if (phi_idx_u32 >= web_phi_blocks.size() ||
+              web_parent[phi_idx_u32] == INVALID_WEB_IDX) {
+              continue;
+          }
+
+          web_phi_blocks[phi_idx_u32].push_back(block_idx_u32);
+      }
+  }
+
+  const auto roots_share_phi_def_block =
+          [&](const u32 lhs_root, const u32 rhs_root) -> bool {
+      const auto &lhs_blocks = web_phi_blocks[lhs_root];
+      const auto &rhs_blocks = web_phi_blocks[rhs_root];
+      for (const u32 rhs_block_idx : rhs_blocks) {
+          if (std::ranges::find(lhs_blocks, rhs_block_idx) != lhs_blocks.end()) {
+              return true;
+          }
+      }
+      return false;
+  };
+
+  const auto merge_phi_blocks = [&](const u32 dst_root, const u32 src_root) {
+      auto &dst_blocks = web_phi_blocks[dst_root];
+      auto &src_blocks = web_phi_blocks[src_root];
+      for (const u32 src_block_idx : src_blocks) {
+          if (std::ranges::find(dst_blocks, src_block_idx) == dst_blocks.end()) {
+              dst_blocks.push_back(src_block_idx);
+          }
+      }
+      src_blocks.clear();
   };
 
 
@@ -1878,6 +1920,10 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
           return;
       }
 
+      if (roots_share_phi_def_block(lhs_root, rhs_root)) {
+          return;
+      }
+
       if (live_ranges_overlap(ValLocalIdx(lhs_root), ValLocalIdx(rhs_root))) {
           return;
       }
@@ -1886,6 +1932,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
           std::swap(lhs_root, rhs_root);
       }
       web_parent[rhs_root] = lhs_root;
+      merge_phi_blocks(lhs_root, rhs_root);
       if (web_rank[lhs_root] == web_rank[rhs_root]) {
           ++web_rank[lhs_root];
       }
