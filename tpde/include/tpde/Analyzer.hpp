@@ -1769,7 +1769,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
 
   for (u32 block_idx_u32 = 0; block_idx_u32 < block_layout.size(); ++block_idx_u32) {
       const IRBlockRef block = block_layout[block_idx_u32];
-      for (const IRValueRef phi : adaptor->block_phis(block)) {
+      for (const IRValueRef phi: adaptor->block_phis(block)) {
           if (adaptor->val_ignore_in_liveness_analysis(phi)) {
               continue;
           }
@@ -1788,7 +1788,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
           [&](const u32 lhs_root, const u32 rhs_root) -> bool {
       const auto &lhs_blocks = web_phi_blocks[lhs_root];
       const auto &rhs_blocks = web_phi_blocks[rhs_root];
-      for (const u32 rhs_block_idx : rhs_blocks) {
+      for (const u32 rhs_block_idx: rhs_blocks) {
           if (std::ranges::find(lhs_blocks, rhs_block_idx) != lhs_blocks.end()) {
               return true;
           }
@@ -1799,14 +1799,13 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
   const auto merge_phi_blocks = [&](const u32 dst_root, const u32 src_root) {
       auto &dst_blocks = web_phi_blocks[dst_root];
       auto &src_blocks = web_phi_blocks[src_root];
-      for (const u32 src_block_idx : src_blocks) {
+      for (const u32 src_block_idx: src_blocks) {
           if (std::ranges::find(dst_blocks, src_block_idx) == dst_blocks.end()) {
               dst_blocks.push_back(src_block_idx);
           }
       }
       src_blocks.clear();
   };
-
 
 
   const auto precise_block_interval =
