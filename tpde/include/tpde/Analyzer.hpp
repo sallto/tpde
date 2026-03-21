@@ -2125,7 +2125,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
   print_phi_webs(phi_web_dump);
   std::istringstream phi_web_lines(phi_web_dump.str());
   for (std::string line; std::getline(phi_web_lines, line);) {
-    TPDE_LOG_TRACE("{}", line);
+      TPDE_LOG_TRACE("{}", line);
   }
 #endif
 

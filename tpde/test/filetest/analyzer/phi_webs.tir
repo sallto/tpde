@@ -38,3 +38,50 @@ merge:
   %p = phi [^left, %a], [^right, %a]
   ret %p
 }
+
+; CHECK: Phi Webs for overlap
+; CHECK-NEXT: End Phi Webs
+overlap(%a) {
+entry:
+  jump ^left, ^right
+left:
+  jump ^merge
+right:
+  jump ^merge
+merge:
+  %p = phi [^left, %a], [^right, %a]
+  %use = %a, %p
+  ret %use
+}
+
+; CHECK: Phi Webs for live_overlap_chain
+; CHECK-NEXT: End Phi Webs
+live_overlap_chain(%a) {
+entry:
+  %init =
+  jump ^loop
+loop:
+  %p = phi [^entry, %a], [^loop, %next]
+  %carry = %a, %p
+  %next = %p
+  jump ^loop, ^ret
+ret:
+  ret %carry
+}
+
+; CHECK: Phi Webs for same_block_phi
+; CHECK-NEXT: web 0: { (0, a), (1, b), (5, p1) }
+; CHECK-NEXT: End Phi Webs
+same_block_phi(%a, %b) {
+entry:
+  jump ^left, ^right
+left:
+  jump ^merge
+right:
+  jump ^merge
+merge:
+  %p1 = phi [^left, %a], [^right, %b]
+  %p2 = phi [^left, %a], [^right, %b]
+  %r = %p1, %p2
+  ret %r
+}
