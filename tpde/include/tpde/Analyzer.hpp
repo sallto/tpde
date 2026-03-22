@@ -756,7 +756,7 @@ typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
 
         build_loop_tree_and_block_layout(block_rpo, loop_parent, loop_heads);
         dominator_tree.compute(adaptor, block_layout);
-        //dominator_tree.print(std::cout, adaptor, block_layout);
+        dominator_tree.print(std::cerr, adaptor, block_layout);
         assert(loop_parent.size() == block_rpo.size());
     }
 

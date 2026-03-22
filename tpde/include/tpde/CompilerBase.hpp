@@ -4212,7 +4212,7 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
             : incoming_ref.part(part);
       if (incoming_part.has_assignment() && incoming_part.local_idx() == phi_local_idx && incoming_part.part() ==
           part) {
-        continue;
+        //continue;
       }
       Reg incoming_reg = incoming_part.cur_reg_unlocked();
       Reg target_reg = Reg::make_invalid();

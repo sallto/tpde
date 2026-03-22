@@ -85,3 +85,16 @@ merge:
   %r = %p1, %p2
   ret %r
 }
+
+same_block_phi_2(%a, %b) {
+entry:
+  jump ^left, ^right
+left:
+  jump ^merge
+right:
+  jump ^merge
+merge:
+  %p1 = phi [^left, %a], [^right, %b]
+  %p2 = phi [^left, %a], [^right, %b]
+  terminate
+}
