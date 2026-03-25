@@ -1873,11 +1873,11 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
             return idx;
         }
         const u32 root = self(parent, self);
-      web_parent[idx] = root;
-      return root;
-  };
+        web_parent[idx] = root;
+        return root;
+    };
 
-  for (u32 block_idx_u32 = 0; block_idx_u32 < block_layout.size(); ++block_idx_u32) {
+    for (u32 block_idx_u32 = 0; block_idx_u32 < block_layout.size(); ++block_idx_u32) {
       const IRBlockRef block = block_layout[block_idx_u32];
       for (const IRValueRef phi: adaptor->block_phis(block)) {
           if (adaptor->val_ignore_in_liveness_analysis(phi)) {
