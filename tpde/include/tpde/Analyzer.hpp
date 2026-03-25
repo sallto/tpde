@@ -291,6 +291,8 @@ namespace tpde {
 
         // TODO(ts): move all struct definitions to the top?
         struct LivenessInfo {
+            /// Block that owns the value definition.
+            BlockIndex definition_block;
             // [first, last]
             BlockIndex first, last;
             u32 ref_count;
@@ -756,7 +758,7 @@ typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
 
         build_loop_tree_and_block_layout(block_rpo, loop_parent, loop_heads);
         dominator_tree.compute(adaptor, block_layout);
-        dominator_tree.print(std::cerr, adaptor, block_layout);
+        //dominator_tree.print(std::cerr, adaptor, block_layout);
         assert(loop_parent.size() == block_rpo.size());
     }
 
@@ -1827,49 +1829,50 @@ std::pair<u32, u32> Analyzer<Adaptor, CompilerType>::get_current_and_next_use(
 
 template <IRAdaptor Adaptor, typename CompilerType>
 void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
-  // Based on "Register Spilling and Live-Range Splitting for
-  // SSA-Form Programs" by Hack et al. 2008
-  // Simplified since we don't store reload or spill positions.
-  TPDE_LOG_TRACE("Starting Spill Analysis");
+    print_precise_liveness(std::cout);
+    // Based on "Register Spilling and Live-Range Splitting for
+    // SSA-Form Programs" by Hack et al. 2008
+    // Simplified since we don't store reload or spill positions.
+    TPDE_LOG_TRACE("Starting Spill Analysis");
 
-  // todo(salto): realistically basically no values will have parts from  2
-  // different banks.
-  //  so optimize for this case.
+    // todo(salto): realistically basically no values will have parts from  2
+    // different banks.
+    //  so optimize for this case.
 
-  // Ensure spilled_values is sized appropriately
-  // todo(salto): fix
-  spilled_values.resize(liveness_max_value + 1);
-  spilled_values.zero();
+    // Ensure spilled_values is sized appropriately
+    // todo(salto): fix
+    spilled_values.resize(liveness_max_value + 1);
+    spilled_values.zero();
 
-  // Build simple PHI coalescing webs using union-find.
-  // We only merge single-part PHIs with single-part incoming values that are
-  // compatible and non-overlapping.
-  val_local_to_web_idx.resize(liveness_max_value + 1);
-  std::fill(val_local_to_web_idx.begin(),
-            val_local_to_web_idx.end(),
-            INVALID_WEB_IDX);
+    // Build simple PHI coalescing webs using union-find.
+    // We only merge single-part PHIs with single-part incoming values that are
+    // compatible and non-overlapping.
+    val_local_to_web_idx.resize(liveness_max_value + 1);
+    std::fill(val_local_to_web_idx.begin(),
+              val_local_to_web_idx.end(),
+              INVALID_WEB_IDX);
 
-  util::SmallVector<u32, SMALL_VALUE_NUM> web_parent;
-  util::SmallVector<u8, SMALL_VALUE_NUM> web_rank;
-  util::SmallVector<util::SmallVector<u32, 2>, SMALL_VALUE_NUM> web_phi_blocks;
-  web_parent.resize(liveness_max_value + 1);
-  web_rank.resize(liveness_max_value + 1, 0u);
-  web_phi_blocks.resize(liveness_max_value + 1);
+    util::SmallVector<u32, SMALL_VALUE_NUM> web_parent;
+    util::SmallVector<u8, SMALL_VALUE_NUM> web_rank;
+    util::SmallVector<util::SmallVector<u32, 2>, SMALL_VALUE_NUM> web_phi_blocks;
+    web_parent.resize(liveness_max_value + 1);
+    web_rank.resize(liveness_max_value + 1, 0u);
+    web_phi_blocks.resize(liveness_max_value + 1);
 
-  for (u32 i = 0; i <= liveness_max_value; ++i) {
-      if (i < liveness.size() && liveness[i].epoch == liveness_epoch) {
-          web_parent[i] = i;
-      } else {
-          web_parent[i] = INVALID_WEB_IDX;
-      }
-  }
+    for (u32 i = 0; i <= liveness_max_value; ++i) {
+        if (i < liveness.size() && liveness[i].epoch == liveness_epoch) {
+            web_parent[i] = i;
+        } else {
+            web_parent[i] = INVALID_WEB_IDX;
+        }
+    }
 
-  const auto web_find = [&](u32 idx, const auto &self) -> u32 {
-      const u32 parent = web_parent[idx];
-      if (parent == idx) {
-          return idx;
-      }
-      const u32 root = self(parent, self);
+    const auto web_find = [&](u32 idx, const auto &self) -> u32 {
+        const u32 parent = web_parent[idx];
+        if (parent == idx) {
+            return idx;
+        }
+        const u32 root = self(parent, self);
       web_parent[idx] = root;
       return root;
   };
@@ -2032,6 +2035,17 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
 
       if (live_ranges_overlap(ValLocalIdx(lhs_root), ValLocalIdx(rhs_root))) {
           return;
+      }
+      // todo(salto): can be done in linear time see boissout
+      for (const auto lhs_idx: web_phi_blocks[lhs_root]) {
+          for (const auto rhs_idx: web_phi_blocks[rhs_root]) {
+              if (lhs_idx == rhs_idx) {
+                  continue;
+              }
+              if (live_ranges_overlap(ValLocalIdx(lhs), ValLocalIdx(rhs))) {
+                  return;
+              }
+          }
       }
 
       if (web_rank[lhs_root] < web_rank[rhs_root]) {
@@ -2767,6 +2781,7 @@ void Analyzer<Adaptor, CompilerType>::compute_liveness() noexcept {
                 TPDE_LOG_TRACE("    initializing liveness info, lcl is {}",
                                block_loop_map[block_idx]);
                 liveness = LivenessInfo{
+                    .definition_block = static_cast<BlockIndex>(block_idx),
                     .first = static_cast<BlockIndex>(block_idx),
                     .last = static_cast<BlockIndex>(block_idx),
                     .ref_count = 1,

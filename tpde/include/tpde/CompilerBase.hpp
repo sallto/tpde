@@ -1275,7 +1275,8 @@ public:
       if (ap.is_phi() && ap.assignment()->frame_off != 0) {
         auto it = stack.spill_slot_ref_counts.find(ap.assignment()->frame_off);
         if (it != stack.spill_slot_ref_counts.end() && it->second > 1) {
-          return;
+          derived()->mov(ap.get_reg(), ap.get_reg(), ap.part_size());
+          //return;
         }
       }
 
