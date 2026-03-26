@@ -70,7 +70,8 @@ ret:
 }
 
 ; CHECK: Phi Webs for same_block_phi
-; CHECK-NEXT: web 0: { (0, a), (1, b), (5, p1) }
+; CHECK-NEXT: web 0: { (0, a), (5, p1) }
+; CHECK-NEXT: web 1: { (1, b), (6, p2) }
 ; CHECK-NEXT: End Phi Webs
 same_block_phi(%a, %b) {
 entry:
@@ -86,6 +87,10 @@ merge:
   ret %r
 }
 
+; CHECK: Phi Webs for same_block_phi_2
+; CHECK-NEXT: web 0: { (0, a), (5, p1) }
+; CHECK-NEXT: web 1: { (1, b), (6, p2) }
+; CHECK-NEXT: End Phi Webs
 same_block_phi_2(%a, %b) {
 entry:
   jump ^left, ^right
@@ -96,5 +101,25 @@ right:
 merge:
   %p1 = phi [^left, %a], [^right, %b]
   %p2 = phi [^left, %a], [^right, %b]
+  terminate
+}
+
+; CHECK: Phi Webs for half_chain
+; CHECK-NEXT: web 2: { (2, init), (4, p1), (8, p2) }
+; CHECK-NEXT: End Phi Webs
+half_chain(%a, %b) {
+entry:
+  %init =
+  jump ^premerge
+premerge:
+  %p1 = phi [^entry, %init]
+   jump ^left, ^right
+left:
+  jump ^merge
+right:
+  jump ^merge
+merge:
+
+  %p2 = phi [^left, %p1], [^right, %a]
   terminate
 }

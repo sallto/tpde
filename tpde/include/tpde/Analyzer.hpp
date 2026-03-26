@@ -1829,7 +1829,6 @@ std::pair<u32, u32> Analyzer<Adaptor, CompilerType>::get_current_and_next_use(
 
 template <IRAdaptor Adaptor, typename CompilerType>
 void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
-    print_precise_liveness(std::cout);
     // Based on "Register Spilling and Live-Range Splitting for
     // SSA-Form Programs" by Hack et al. 2008
     // Simplified since we don't store reload or spill positions.
@@ -1855,15 +1854,38 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
     util::SmallVector<u32, SMALL_VALUE_NUM> web_parent;
     util::SmallVector<u8, SMALL_VALUE_NUM> web_rank;
     util::SmallVector<util::SmallVector<u32, 2>, SMALL_VALUE_NUM> web_phi_blocks;
+    util::SmallVector<util::SmallVector<ValLocalIdx, 4>, SMALL_VALUE_NUM>
+            web_members;
+    util::SmallVector<BlockIndex, SMALL_VALUE_NUM> val_def_blocks;
     web_parent.resize(liveness_max_value + 1);
     web_rank.resize(liveness_max_value + 1, 0u);
     web_phi_blocks.resize(liveness_max_value + 1);
+    web_members.resize(liveness_max_value + 1);
+    val_def_blocks.resize(liveness_max_value + 1, INVALID_BLOCK_IDX);
 
     for (u32 i = 0; i <= liveness_max_value; ++i) {
         if (i < liveness.size() && liveness[i].epoch == liveness_epoch) {
             web_parent[i] = i;
+            web_members[i].push_back(static_cast<ValLocalIdx>(i));
         } else {
             web_parent[i] = INVALID_WEB_IDX;
+        }
+    }
+
+    if (!block_layout.empty()) {
+        const BlockIndex entry_block_idx = BlockIndex{0};
+        for (const IRValueRef arg: adaptor->cur_args()) {
+            if (adaptor->val_ignore_in_liveness_analysis(arg)) {
+                continue;
+            }
+
+            const ValLocalIdx arg_idx = adaptor->val_local_idx(arg);
+            const u32 arg_idx_u32 = static_cast<u32>(arg_idx);
+            if (arg_idx_u32 >= val_def_blocks.size() ||
+                web_parent[arg_idx_u32] == INVALID_WEB_IDX) {
+                continue;
+            }
+            val_def_blocks[arg_idx_u32] = entry_block_idx;
         }
     }
 
@@ -1878,23 +1900,41 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
     };
 
     for (u32 block_idx_u32 = 0; block_idx_u32 < block_layout.size(); ++block_idx_u32) {
-      const IRBlockRef block = block_layout[block_idx_u32];
-      for (const IRValueRef phi: adaptor->block_phis(block)) {
-          if (adaptor->val_ignore_in_liveness_analysis(phi)) {
-              continue;
-          }
+        const IRBlockRef block = block_layout[block_idx_u32];
+        for (const IRValueRef phi: adaptor->block_phis(block)) {
+            if (adaptor->val_ignore_in_liveness_analysis(phi)) {
+                continue;
+            }
 
           const u32 phi_idx_u32 = static_cast<u32>(adaptor->val_local_idx(phi));
           if (phi_idx_u32 >= web_phi_blocks.size() ||
               web_parent[phi_idx_u32] == INVALID_WEB_IDX) {
               continue;
-          }
+            }
 
-          web_phi_blocks[phi_idx_u32].push_back(block_idx_u32);
-      }
-  }
+            val_def_blocks[phi_idx_u32] = BlockIndex{block_idx_u32};
+            web_phi_blocks[phi_idx_u32].push_back(block_idx_u32);
+        }
 
-  const auto roots_share_phi_def_block =
+        for (const IRInstRef inst: adaptor->block_insts(block)) {
+            for (const IRValueRef result: adaptor->inst_results(inst)) {
+                if (adaptor->val_ignore_in_liveness_analysis(result)) {
+                    continue;
+                }
+
+                const ValLocalIdx result_idx = adaptor->val_local_idx(result);
+                const u32 result_idx_u32 = static_cast<u32>(result_idx);
+                if (result_idx_u32 >= val_def_blocks.size() ||
+                    web_parent[result_idx_u32] == INVALID_WEB_IDX) {
+                    continue;
+                }
+
+                val_def_blocks[result_idx_u32] = BlockIndex{block_idx_u32};
+            }
+        }
+    }
+
+    const auto roots_share_phi_def_block =
           [&](const u32 lhs_root, const u32 rhs_root) -> bool {
       const auto &lhs_blocks = web_phi_blocks[lhs_root];
       const auto &rhs_blocks = web_phi_blocks[rhs_root];
@@ -1915,14 +1955,52 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
           }
       }
       src_blocks.clear();
-  };
+    };
+
+    const auto merge_web_members = [&](const u32 dst_root, const u32 src_root) {
+        auto &dst_members = web_members[dst_root];
+        auto &src_members = web_members[src_root];
+        for (const ValLocalIdx src_member: src_members) {
+            if (std::ranges::find(dst_members, src_member) == dst_members.end()) {
+                dst_members.push_back(src_member);
+            }
+        }
+        src_members.clear();
+    };
+
+    const auto is_live_in = [&](const u32 block_idx,
+                                const ValLocalIdx val_idx) noexcept {
+        if (block_idx >= precise_liveness.size()) {
+            return false;
+        }
+
+        const auto &pli = precise_liveness[block_idx];
+        const auto it = pli.next_uses.find(val_idx);
+        if (it == pli.next_uses.end()) {
+            return false;
+        }
+
+        const auto &vec = it->second;
+        if (vec.empty()) {
+            return false;
+        }
+
+        for (const u32 entry: vec) {
+            if (entry == INF) {
+                continue;
+            }
+            return (entry & DEF_BIT) == 0;
+        }
+
+        return false;
+    };
 
 
-  const auto precise_block_interval =
-          [&](const u32 block_idx,
-              const ValLocalIdx val_idx,
-              u32 &interval_first,
-              u32 &interval_last) -> bool {
+    const auto precise_block_interval =
+            [&](const u32 block_idx,
+                const ValLocalIdx val_idx,
+                u32 &interval_first,
+                u32 &interval_last) -> bool {
       if (block_idx >= precise_liveness.size()) {
           return false;
       }
@@ -2033,16 +2111,31 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
           return;
       }
 
-      if (live_ranges_overlap(ValLocalIdx(lhs_root), ValLocalIdx(rhs_root))) {
-          return;
-      }
+      const auto &lhs_members = web_members[lhs_root];
+      const auto &rhs_members = web_members[rhs_root];
       // todo(salto): can be done in linear time see boissout
-      for (const auto lhs_idx: web_phi_blocks[lhs_root]) {
-          for (const auto rhs_idx: web_phi_blocks[rhs_root]) {
-              if (lhs_idx == rhs_idx) {
-                  continue;
+      for (const ValLocalIdx lhs_member: lhs_members) {
+          const u32 lhs_member_u32 = static_cast<u32>(lhs_member);
+          const BlockIndex lhs_def_block =
+                  lhs_member_u32 < val_def_blocks.size()
+                      ? val_def_blocks[lhs_member_u32]
+                      : INVALID_BLOCK_IDX;
+          for (const ValLocalIdx rhs_member: rhs_members) {
+              const u32 rhs_member_u32 = static_cast<u32>(rhs_member);
+              const BlockIndex rhs_def_block =
+                      rhs_member_u32 < val_def_blocks.size()
+                          ? val_def_blocks[rhs_member_u32]
+                          : INVALID_BLOCK_IDX;
+
+              if (live_ranges_overlap(lhs_member, rhs_member)) {
+                  return;
               }
-              if (live_ranges_overlap(ValLocalIdx(lhs), ValLocalIdx(rhs))) {
+              if (lhs_def_block != INVALID_BLOCK_IDX &&
+                  is_live_in(static_cast<u32>(lhs_def_block), rhs_member)) {
+                  return;
+              }
+              if (rhs_def_block != INVALID_BLOCK_IDX &&
+                  is_live_in(static_cast<u32>(rhs_def_block), lhs_member)) {
                   return;
               }
           }
@@ -2053,6 +2146,7 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       }
       web_parent[rhs_root] = lhs_root;
       merge_phi_blocks(lhs_root, rhs_root);
+      merge_web_members(lhs_root, rhs_root);
       if (web_rank[lhs_root] == web_rank[rhs_root]) {
           ++web_rank[lhs_root];
       }
