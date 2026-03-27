@@ -336,7 +336,7 @@ namespace tpde {
         /// Mapping from ValLocalIdx to simple PHI web index.
         /// Values with INVALID_WEB_IDX were not assigned to any web.
         static constexpr u32 INVALID_WEB_IDX = ~0u;
-        util::SmallVector<u32, SMALL_VALUE_NUM> val_local_to_web_idx = {};
+        util::SmallVector<u32, SMALL_VALUE_NUM> val_local_to_root_idx = {};
         util::SmallVector<Reg, SMALL_VALUE_NUM> recommended_registers = {};
         // todo(salto): this will change into colors instead of registers later on.
 
@@ -366,6 +366,8 @@ namespace tpde {
 
         util::SmallVector<ValuePartsInfo, SMALL_VALUE_NUM> value_parts_cache = {};
         util::SmallVector<BlockPressure, SMALL_BLOCK_NUM> block_pressure = {};
+        util::SmallVector<util::SmallVector<ValLocalIdx, 4>, SMALL_VALUE_NUM>
+        web_members;
 
         /// Dominator tree for control flow analysis
         DominatorTree<Adaptor, BlockIndex> dominator_tree = {};
@@ -626,22 +628,7 @@ void Analyzer<Adaptor, CompilerType>::switch_func([[maybe_unused]] IRFuncRef fun
       }
     }
 
-template <IRAdaptor Adaptor, typename CompilerType>
-void Analyzer<Adaptor, CompilerType>::collect_phi_web_members(
-    PhiWebMembers &web_members) const {
-    web_members.clear();
-    for (u32 i = 0; i <= liveness_max_value; ++i) {
-        if (i >= val_local_to_web_idx.size()) {
-            break;
-        }
 
-        const u32 web_idx = val_local_to_web_idx[i];
-        if (web_idx == INVALID_WEB_IDX) {
-            continue;
-        }
-        web_members[web_idx].push_back(static_cast<ValLocalIdx>(i));
-    }
-}
 
 template<IRAdaptor Adaptor, typename CompilerType>
 void Analyzer<Adaptor, CompilerType>::collect_value_refs(
@@ -679,31 +666,18 @@ void Analyzer<Adaptor, CompilerType>::collect_value_refs(
 
 template<IRAdaptor Adaptor, typename CompilerType>
 void Analyzer<Adaptor, CompilerType>::print_phi_webs(std::ostream &os) const {
-    PhiWebMembers web_members;
-    collect_phi_web_members(web_members);
 
     std::unordered_map<ValLocalIdx, IRValueRef> value_refs;
     collect_value_refs(value_refs);
 
-    util::SmallVector<u32, SMALL_VALUE_NUM> sorted_web_indices;
-    sorted_web_indices.reserve(web_members.size());
-    for (const auto &[web_idx, _]: web_members) {
-        (void) _;
-        sorted_web_indices.push_back(web_idx);
-    }
-    std::sort(sorted_web_indices.begin(), sorted_web_indices.end());
 
-    for (const u32 web_idx: sorted_web_indices) {
+    for (auto web_idx = 0; web_idx < web_members.size(); ++web_idx) {
         auto &members = web_members[web_idx];
+
         if (members.size() < 2) {
             continue;
         }
 
-        std::sort(members.begin(),
-                  members.end(),
-                  [](const ValLocalIdx lhs, const ValLocalIdx rhs) {
-                      return static_cast<u32>(lhs) < static_cast<u32>(rhs);
-                  });
 
         os << std::format("  web {}: {{ ", web_idx);
         for (u32 i = 0; i < members.size(); ++i) {
@@ -1846,20 +1820,20 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
     // Build simple PHI coalescing webs using union-find.
     // We only merge single-part PHIs with single-part incoming values that are
     // compatible and non-overlapping.
-    val_local_to_web_idx.resize(liveness_max_value + 1);
-    std::fill(val_local_to_web_idx.begin(),
-              val_local_to_web_idx.end(),
+    val_local_to_root_idx.resize(liveness_max_value + 1);
+    std::fill(val_local_to_root_idx.begin(),
+              val_local_to_root_idx.end(),
               INVALID_WEB_IDX);
 
     util::SmallVector<u32, SMALL_VALUE_NUM> web_parent;
     util::SmallVector<u8, SMALL_VALUE_NUM> web_rank;
     util::SmallVector<util::SmallVector<u32, 2>, SMALL_VALUE_NUM> web_phi_blocks;
-    util::SmallVector<util::SmallVector<ValLocalIdx, 4>, SMALL_VALUE_NUM>
-            web_members;
+
     util::SmallVector<BlockIndex, SMALL_VALUE_NUM> val_def_blocks;
     web_parent.resize(liveness_max_value + 1);
     web_rank.resize(liveness_max_value + 1, 0u);
     web_phi_blocks.resize(liveness_max_value + 1);
+    web_members.clear();
     web_members.resize(liveness_max_value + 1);
     val_def_blocks.resize(liveness_max_value + 1, INVALID_BLOCK_IDX);
 
@@ -2223,18 +2197,19 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
       auto [it, inserted] = root_to_web_idx.try_emplace(
           root, static_cast<u32>(root_to_web_idx.size()));
       (void) inserted;
-      val_local_to_web_idx[i] = it->second;
-  }
+      //todo(salto): change to val_local_idx_to_root_idx
+      val_local_to_root_idx[i] = root;
+    }
 
 
 #ifdef TPDE_LOGGING
-  TPDE_LOG_TRACE("PHI webs after build:");
-  std::ostringstream phi_web_dump;
-  print_phi_webs(phi_web_dump);
-  std::istringstream phi_web_lines(phi_web_dump.str());
-  for (std::string line; std::getline(phi_web_lines, line);) {
-      TPDE_LOG_TRACE("{}", line);
-  }
+    TPDE_LOG_ERR("PHI webs after build:");
+    std::ostringstream phi_web_dump;
+    print_phi_webs(phi_web_dump);
+    std::istringstream phi_web_lines(phi_web_dump.str());
+    for (std::string line; std::getline(phi_web_lines, line);) {
+        TPDE_LOG_ERR("{}", line);
+    }
 #endif
 
 

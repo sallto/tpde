@@ -1274,9 +1274,27 @@ public:
       }
       if (ap.is_phi() && ap.assignment()->frame_off != 0) {
         auto it = stack.spill_slot_ref_counts.find(ap.assignment()->frame_off);
+
         if (it != stack.spill_slot_ref_counts.end() && it->second > 1) {
-          derived()->mov(ap.get_reg(), ap.get_reg(), ap.part_size());
-          //return;
+          auto root_idx = analyzer.val_local_to_root_idx[static_cast<u32>(local_idx)];
+          auto &web_members = analyzer.web_members[static_cast<u32>(root_idx)];
+          for (const auto member: web_members) {
+            if (member == local_idx) {
+              continue;
+            }
+            ValueAssignment *assignment = val_assignment(member);
+            if (!assignment) {
+              continue;
+            }
+            for (u32 i = 0; i < assignment->part_count; i++) {
+              AssignmentPartRef web_ap{assignment, i};
+              if (!web_ap.stack_valid()) {
+                continue;
+              }
+              derived()->mov(ap.get_reg(), ap.get_reg(), ap.part_size());
+              return;
+            }
+          }
         }
       }
 
@@ -3294,24 +3312,19 @@ void CompilerBase<Adaptor, Derived, Config>::allocate_spill_slot(
 
     bool reused_web_slot = false;
     if (local_idx != INVALID_VAL_LOCAL_IDX &&
-        static_cast<u32>(local_idx) < analyzer.val_local_to_web_idx.size()) {
-      const u32 web_idx =
-          analyzer.val_local_to_web_idx[static_cast<u32>(local_idx)];
-      if (web_idx != Analyzer::INVALID_WEB_IDX) {
-        const u32 num_values =
-            static_cast<u32>(std::min(assignments.value_ptrs.size(),
-                                      analyzer.val_local_to_web_idx.size()));
-        for (u32 candidate_u32 = 0; candidate_u32 < num_values;
-             ++candidate_u32) {
-          if (candidate_u32 == static_cast<u32>(local_idx) ||
-              analyzer.val_local_to_web_idx[candidate_u32] != web_idx) {
+        static_cast<u32>(local_idx) < analyzer.val_local_to_root_idx.size()) {
+      const u32 root_idx =
+          analyzer.val_local_to_root_idx[static_cast<u32>(local_idx)];
+      auto &web_members = analyzer.web_members[root_idx];
+      if (web_members.size() >= 2) {
+        for (const auto member: web_members) {
+          ValueAssignment *candidate = val_assignment(member);
+          if (!candidate || candidate->variable_ref) {
             continue;
           }
-
-          ValueAssignment *candidate = assignments.value_ptrs[candidate_u32];
-          if (!candidate || candidate->variable_ref ||
-              candidate->size() != ap.assignment()->size()) {
-            continue;
+          if (
+            candidate->size() != ap.assignment()->size()) {
+            assert(false && "invalid candidate in web");
           }
 
           const bool candidate_has_stack = Config::FRAME_INDEXING_NEGATIVE
@@ -3322,6 +3335,7 @@ void CompilerBase<Adaptor, Derived, Config>::allocate_spill_slot(
           }
 
           const i32 candidate_slot = candidate->frame_off;
+          TPDE_LOG_ERR("reusing spill slot {}", candidate_slot);
           ap.assignment()->frame_off = candidate_slot;
 
           if (auto ref_it = stack.spill_slot_ref_counts.find(candidate_slot);
@@ -3356,7 +3370,7 @@ void CompilerBase<Adaptor, Derived, Config>::spill(AssignmentPartRef ap) {
     // argument stack slot will remain valid
     derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
     auto val_idx = register_file.reg_local_idx(ap.get_reg());
-    if (false && val_idx != INVALID_VAL_LOCAL_IDX && ap.part_size() == 1 &&
+    if (val_idx != INVALID_VAL_LOCAL_IDX && ap.part_size() == 1 &&
         ap.assignment()->part_count == 1) {
       block_stack_valid_single_part_values[cur_block_idx].insert(val_idx);
     }
@@ -3791,8 +3805,15 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
     // If the target might need additional register moves, we can't branch there
     // immediately.
     // TODO: more precise condition?
-    case_labels.push_back(this->text_writer.label_create());
-    case_blocks.emplace_back(case_labels.back(), cases[i].second);
+    BlockIndex target = this->analyzer.block_idx(cases[i].second);
+    if (analyzer.block_has_phis(target) || block_regs.contains(target) || analyzer.initial_working_set_by_block.
+        contains(target)) {
+      case_labels.push_back(this->text_writer.label_create());
+      case_blocks.emplace_back(case_labels.back(), cases[i].second);
+    } else {
+      move_values_to_match(target);
+      case_labels.push_back(this->block_labels[u32(target)]);
+    }
   }
 
   const auto default_label = this->text_writer.label_create();
