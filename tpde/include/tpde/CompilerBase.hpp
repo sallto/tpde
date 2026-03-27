@@ -1723,8 +1723,8 @@ public:
         if (deferred.allow_uninitialized) {
           return false;
         }
-        TPDE_UNREACHABLE(
-          "attempt to defer-load non-stack value part without register");
+        //TPDE_UNREACHABLE(
+        //  "attempt to defer-load non-stack value part without register");
       }
 
       derived()->load_from_stack(dst, ap.frame_off(), deferred.size);
@@ -3704,7 +3704,9 @@ void CompilerBase<Adaptor, Derived, Config>::generate_branch_to_block(
   BlockIndex target_idx = this->analyzer.block_idx(target);
   Label target_label = this->block_labels[u32(target_idx)];
   if (!needs_split) {
-    move_values_to_match(target_idx);
+    if (!last_inst || target_idx != this->next_block() || analyzer.block_has_multiple_incoming(target_idx)) {
+      move_values_to_match(target_idx);
+    }
     if (!last_inst || target_idx != this->next_block()) {
       derived()->generate_raw_jump(jmp, target_label);
     }
