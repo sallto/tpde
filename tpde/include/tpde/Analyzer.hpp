@@ -2100,10 +2100,6 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
                       rhs_member_u32 < val_def_blocks.size()
                           ? val_def_blocks[rhs_member_u32]
                           : INVALID_BLOCK_IDX;
-
-              if (live_ranges_overlap(lhs_member, rhs_member)) {
-                  return;
-              }
               if (lhs_def_block != INVALID_BLOCK_IDX &&
                   is_live_in(static_cast<u32>(lhs_def_block), rhs_member)) {
                   return;
@@ -2176,9 +2172,6 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
                   continue;
               }
 
-              if (live_ranges_overlap(phi_idx, incoming_idx)) {
-                  continue;
-              }
 
               web_union(phi_idx_u32, incoming_idx_u32);
           }

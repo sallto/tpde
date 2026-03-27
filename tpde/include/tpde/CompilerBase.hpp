@@ -3902,7 +3902,7 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
   for (const auto &[label, target]: case_blocks) {
     // Branch predictors typically have problems if too many branches follow too
     // closely. Ensure a minimum alignment.
-    this->text_writer.align(8);
+    this->text_writer.align(16);
     this->label_place(label);
     derived()->generate_branch_to_block(
         Derived::Jump::jmp, target, false, false);
