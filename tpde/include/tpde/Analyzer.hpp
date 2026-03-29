@@ -388,7 +388,7 @@ namespace tpde {
 
         void print_liveness(std::ostream &os) const;
 
-        void print_precise_liveness(std::ostream &os) const;
+        void print_precise_liveness(std::ostream &os);
 
         void print_phi_webs(std::ostream &os) const;
 
@@ -549,60 +549,71 @@ namespace tpde {
 
     template <IRAdaptor Adaptor, typename CompilerType>
     void Analyzer<Adaptor, CompilerType>::print_precise_liveness(
-        std::ostream &os) const {
-      const u32 num_blocks = static_cast<u32>(block_layout.size());
-      util::SmallVector<u32, 64> block_lengths;
-      block_lengths.resize(num_blocks);
-      for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
-        os << std::format("  Block {} ({}):\n",
-                          block_idx,
-                          adaptor->block_fmt_ref(block_layout[block_idx]));
+        std::ostream &os) {
+        const u32 num_blocks = static_cast<u32>(block_layout.size());
+        util::SmallVector<u32, 64> block_lengths;
+        block_lengths.resize(num_blocks);
+        for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+            os << std::format("  Block {} ({}):\n",
+                              block_idx,
+                              adaptor->block_fmt_ref(block_layout[block_idx]));
 
-        if (block_idx >= precise_liveness.size()) {
-          os << "    <no precise liveness>\n";
-          continue;
-        }
+            if (block_idx >= precise_liveness.size()) {
+                os << "    <no precise liveness>\n";
+                continue;
+            }
+            auto &pli = precise_liveness[block_idx];
 
-        const auto &pli = precise_liveness[block_idx];
 
-
-        util::SmallVector<ValLocalIdx, SMALL_VALUE_NUM> values;
-        for (const auto &entry : pli.next_uses) {
-            if (entry.second[0] == liveness_epoch)
+            util::SmallVector<ValLocalIdx, SMALL_VALUE_NUM> values;
+            for (auto &entry: pli.next_uses) {
                 values.push_back(entry.first);
-        }
-        if (values.empty()) {
-            os << "    no tracked values\n";
-            continue;
-        }
-        std::sort(values.begin(),
-                  values.end(),
-                  [](const ValLocalIdx lhs, const ValLocalIdx rhs) {
-                      return static_cast<u32>(lhs) < static_cast<u32>(rhs);
-                  });
+            }
+            for (auto &[val_idx, _]: pli.live_through) {
+                values.push_back(val_idx);
+            }
+            if (values.empty()) {
+                os << "    no tracked values\n";
+                continue;
+            }
+            std::sort(values.begin(),
+                      values.end(),
+                      [](const ValLocalIdx lhs, const ValLocalIdx rhs) {
+                          return static_cast<u32>(lhs) < static_cast<u32>(rhs);
+                      });
 
-        for (const auto val_idx : values) {
-          const auto it = pli.next_uses.find(val_idx);
-          assert(it != pli.next_uses.end());
-          const auto &uses = it->second;
+            for (auto val_idx: values) {
+                auto it = pli.next_uses.find(val_idx);
+                if (it == pli.next_uses.end()) {
+                    const auto val = std::lower_bound(pli.live_through.begin(), pli.live_through.end(), val_idx,
+                                                      [](const auto &lhs, const auto &rhs) {
+                                                          return lhs.first < rhs;
+                                                      });
+                    if (val == pli.live_through.end() || val->first != val_idx) {
+                        continue;
+                    }
+                    precise_liveness[block_idx].next_uses[val_idx].push_back(val->second);
+                    it = pli.next_uses.find(val_idx);
+                }
+                auto &uses = it->second;
 
-          os << std::format("    val {}: [", static_cast<u32>(val_idx));
-          for (u32 i = 1; i < uses.size(); ++i) {
-              if (i != 1) {
-                  os << ", ";
-              }
-              const auto dist = uses[i];
-              if (dist == std::numeric_limits<u32>::max()) {
-                  os << "inf";
-              } else if ((dist & DEF_BIT) != 0) {
-                  os << std::format("def@{}", dist & ~DEF_BIT);
-              } else {
-                  os << dist;
-              }
-          }
-          os << "]\n";
+                os << std::format("    val {}: [", static_cast<u32>(val_idx));
+                for (u32 i = 0; i < uses.size(); ++i) {
+                    if (i != 0) {
+                        os << ", ";
+                    }
+                    const auto dist = uses[i];
+                    if (dist == std::numeric_limits<u32>::max()) {
+                        os << "inf";
+                    } else if ((dist & DEF_BIT) != 0) {
+                        os << std::format("def@{}", dist & ~DEF_BIT);
+                    } else {
+                        os << dist;
+                    }
+                }
+                os << "]\n";
+            }
         }
-      }
     }
 
 
@@ -1569,6 +1580,127 @@ void Analyzer<Adaptor, CompilerType>::compute_precise_liveness() noexcept {
     for (auto &bp: block_pressure) {
         bp = BlockPressure{};
     }
+
+    for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+        const auto &pli = precise_liveness[block_idx];
+        const IRBlockRef block = block_layout[block_idx];
+        const bool has_phis = block_has_phis(block);
+
+        util::SmallVector<std::pair<ValueInterval, ValLocalIdx>, 64> intervals;
+
+        for (const auto &[val_idx, uses]: pli.next_uses) {
+            if (static_cast<u32>(val_idx) >= value_parts_cache.size()) {
+                continue;
+            }
+
+            u32 first = INF;
+            for (const auto use: uses) {
+                if (use != INF) {
+                    first = use;
+                    break;
+                }
+            }
+
+            if (first == INF) {
+                continue;
+            }
+
+            u32 interval_first;
+            if (first & DEF_BIT) {
+                interval_first = INF;
+                for (const auto use: uses) {
+                    if (use != INF && (use & DEF_BIT) == 0) {
+                        interval_first = use;
+                        break;
+                    }
+                }
+            } else {
+                interval_first = 0;
+            }
+
+            if (interval_first == INF) {
+                continue;
+            }
+
+            u32 interval_last = 0;
+            for (u32 i = uses.size(); i-- > 0;) {
+                if (uses[i] != INF) {
+                    interval_last = uses[i];
+                    break;
+                }
+            }
+
+            intervals.emplace_back(
+                ValueInterval{.first = interval_first, .last = interval_last},
+                val_idx);
+        }
+        for (const auto &[val_idx, live_out]: pli.live_through) {
+            intervals.emplace_back(
+                ValueInterval{.first = 0, .last = live_out},
+                val_idx);
+        }
+
+        if (intervals.empty()) {
+            continue;
+        }
+
+        const u32 block_span =
+                std::ranges::distance(adaptor->block_insts(block)) + (has_phis ? 1 : 0);
+
+        struct Event {
+            u32 pos;
+            i32 delta;
+            u32 gp_parts;
+            u32 fp_parts;
+        };
+
+        util::SmallVector<Event, 128> events;
+        // todo salto optimzie this bullshit
+        for (const auto &[interval, val_idx]: intervals) {
+            const auto parts = ensure_parts_cached(val_idx);
+            const u32 gp_parts = parts.gp_regs;
+            const u32 fp_parts = parts.fp_regs;
+
+            events.push_back(Event{
+                .pos = interval.first,
+                .delta = 1,
+                .gp_parts = gp_parts,
+                .fp_parts = fp_parts
+            });
+            events.push_back(Event{
+                .pos = interval.last + 1,
+                .delta = -1,
+                .gp_parts = gp_parts,
+                .fp_parts = fp_parts
+            });
+        }
+
+        std::sort(events.begin(), events.end(), [](const Event &a, const Event &b) {
+            return a.pos < b.pos;
+        });
+
+        u32 gp_pressure = 0;
+        u32 fp_pressure = 0;
+        u32 max_gp = 0;
+        u32 max_fp = 0;
+
+        u32 event_idx = 0;
+        for (u32 pos = 0; pos <= block_span; ++pos) {
+            while (event_idx < events.size() && events[event_idx].pos == pos) {
+                gp_pressure += events[event_idx].delta * events[event_idx].gp_parts;
+                fp_pressure += events[event_idx].delta * events[event_idx].fp_parts;
+                ++event_idx;
+            }
+
+            if (pos < block_span) {
+                max_gp = std::max(max_gp, gp_pressure);
+                max_fp = std::max(max_fp, fp_pressure);
+            }
+        }
+
+        block_pressure[block_idx].gp_pressure = max_gp;
+        block_pressure[block_idx].fp_pressure = max_fp;
+    }
     /*
         uint64_t total_values = 0;
         uint64_t total_values_liveness = 0;
@@ -1583,29 +1715,30 @@ void Analyzer<Adaptor, CompilerType>::compute_precise_liveness() noexcept {
     TPDE_LOG_TRACE("Precise Liveness Analysis completed");
 }
 
-template <IRAdaptor Adaptor, typename CompilerType>
+template<IRAdaptor Adaptor, typename CompilerType>
 std::pair<u32, u32> Analyzer<Adaptor, CompilerType>::get_current_and_next_use(
-    const PreciseLivenessInfo &pli, const ValLocalIdx val_idx, const u32 idx) {
-  // calculate current (before idx) and next use (after execution of the
-  // current instruction). operands that die with the instruction would be
-  // [idx, INF].
+    const PreciseLivenessInfo &pli, const ValLocalIdx val_idx, const u32 instr_idx) {
+    // calculate current (before idx) and next use (after execution of the
+    // current instruction). operands that die with the instruction would be
+    // [idx, INF].
+    const auto idx = instr_idx + 1; // Phis are the zeroth instruction
 
-  // Find the next_uses vector for this val_idx
-  const auto it = pli.next_uses.find(val_idx);
-  if (it == pli.next_uses.end()) {
-      auto entr = std::lower_bound(pli.live_through.begin(), pli.live_through.end(), val_idx,
-                                   [](const auto &lhs, const auto &rhs) {
-                                       return lhs.first < rhs;
-                                   });
-      if (entr == pli.live_through.end() || entr->first != val_idx) {
-          // Value not found in liveness info, return INF (no uses)
-          return {INF, INF};
-      }
+    // Find the next_uses vector for this val_idx
+    const auto it = pli.next_uses.find(val_idx);
+    if (it == pli.next_uses.end()) {
+        auto entr = std::lower_bound(pli.live_through.begin(), pli.live_through.end(), val_idx,
+                                     [](const auto &lhs, const auto &rhs) {
+                                         return lhs.first < rhs;
+                                     });
+        if (entr == pli.live_through.end() || entr->first != val_idx) {
+            // Value not found in liveness info, return INF (no uses)
+            return {INF, INF};
+        }
 
-      return {entr->second, entr->second};
-  }
+        return {entr->second, entr->second};
+    }
 
-  const auto &vec = it->second;
+    const auto &vec = it->second;
 
 #ifndef NDEBUG
   // Verify the vector is sorted (ignoring DEF_BIT) in debug builds
@@ -1789,7 +1922,14 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
         const auto &pli = precise_liveness[block_idx];
         const auto it = pli.next_uses.find(val_idx);
         if (it == pli.next_uses.end()) {
-            return false;
+            auto entr = std::lower_bound(pli.live_through.begin(), pli.live_through.end(), val_idx,
+                                         [](const auto &lhs, const auto &rhs) {
+                                             return lhs.first < rhs;
+                                         });
+            if (entr == pli.live_through.end() || entr->first != val_idx) {
+                return false;
+            }
+            return true;
         }
 
         const auto &vec = it->second;
