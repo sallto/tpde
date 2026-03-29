@@ -139,12 +139,12 @@ define void @bitcast_v6i8_v3i16(ptr %src, ptr %dst) {
 ; X64-NEXT:    mov byte ptr [rbp - 0x2d], r8b
 ; X64-NEXT:    mov byte ptr [rbp - 0x2c], r9b
 ; X64-NEXT:    mov byte ptr [rbp - 0x2b], r10b
-; X64-NEXT:    movzx eax, word ptr [rbp - 0x30]
-; X64-NEXT:    mov word ptr [rsi], ax
+; X64-NEXT:    movzx r11d, word ptr [rbp - 0x30]
+; X64-NEXT:    mov word ptr [rsi], r11w
 ; X64-NEXT:    movzx eax, word ptr [rbp - 0x2e]
 ; X64-NEXT:    mov word ptr [rsi + 0x2], ax
-; X64-NEXT:    movzx eax, word ptr [rbp - 0x2c]
-; X64-NEXT:    mov word ptr [rsi + 0x4], ax
+; X64-NEXT:    movzx ecx, word ptr [rbp - 0x2c]
+; X64-NEXT:    mov word ptr [rsi + 0x4], cx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -163,12 +163,12 @@ define void @bitcast_v6i8_v3i16(ptr %src, ptr %dst) {
 ; ARM64-NEXT:    strb w5, [x29, #0xa3]
 ; ARM64-NEXT:    strb w6, [x29, #0xa4]
 ; ARM64-NEXT:    strb w7, [x29, #0xa5]
-; ARM64-NEXT:    ldrh w0, [x29, #0xa0]
-; ARM64-NEXT:    strh w0, [x1]
-; ARM64-NEXT:    ldrh w0, [x29, #0xa2]
-; ARM64-NEXT:    strh w0, [x1, #0x2]
-; ARM64-NEXT:    ldrh w0, [x29, #0xa4]
-; ARM64-NEXT:    strh w0, [x1, #0x4]
+; ARM64-NEXT:    ldrh w8, [x29, #0xa0]
+; ARM64-NEXT:    strh w8, [x1]
+; ARM64-NEXT:    ldrh w9, [x29, #0xa2]
+; ARM64-NEXT:    strh w9, [x1, #0x2]
+; ARM64-NEXT:    ldrh w10, [x29, #0xa4]
+; ARM64-NEXT:    strh w10, [x1, #0x4]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   %a = load <6 x i8>, ptr %src
@@ -185,8 +185,8 @@ define void @bitcast_v16i1_v2i8(ptr %src, ptr %dst) {
 ; X64-NEXT:    mov word ptr [rbp - 0x2a], di
 ; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2a]
 ; X64-NEXT:    mov byte ptr [rsi], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x29]
-; X64-NEXT:    mov byte ptr [rsi + 0x1], al
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x29]
+; X64-NEXT:    mov byte ptr [rsi + 0x1], cl
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -197,8 +197,8 @@ define void @bitcast_v16i1_v2i8(ptr %src, ptr %dst) {
 ; ARM64-NEXT:    strh w0, [x29, #0xa0]
 ; ARM64-NEXT:    ldrb w0, [x29, #0xa0]
 ; ARM64-NEXT:    strb w0, [x1]
-; ARM64-NEXT:    ldrb w0, [x29, #0xa1]
-; ARM64-NEXT:    strb w0, [x1, #0x1]
+; ARM64-NEXT:    ldrb w2, [x29, #0xa1]
+; ARM64-NEXT:    strb w2, [x1, #0x1]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   %a = load <16 x i1>, ptr %src

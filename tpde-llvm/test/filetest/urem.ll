@@ -514,10 +514,10 @@ define i8 @urem_i8_no_salvage(i8 %0, i8 %1) {
 ; X64-NEXT:    div esi
 ; X64-NEXT:    movzx edi, dil
 ; X64-NEXT:    movzx edx, dl
-; X64-NEXT:    mov rcx, rdx
+; X64-NEXT:    mov rsi, rdx
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    div ecx
+; X64-NEXT:    div esi
 ; X64-NEXT:    mov eax, edx
 ; X64-NEXT:    ret
 ;
@@ -528,8 +528,8 @@ define i8 @urem_i8_no_salvage(i8 %0, i8 %1) {
 ; ARM64-NEXT:    msub w1, w3, w1, w2
 ; ARM64-NEXT:    uxtb w0, w0
 ; ARM64-NEXT:    uxtb w1, w1
-; ARM64-NEXT:    udiv w2, w0, w1
-; ARM64-NEXT:    msub w1, w2, w1, w0
+; ARM64-NEXT:    udiv w4, w0, w1
+; ARM64-NEXT:    msub w1, w4, w1, w0
 ; ARM64-NEXT:    mov w0, w1
 ; ARM64-NEXT:    ret
 entry:
@@ -548,10 +548,10 @@ define i16 @urem_i16_no_salvage(i16 %0, i16 %1) {
 ; X64-NEXT:    div esi
 ; X64-NEXT:    movzx edi, di
 ; X64-NEXT:    movzx edx, dx
-; X64-NEXT:    mov rcx, rdx
+; X64-NEXT:    mov rsi, rdx
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    div ecx
+; X64-NEXT:    div esi
 ; X64-NEXT:    mov eax, edx
 ; X64-NEXT:    ret
 ;
@@ -562,8 +562,8 @@ define i16 @urem_i16_no_salvage(i16 %0, i16 %1) {
 ; ARM64-NEXT:    msub w1, w3, w1, w2
 ; ARM64-NEXT:    uxth w0, w0
 ; ARM64-NEXT:    uxth w1, w1
-; ARM64-NEXT:    udiv w2, w0, w1
-; ARM64-NEXT:    msub w1, w2, w1, w0
+; ARM64-NEXT:    udiv w4, w0, w1
+; ARM64-NEXT:    msub w1, w4, w1, w0
 ; ARM64-NEXT:    mov w0, w1
 ; ARM64-NEXT:    ret
 entry:
@@ -587,8 +587,8 @@ define i32 @urem_i32_no_salvage(i32 %0, i32 %1) {
 ; ARM64-LABEL: <urem_i32_no_salvage>:
 ; ARM64:         udiv w2, w0, w1
 ; ARM64-NEXT:    msub w1, w2, w1, w0
-; ARM64-NEXT:    udiv w2, w0, w1
-; ARM64-NEXT:    msub w1, w2, w1, w0
+; ARM64-NEXT:    udiv w3, w0, w1
+; ARM64-NEXT:    msub w1, w3, w1, w0
 ; ARM64-NEXT:    mov w0, w1
 ; ARM64-NEXT:    ret
 entry:
@@ -612,8 +612,8 @@ define i64 @urem_i64_no_salvage(i64 %0, i64 %1) {
 ; ARM64-LABEL: <urem_i64_no_salvage>:
 ; ARM64:         udiv x2, x0, x1
 ; ARM64-NEXT:    msub x1, x2, x1, x0
-; ARM64-NEXT:    udiv x2, x0, x1
-; ARM64-NEXT:    msub x1, x2, x1, x0
+; ARM64-NEXT:    udiv x3, x0, x1
+; ARM64-NEXT:    msub x1, x3, x1, x0
 ; ARM64-NEXT:    mov x0, x1
 ; ARM64-NEXT:    ret
 entry:

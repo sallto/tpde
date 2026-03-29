@@ -370,10 +370,11 @@ define void @udiv_i8_no_salvage(i8 %0, i8 %1) {
 ; X64-NEXT:    div esi
 ; X64-NEXT:    movzx edi, dil
 ; X64-NEXT:    movzx eax, al
-; X64-NEXT:    mov rcx, rax
+; X64-NEXT:    mov rdx, rax
+; X64-NEXT:    mov rsi, rdx
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    div ecx
+; X64-NEXT:    div esi
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <udiv_i8_no_salvage>:
@@ -400,10 +401,11 @@ define void @udiv_i16_no_salvage(i16 %0, i16 %1) {
 ; X64-NEXT:    div esi
 ; X64-NEXT:    movzx edi, di
 ; X64-NEXT:    movzx eax, ax
-; X64-NEXT:    mov rcx, rax
+; X64-NEXT:    mov rdx, rax
+; X64-NEXT:    mov rsi, rdx
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov eax, edi
-; X64-NEXT:    div ecx
+; X64-NEXT:    div esi
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <udiv_i16_no_salvage>:

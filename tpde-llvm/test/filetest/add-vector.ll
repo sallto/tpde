@@ -30,9 +30,10 @@ define void @add_v5i8(ptr %p, ptr %q) {
 ; X64-LABEL: <add_v5i8>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    push r12
 ; X64-NEXT:    push r13
+; X64-NEXT:    push r14
+; X64-NEXT:    mov qword ptr [rbp - 0x30], rdi
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
@@ -40,22 +41,27 @@ define void @add_v5i8(ptr %p, ptr %q) {
 ; X64-NEXT:    movzx r9d, byte ptr [rdi + 0x4]
 ; X64-NEXT:    movzx r10d, byte ptr [rsi]
 ; X64-NEXT:    movzx r11d, byte ptr [rsi + 0x1]
-; X64-NEXT:    movzx ebx, byte ptr [rsi + 0x2]
-; X64-NEXT:    movzx r12d, byte ptr [rsi + 0x3]
-; X64-NEXT:    movzx r13d, byte ptr [rsi + 0x4]
+; X64-NEXT:    movzx r12d, byte ptr [rsi + 0x2]
+; X64-NEXT:    movzx r13d, byte ptr [rsi + 0x3]
+; X64-NEXT:    movzx r14d, byte ptr [rsi + 0x4]
 ; X64-NEXT:    lea eax, [rax + r10]
 ; X64-NEXT:    lea ecx, [rcx + r11]
-; X64-NEXT:    lea edx, [rdx + rbx]
-; X64-NEXT:    lea r8d, [r8 + r12]
-; X64-NEXT:    lea r9d, [r9 + r13]
+; X64-NEXT:    lea edx, [rdx + r12]
+; X64-NEXT:    lea r8d, [r8 + r13]
+; X64-NEXT:    lea r9d, [r9 + r14]
+; X64-NEXT:    mov byte ptr [rbp - 0x38], al
+; X64-NEXT:    mov byte ptr [rbp - 0x37], cl
+; X64-NEXT:    mov byte ptr [rbp - 0x36], dl
+; X64-NEXT:    mov byte ptr [rbp - 0x35], r8b
+; X64-NEXT:    mov byte ptr [rbp - 0x34], r9b
 ; X64-NEXT:    mov byte ptr [rdi], al
 ; X64-NEXT:    mov byte ptr [rdi + 0x1], cl
 ; X64-NEXT:    mov byte ptr [rdi + 0x2], dl
 ; X64-NEXT:    mov byte ptr [rdi + 0x3], r8b
 ; X64-NEXT:    mov byte ptr [rdi + 0x4], r9b
+; X64-NEXT:    pop r14
 ; X64-NEXT:    pop r13
 ; X64-NEXT:    pop r12
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;

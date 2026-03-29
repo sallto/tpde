@@ -374,58 +374,95 @@ define i64 @params({i8, {i8, i8}, i8} %s, i64, [2 x i64] %a, [2 x i64] %b) {
 ; X64-LABEL: <params>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    push r12
 ; X64-NEXT:    push r13
+; X64-NEXT:    push r14
+; X64-NEXT:    sub rsp, 0x88
+; X64-NEXT:    mov byte ptr [rbp - 0x2c], dil
+; X64-NEXT:    mov byte ptr [rbp - 0x2b], sil
+; X64-NEXT:    mov byte ptr [rbp - 0x2a], dl
+; X64-NEXT:    mov byte ptr [rbp - 0x29], cl
 ; X64-NEXT:    mov rax, qword ptr [rbp + 0x10]
+; X64-NEXT:    mov qword ptr [rbp - 0x40], r9
+; X64-NEXT:    mov qword ptr [rbp - 0x38], rax
 ; X64-NEXT:    mov r8, qword ptr [rbp + 0x18]
 ; X64-NEXT:    mov r10, qword ptr [rbp + 0x20]
+; X64-NEXT:    mov qword ptr [rbp - 0x50], r8
+; X64-NEXT:    mov qword ptr [rbp - 0x48], r10
 ; X64-NEXT:    mov r11d, edi
 ; X64-NEXT:    movzx r11d, r11b
-; X64-NEXT:    mov ebx, esi
-; X64-NEXT:    mov r12d, edx
-; X64-NEXT:    mov r13d, ebx
+; X64-NEXT:    mov qword ptr [rbp - 0x58], r11
+; X64-NEXT:    mov r12d, esi
+; X64-NEXT:    mov r13d, edx
+; X64-NEXT:    mov byte ptr [rbp - 0x5a], r12b
+; X64-NEXT:    mov byte ptr [rbp - 0x59], r13b
+; X64-NEXT:    mov r14d, r12d
+; X64-NEXT:    movzx r14d, r14b
+; X64-NEXT:    mov qword ptr [rbp - 0x68], r14
+; X64-NEXT:    mov byte ptr [rbp - 0x69], r13b
 ; X64-NEXT:    movzx r13d, r13b
-; X64-NEXT:    movzx r12d, r12b
+; X64-NEXT:    mov qword ptr [rbp - 0x78], r13
+; X64-NEXT:    mov byte ptr [rbp - 0x6a], cl
 ; X64-NEXT:    movzx ecx, cl
+; X64-NEXT:    mov qword ptr [rbp - 0x80], rcx
 ; X64-NEXT:    mov rdx, r9
+; X64-NEXT:    mov qword ptr [rbp - 0x88], rdx
+; X64-NEXT:    mov qword ptr [rbp - 0x90], rax
 ; X64-NEXT:    mov rsi, r8
+; X64-NEXT:    mov qword ptr [rbp - 0x98], rsi
+; X64-NEXT:    mov qword ptr [rbp - 0xa0], r10
+; X64-NEXT:    lea r11, [r11 + r14]
+; X64-NEXT:    mov qword ptr [rbp - 0x58], r11
 ; X64-NEXT:    lea r11, [r11 + r13]
-; X64-NEXT:    lea r11, [r11 + r12]
+; X64-NEXT:    mov qword ptr [rbp - 0x58], r11
 ; X64-NEXT:    lea r11, [r11 + rcx]
+; X64-NEXT:    mov qword ptr [rbp - 0x58], r11
 ; X64-NEXT:    lea r11, [r11 + rdx]
+; X64-NEXT:    mov qword ptr [rbp - 0x58], r11
 ; X64-NEXT:    lea r11, [r11 + rax]
+; X64-NEXT:    mov qword ptr [rbp - 0x58], r11
 ; X64-NEXT:    lea r11, [r11 + rsi]
+; X64-NEXT:    mov qword ptr [rbp - 0x58], r11
 ; X64-NEXT:    lea r11, [r11 + r10]
+; X64-NEXT:    mov qword ptr [rbp - 0x58], r11
 ; X64-NEXT:    mov rax, r11
+; X64-NEXT:    add rsp, 0x88
+; X64-NEXT:    pop r14
 ; X64-NEXT:    pop r13
 ; X64-NEXT:    pop r12
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <params>:
-; ARM64:         mov x17, sp
+; ARM64:         stp x29, x30, [sp, #-0xc0]!
+; ARM64-NEXT:    mov x29, sp
+; ARM64-NEXT:    add x17, sp, #0xc0
 ; ARM64-NEXT:    ldr x4, [x17]
 ; ARM64-NEXT:    ldr x9, [x17, #0x8]
-; ARM64-NEXT:    mov w7, w0
-; ARM64-NEXT:    ubfx x7, x7, #0, #8
-; ARM64-NEXT:    mov w8, w1
-; ARM64-NEXT:    mov w10, w2
-; ARM64-NEXT:    mov w11, w8
-; ARM64-NEXT:    ubfx x11, x11, #0, #8
+; ARM64-NEXT:    mov w10, w0
 ; ARM64-NEXT:    ubfx x10, x10, #0, #8
+; ARM64-NEXT:    mov w11, w1
+; ARM64-NEXT:    mov w12, w2
+; ARM64-NEXT:    mov w13, w11
+; ARM64-NEXT:    ubfx x13, x13, #0, #8
+; ARM64-NEXT:    ubfx x12, x12, #0, #8
 ; ARM64-NEXT:    ubfx x3, x3, #0, #8
-; ARM64-NEXT:    mov x0, x5
-; ARM64-NEXT:    mov x1, x4
-; ARM64-NEXT:    add x11, x11, x7
-; ARM64-NEXT:    add x10, x10, x11
-; ARM64-NEXT:    add x3, x3, x10
-; ARM64-NEXT:    add x0, x0, x3
-; ARM64-NEXT:    add x6, x6, x0
-; ARM64-NEXT:    add x1, x1, x6
-; ARM64-NEXT:    add x9, x9, x1
+; ARM64-NEXT:    mov x14, x5
+; ARM64-NEXT:    mov x15, x4
+; ARM64-NEXT:    str x15, [x29, #0xa0]
+; ARM64-NEXT:    str x9, [x29, #0xa8]
+; ARM64-NEXT:    add x13, x13, x10
+; ARM64-NEXT:    add x12, x12, x13
+; ARM64-NEXT:    add x3, x3, x12
+; ARM64-NEXT:    add x14, x14, x3
+; ARM64-NEXT:    add x6, x6, x14
+; ARM64-NEXT:    str x6, [x29, #0xb0]
+; ARM64-NEXT:    add x15, x15, x6
+; ARM64-NEXT:    str x15, [x29, #0xb0]
+; ARM64-NEXT:    add x9, x9, x15
+; ARM64-NEXT:    str x9, [x29, #0xb0]
 ; ARM64-NEXT:    mov x0, x9
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xc0
 ; ARM64-NEXT:    ret
   %s0 = extractvalue {i8, {i8, i8}, i8} %s, 0
   %xs0 = zext i8 %s0 to i64

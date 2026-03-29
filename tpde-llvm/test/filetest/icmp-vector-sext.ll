@@ -193,8 +193,8 @@ define <2 x i64> @icmp_eq_v2i64_0(<2 x i64> %a) {
 ; X64-LABEL: <icmp_eq_v2i64_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpeqd xmm0, xmm1
-; X64-NEXT:    pshufd {{.*#+}} xmm1 = xmm0[1,0,3,2]
-; X64-NEXT:    pand xmm0, xmm1
+; X64-NEXT:    pshufd {{.*#+}} xmm2 = xmm0[1,0,3,2]
+; X64-NEXT:    pand xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_v2i64_0>:
@@ -226,8 +226,8 @@ define <8 x i8> @icmp_ne_v8i8_0(<8 x i8> %a) {
 ; X64-LABEL: <icmp_ne_v8i8_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpeqb xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ne_v8i8_0>:
@@ -260,8 +260,8 @@ define <16 x i8> @icmp_ne_v16i8_0(<16 x i8> %a) {
 ; X64-LABEL: <icmp_ne_v16i8_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpeqb xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ne_v16i8_0>:
@@ -294,8 +294,8 @@ define <4 x i16> @icmp_ne_v4i16_0(<4 x i16> %a) {
 ; X64-LABEL: <icmp_ne_v4i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpeqw xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ne_v4i16_0>:
@@ -328,8 +328,8 @@ define <8 x i16> @icmp_ne_v8i16_0(<8 x i16> %a) {
 ; X64-LABEL: <icmp_ne_v8i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpeqw xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ne_v8i16_0>:
@@ -362,8 +362,8 @@ define <2 x i32> @icmp_ne_v2i32_0(<2 x i32> %a) {
 ; X64-LABEL: <icmp_ne_v2i32_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpeqd xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ne_v2i32_0>:
@@ -396,8 +396,8 @@ define <4 x i32> @icmp_ne_v4i32_0(<4 x i32> %a) {
 ; X64-LABEL: <icmp_ne_v4i32_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpeqd xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ne_v4i32_0>:
@@ -432,10 +432,10 @@ define <2 x i64> @icmp_ne_v2i64_0(<2 x i64> %a) {
 ; X64-LABEL: <icmp_ne_v2i64_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpeqd xmm0, xmm1
-; X64-NEXT:    pshufd {{.*#+}} xmm1 = xmm0[1,0,3,2]
-; X64-NEXT:    pand xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pshufd {{.*#+}} xmm2 = xmm0[1,0,3,2]
+; X64-NEXT:    pand xmm0, xmm2
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ne_v2i64_0>:
@@ -789,8 +789,9 @@ define <4 x i16> @icmp_uge_v4i16_0(<4 x i16> %a) {
 ; X64-LABEL: <icmp_uge_v4i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    psubusw xmm1, xmm0
-; X64-NEXT:    pxor xmm0, xmm0
-; X64-NEXT:    pcmpeqw xmm0, xmm1
+; X64-NEXT:    pxor xmm2, xmm2
+; X64-NEXT:    pcmpeqw xmm2, xmm1
+; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_uge_v4i16_0>:
@@ -821,8 +822,9 @@ define <8 x i16> @icmp_uge_v8i16_0(<8 x i16> %a) {
 ; X64-LABEL: <icmp_uge_v8i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    psubusw xmm1, xmm0
-; X64-NEXT:    pxor xmm0, xmm0
-; X64-NEXT:    pcmpeqw xmm0, xmm1
+; X64-NEXT:    pxor xmm2, xmm2
+; X64-NEXT:    pcmpeqw xmm2, xmm1
+; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_uge_v8i16_0>:
@@ -1336,8 +1338,8 @@ define <4 x i16> @icmp_ule_v4i16_0(<4 x i16> %a) {
 ; X64-LABEL: <icmp_ule_v4i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    psubusw xmm0, xmm1
-; X64-NEXT:    pxor xmm1, xmm1
-; X64-NEXT:    pcmpeqw xmm0, xmm1
+; X64-NEXT:    pxor xmm2, xmm2
+; X64-NEXT:    pcmpeqw xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ule_v4i16_0>:
@@ -1370,8 +1372,8 @@ define <8 x i16> @icmp_ule_v8i16_0(<8 x i16> %a) {
 ; X64-LABEL: <icmp_ule_v8i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    psubusw xmm0, xmm1
-; X64-NEXT:    pxor xmm1, xmm1
-; X64-NEXT:    pcmpeqw xmm0, xmm1
+; X64-NEXT:    pxor xmm2, xmm2
+; X64-NEXT:    pcmpeqw xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ule_v8i16_0>:
@@ -1761,8 +1763,9 @@ define <8 x i8> @icmp_sge_v8i8_0(<8 x i8> %a) {
 ; X64-LABEL: <icmp_sge_v8i8_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtb xmm1, xmm0
-; X64-NEXT:    pcmpeqd xmm0, xmm0
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm2, xmm1
+; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sge_v8i8_0>:
@@ -1793,8 +1796,9 @@ define <16 x i8> @icmp_sge_v16i8_0(<16 x i8> %a) {
 ; X64-LABEL: <icmp_sge_v16i8_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtb xmm1, xmm0
-; X64-NEXT:    pcmpeqd xmm0, xmm0
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm2, xmm1
+; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sge_v16i8_0>:
@@ -1825,8 +1829,9 @@ define <4 x i16> @icmp_sge_v4i16_0(<4 x i16> %a) {
 ; X64-LABEL: <icmp_sge_v4i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtw xmm1, xmm0
-; X64-NEXT:    pcmpeqd xmm0, xmm0
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm2, xmm1
+; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sge_v4i16_0>:
@@ -1857,8 +1862,9 @@ define <8 x i16> @icmp_sge_v8i16_0(<8 x i16> %a) {
 ; X64-LABEL: <icmp_sge_v8i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtw xmm1, xmm0
-; X64-NEXT:    pcmpeqd xmm0, xmm0
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm2, xmm1
+; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sge_v8i16_0>:
@@ -1889,8 +1895,9 @@ define <2 x i32> @icmp_sge_v2i32_0(<2 x i32> %a) {
 ; X64-LABEL: <icmp_sge_v2i32_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtd xmm1, xmm0
-; X64-NEXT:    pcmpeqd xmm0, xmm0
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm2, xmm1
+; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sge_v2i32_0>:
@@ -1921,8 +1928,9 @@ define <4 x i32> @icmp_sge_v4i32_0(<4 x i32> %a) {
 ; X64-LABEL: <icmp_sge_v4i32_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtd xmm1, xmm0
-; X64-NEXT:    pcmpeqd xmm0, xmm0
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm2, xmm1
+; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sge_v4i32_0>:
@@ -2252,8 +2260,8 @@ define <8 x i8> @icmp_sle_v8i8_0(<8 x i8> %a) {
 ; X64-LABEL: <icmp_sle_v8i8_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtb xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sle_v8i8_0>:
@@ -2286,8 +2294,8 @@ define <16 x i8> @icmp_sle_v16i8_0(<16 x i8> %a) {
 ; X64-LABEL: <icmp_sle_v16i8_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtb xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sle_v16i8_0>:
@@ -2320,8 +2328,8 @@ define <4 x i16> @icmp_sle_v4i16_0(<4 x i16> %a) {
 ; X64-LABEL: <icmp_sle_v4i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtw xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sle_v4i16_0>:
@@ -2354,8 +2362,8 @@ define <8 x i16> @icmp_sle_v8i16_0(<8 x i16> %a) {
 ; X64-LABEL: <icmp_sle_v8i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtw xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sle_v8i16_0>:
@@ -2388,8 +2396,8 @@ define <2 x i32> @icmp_sle_v2i32_0(<2 x i32> %a) {
 ; X64-LABEL: <icmp_sle_v2i32_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtd xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sle_v2i32_0>:
@@ -2422,8 +2430,8 @@ define <4 x i32> @icmp_sle_v4i32_0(<4 x i32> %a) {
 ; X64-LABEL: <icmp_sle_v4i32_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpgtd xmm0, xmm1
-; X64-NEXT:    pcmpeqd xmm1, xmm1
-; X64-NEXT:    pxor xmm0, xmm1
+; X64-NEXT:    pcmpeqd xmm2, xmm2
+; X64-NEXT:    pxor xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sle_v4i32_0>:

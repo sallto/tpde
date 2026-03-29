@@ -24,8 +24,8 @@ define i8 @sadd_sat_i8(i8, i8) {
 ; ARM64-NEXT:    csel w2, w0, w2, lt
 ; ARM64-NEXT:    mov w0, #-0x80 // =-128
 ; ARM64-NEXT:    cmn w2, #0x80
-; ARM64-NEXT:    csel w1, w2, w0, gt
-; ARM64-NEXT:    mov w0, w1
+; ARM64-NEXT:    csel w3, w2, w0, gt
+; ARM64-NEXT:    mov w0, w3
 ; ARM64-NEXT:    ret
   %r = call i8 @llvm.sadd.sat.i8(i8 %0, i8 %1)
   ret i8 %r
@@ -49,8 +49,8 @@ define i16 @sadd_sat_i16(i16, i16) {
 ; ARM64-NEXT:    csel w0, w0, w2, lt
 ; ARM64-NEXT:    mov w2, #-0x8000 // =-32768
 ; ARM64-NEXT:    cmn w0, #0x8, lsl #12 // =0x8000
-; ARM64-NEXT:    csel w1, w0, w2, gt
-; ARM64-NEXT:    mov w0, w1
+; ARM64-NEXT:    csel w3, w0, w2, gt
+; ARM64-NEXT:    mov w0, w3
 ; ARM64-NEXT:    ret
   %r = call i16 @llvm.sadd.sat.i16(i16 %0, i16 %1)
   ret i16 %r
@@ -112,8 +112,8 @@ define i8 @uadd_sat_i8(i8, i8) {
 ; ARM64-NEXT:    mov w2, #0xff // =255
 ; ARM64-NEXT:    add w0, w0, w1, uxtb
 ; ARM64-NEXT:    cmp w0, #0xff
-; ARM64-NEXT:    csel w1, w0, w2, lo
-; ARM64-NEXT:    mov w0, w1
+; ARM64-NEXT:    csel w3, w0, w2, lo
+; ARM64-NEXT:    mov w0, w3
 ; ARM64-NEXT:    ret
   %r = call i8 @llvm.uadd.sat.i8(i8 %0, i8 %1)
   ret i8 %r
@@ -131,8 +131,8 @@ define i16 @uadd_sat_i16(i16, i16) {
 ; ARM64-NEXT:    mov w2, #0xffff // =65535
 ; ARM64-NEXT:    add w0, w0, w1, uxth
 ; ARM64-NEXT:    cmp w0, w2
-; ARM64-NEXT:    csel w1, w0, w2, lo
-; ARM64-NEXT:    mov w0, w1
+; ARM64-NEXT:    csel w3, w0, w2, lo
+; ARM64-NEXT:    mov w0, w3
 ; ARM64-NEXT:    ret
   %r = call i16 @llvm.uadd.sat.i16(i16 %0, i16 %1)
   ret i16 %r

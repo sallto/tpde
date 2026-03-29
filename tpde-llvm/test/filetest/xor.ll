@@ -249,8 +249,8 @@ define void @xor_i128_90000000000000009(i128 %0) {
 ; ARM64-LABEL: <xor_i128_90000000000000009>:
 ; ARM64:         mov x2, #0x9 // =9
 ; ARM64-NEXT:    eor x2, x2, x1
-; ARM64-NEXT:    mov x1, #0x9 // =9
-; ARM64-NEXT:    eor x1, x1, x0
+; ARM64-NEXT:    mov x3, #0x9 // =9
+; ARM64-NEXT:    eor x3, x3, x0
 ; ARM64-NEXT:    ret
 entry:
     %1 = xor i128 %0, u0x90000000000000009

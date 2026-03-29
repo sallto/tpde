@@ -25,8 +25,8 @@ define i8 @ssub_sat_i8(i8, i8) {
 ; ARM64-NEXT:    csel w2, w0, w2, lt
 ; ARM64-NEXT:    mov w0, #-0x80 // =-128
 ; ARM64-NEXT:    cmn w2, #0x80
-; ARM64-NEXT:    csel w1, w2, w0, gt
-; ARM64-NEXT:    mov w0, w1
+; ARM64-NEXT:    csel w3, w2, w0, gt
+; ARM64-NEXT:    mov w0, w3
 ; ARM64-NEXT:    ret
   %r = call i8 @llvm.ssub.sat.i8(i8 %0, i8 %1)
   ret i8 %r
@@ -50,8 +50,8 @@ define i16 @ssub_sat_i16(i16, i16) {
 ; ARM64-NEXT:    csel w0, w0, w2, lt
 ; ARM64-NEXT:    mov w2, #-0x8000 // =-32768
 ; ARM64-NEXT:    cmn w0, #0x8, lsl #12 // =0x8000
-; ARM64-NEXT:    csel w1, w0, w2, gt
-; ARM64-NEXT:    mov w0, w1
+; ARM64-NEXT:    csel w3, w0, w2, gt
+; ARM64-NEXT:    mov w0, w3
 ; ARM64-NEXT:    ret
   %r = call i16 @llvm.ssub.sat.i16(i16 %0, i16 %1)
   ret i16 %r

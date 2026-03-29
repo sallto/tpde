@@ -488,8 +488,10 @@ define i128 @ret_i128_i128_i128_i128_i32_i128(i128 %0, i128 %1, i128 %2, i128 %3
 ; ARM64-LABEL: <ret_i128_i128_i128_i128_i32_i128>:
 ; ARM64:         mov x17, sp
 ; ARM64-NEXT:    ldr w0, [x17]
-; ARM64-NEXT:    ldr x0, [x17, #0x10]
-; ARM64-NEXT:    ldr x1, [x17, #0x18]
+; ARM64-NEXT:    ldr x1, [x17, #0x10]
+; ARM64-NEXT:    ldr x2, [x17, #0x18]
+; ARM64-NEXT:    mov x0, x1
+; ARM64-NEXT:    mov x1, x2
 ; ARM64-NEXT:    ret
 entry:
   ret i128 %5
@@ -1154,10 +1156,10 @@ define void @call_sret_tgt(ptr sret(%struct.3i64) align 8) {
 ; ARM64-LABEL: <call_sret_tgt>:
 ; ARM64:         mov x0, #0x1 // =1
 ; ARM64-NEXT:    str x0, [x8]
-; ARM64-NEXT:    mov x0, #0x2 // =2
-; ARM64-NEXT:    str x0, [x8, #0x8]
-; ARM64-NEXT:    mov x0, #0x3 // =3
-; ARM64-NEXT:    str x0, [x8, #0x10]
+; ARM64-NEXT:    mov x1, #0x2 // =2
+; ARM64-NEXT:    str x1, [x8, #0x8]
+; ARM64-NEXT:    mov x2, #0x3 // =3
+; ARM64-NEXT:    str x2, [x8, #0x10]
 ; ARM64-NEXT:    ret
   %gep1 = getelementptr inbounds %struct.3i64, ptr %0, i64 0, i32 0, i32 0
   store i64 1, ptr %gep1
@@ -1205,23 +1207,23 @@ define void @call_sret_manyargs() {
 ; X64-NEXT:    lea rdi, [rbp - 0x50]
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    mov qword ptr [rsp], rax
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rsp + 0x8], rax
+; X64-NEXT:    xor ecx, ecx
+; X64-NEXT:    mov qword ptr [rsp + 0x8], rcx
+; X64-NEXT:    xor edx, edx
+; X64-NEXT:    mov qword ptr [rsp + 0x10], rdx
+; X64-NEXT:    xor esi, esi
+; X64-NEXT:    mov qword ptr [rsp + 0x18], rsi
+; X64-NEXT:    xor r8d, r8d
+; X64-NEXT:    mov qword ptr [rsp + 0x20], r8
+; X64-NEXT:    xor r9d, r9d
+; X64-NEXT:    mov qword ptr [rsp + 0x28], r9
+; X64-NEXT:    xor r10d, r10d
+; X64-NEXT:    mov qword ptr [rsp + 0x30], r10
 ; X64-NEXT:    xor esi, esi
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    xor ecx, ecx
 ; X64-NEXT:    xor r8d, r8d
 ; X64-NEXT:    xor r9d, r9d
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rsp + 0x10], rax
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rsp + 0x18], rax
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rsp + 0x20], rax
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rsp + 0x28], rax
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rsp + 0x30], rax
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 call_sret_tgt-0x4
@@ -1234,6 +1236,19 @@ define void @call_sret_manyargs() {
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    add x8, x29, #0xa0
 ; ARM64-NEXT:    mov w0, #0x0 // =0
+; ARM64-NEXT:    sub sp, sp, #0x20
+; ARM64-NEXT:    mov x16, x0
+; ARM64-NEXT:    str x16, [sp]
+; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    mov x16, x1
+; ARM64-NEXT:    str x16, [sp, #0x8]
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    mov x16, x2
+; ARM64-NEXT:    str x16, [sp, #0x10]
+; ARM64-NEXT:    mov w3, #0x0 // =0
+; ARM64-NEXT:    mov x16, x3
+; ARM64-NEXT:    str x16, [sp, #0x18]
+; ARM64-NEXT:    mov w0, #0x0 // =0
 ; ARM64-NEXT:    mov w1, #0x0 // =0
 ; ARM64-NEXT:    mov w2, #0x0 // =0
 ; ARM64-NEXT:    mov w3, #0x0 // =0
@@ -1241,15 +1256,6 @@ define void @call_sret_manyargs() {
 ; ARM64-NEXT:    mov w5, #0x0 // =0
 ; ARM64-NEXT:    mov w6, #0x0 // =0
 ; ARM64-NEXT:    mov w7, #0x0 // =0
-; ARM64-NEXT:    mov w9, #0x0 // =0
-; ARM64-NEXT:    sub sp, sp, #0x20
-; ARM64-NEXT:    str x9, [sp]
-; ARM64-NEXT:    mov w9, #0x0 // =0
-; ARM64-NEXT:    str x9, [sp, #0x8]
-; ARM64-NEXT:    mov w9, #0x0 // =0
-; ARM64-NEXT:    str x9, [sp, #0x10]
-; ARM64-NEXT:    mov w9, #0x0 // =0
-; ARM64-NEXT:    str x9, [sp, #0x18]
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 call_sret_tgt
@@ -1277,9 +1283,9 @@ define i32 @alloca_call(i32 %a1, i32 %a2, i32 %a3, i32 %a4) {
 ; X64-NEXT:     R_X86_64_PLT32 alloca_call_tgt-0x4
 ; X64-NEXT:    mov ecx, dword ptr [rbp - 0x138b4]
 ; X64-NEXT:    lea ecx, [rcx + rax]
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x138bc]
-; X64-NEXT:    mov edx, dword ptr [rbp - 0x138b8]
-; X64-NEXT:    lea eax, [rax + rdx]
+; X64-NEXT:    mov edx, dword ptr [rbp - 0x138bc]
+; X64-NEXT:    mov esi, dword ptr [rbp - 0x138b8]
+; X64-NEXT:    lea edx, [rdx + rsi]
 ; X64-NEXT:    mov eax, ecx
 ; X64-NEXT:    add rsp, 0x138c0
 ; X64-NEXT:    pop rbp
@@ -1303,11 +1309,11 @@ define i32 @alloca_call(i32 %a1, i32 %a2, i32 %a3, i32 %a4) {
 ; ARM64-NEXT:    add x1, x29, #0x13, lsl #12 // =0x13000
 ; ARM64-NEXT:    ldr w1, [x1, #0x920]
 ; ARM64-NEXT:    add w0, w0, w1
-; ARM64-NEXT:    add x1, x29, #0x13, lsl #12 // =0x13000
-; ARM64-NEXT:    ldr w1, [x1, #0x928]
 ; ARM64-NEXT:    add x2, x29, #0x13, lsl #12 // =0x13000
-; ARM64-NEXT:    ldr w2, [x2, #0x924]
-; ARM64-NEXT:    add w1, w1, w2
+; ARM64-NEXT:    ldr w2, [x2, #0x928]
+; ARM64-NEXT:    add x3, x29, #0x13, lsl #12 // =0x13000
+; ARM64-NEXT:    ldr w3, [x3, #0x924]
+; ARM64-NEXT:    add w2, w2, w3
 ; ARM64-NEXT:    ldp x29, x30, [sp]
 ; ARM64-NEXT:    add sp, sp, #0x14, lsl #12 // =0x14000
 ; ARM64-NEXT:    ret
@@ -1508,15 +1514,15 @@ define void @call_fn_v_stack_i1z_i1s_i37z_i37s(i1 %a, i1 %b, i37 %c, i37 %d) {
 ; X64-NEXT:    sub rsp, 0x60
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    mov qword ptr [rsp], rax
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rsp + 0x8], rax
+; X64-NEXT:    xor r8d, r8d
+; X64-NEXT:    mov qword ptr [rsp + 0x8], r8
 ; X64-NEXT:    and edi, 0x1
 ; X64-NEXT:    mov byte ptr [rsp + 0x10], dil
 ; X64-NEXT:    and esi, 0x1
 ; X64-NEXT:    neg rsi
 ; X64-NEXT:    mov byte ptr [rsp + 0x18], sil
-; X64-NEXT:    movabs rax, 0x1fffffffff
-; X64-NEXT:    and rdx, rax
+; X64-NEXT:    movabs r9, 0x1fffffffff
+; X64-NEXT:    and rdx, r9
 ; X64-NEXT:    mov qword ptr [rsp + 0x20], rdx
 ; X64-NEXT:    shl rcx, 0x1b
 ; X64-NEXT:    sar rcx, 0x1b
@@ -1644,10 +1650,10 @@ define i64 @fn_many_args_i64(i64 %p0, i64 %p1, i64 %p2, i64 %p3, i64 %p4, i64 %p
 ; X64-NEXT:    mov r9, qword ptr [rbp + 0x10]
 ; X64-NEXT:    mov rax, qword ptr [rbp + 0x18]
 ; X64-NEXT:    mov qword ptr [rsp], rax
-; X64-NEXT:    mov rax, qword ptr [rbp + 0x20]
-; X64-NEXT:    mov qword ptr [rsp + 0x8], rax
-; X64-NEXT:    xor r10d, r10d
-; X64-NEXT:    mov qword ptr [rsp + 0x10], r10
+; X64-NEXT:    mov r10, qword ptr [rbp + 0x20]
+; X64-NEXT:    mov qword ptr [rsp + 0x8], r10
+; X64-NEXT:    xor r11d, r11d
+; X64-NEXT:    mov qword ptr [rsp + 0x10], r11
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_i64-0x4
@@ -1661,7 +1667,11 @@ define i64 @fn_many_args_i64(i64 %p0, i64 %p1, i64 %p2, i64 %p3, i64 %p4, i64 %p
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    add x17, sp, #0xb0
 ; ARM64-NEXT:    ldr x0, [x17]
-; ARM64-NEXT:    mov x8, x1
+; ARM64-NEXT:    mov w8, #0x0 // =0
+; ARM64-NEXT:    sub sp, sp, #0x10
+; ARM64-NEXT:    mov x16, x8
+; ARM64-NEXT:    str x16, [sp]
+; ARM64-NEXT:    mov x9, x1
 ; ARM64-NEXT:    mov x1, x2
 ; ARM64-NEXT:    mov x2, x3
 ; ARM64-NEXT:    mov x3, x4
@@ -1670,11 +1680,7 @@ define i64 @fn_many_args_i64(i64 %p0, i64 %p1, i64 %p2, i64 %p3, i64 %p4, i64 %p
 ; ARM64-NEXT:    mov x6, x7
 ; ARM64-NEXT:    mov x7, x0
 ; ARM64-NEXT:    str x0, [x29, #0xa0]
-; ARM64-NEXT:    mov x0, x8
-; ARM64-NEXT:    mov w8, #0x0 // =0
-; ARM64-NEXT:    sub sp, sp, #0x10
-; ARM64-NEXT:    mov x16, x8
-; ARM64-NEXT:    str x16, [sp]
+; ARM64-NEXT:    mov x0, x9
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fn_many_args_i64
@@ -1699,10 +1705,10 @@ define i32 @fn_many_args_i32(i32 %p0, i32 %p1, i32 %p2, i32 %p3, i32 %p4, i32 %p
 ; X64-NEXT:    mov r9d, dword ptr [rbp + 0x10]
 ; X64-NEXT:    mov eax, dword ptr [rbp + 0x18]
 ; X64-NEXT:    mov dword ptr [rsp], eax
-; X64-NEXT:    mov eax, dword ptr [rbp + 0x20]
-; X64-NEXT:    mov dword ptr [rsp + 0x8], eax
-; X64-NEXT:    xor r10d, r10d
-; X64-NEXT:    mov dword ptr [rsp + 0x10], r10d
+; X64-NEXT:    mov r10d, dword ptr [rbp + 0x20]
+; X64-NEXT:    mov dword ptr [rsp + 0x8], r10d
+; X64-NEXT:    xor r11d, r11d
+; X64-NEXT:    mov dword ptr [rsp + 0x10], r11d
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_i32-0x4
@@ -1716,7 +1722,11 @@ define i32 @fn_many_args_i32(i32 %p0, i32 %p1, i32 %p2, i32 %p3, i32 %p4, i32 %p
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    add x17, sp, #0xb0
 ; ARM64-NEXT:    ldr w0, [x17]
-; ARM64-NEXT:    mov w8, w1
+; ARM64-NEXT:    mov w8, #0x0 // =0
+; ARM64-NEXT:    sub sp, sp, #0x10
+; ARM64-NEXT:    mov w16, w8
+; ARM64-NEXT:    str w16, [sp]
+; ARM64-NEXT:    mov w9, w1
 ; ARM64-NEXT:    mov w1, w2
 ; ARM64-NEXT:    mov w2, w3
 ; ARM64-NEXT:    mov w3, w4
@@ -1725,11 +1735,7 @@ define i32 @fn_many_args_i32(i32 %p0, i32 %p1, i32 %p2, i32 %p3, i32 %p4, i32 %p
 ; ARM64-NEXT:    mov w6, w7
 ; ARM64-NEXT:    mov w7, w0
 ; ARM64-NEXT:    str w0, [x29, #0xa0]
-; ARM64-NEXT:    mov w0, w8
-; ARM64-NEXT:    mov w8, #0x0 // =0
-; ARM64-NEXT:    sub sp, sp, #0x10
-; ARM64-NEXT:    mov w16, w8
-; ARM64-NEXT:    str w16, [sp]
+; ARM64-NEXT:    mov w0, w9
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fn_many_args_i32
@@ -1754,10 +1760,10 @@ define i16 @fn_many_args_i16(i16 %p0, i16 %p1, i16 %p2, i16 %p3, i16 %p4, i16 %p
 ; X64-NEXT:    movzx r9d, word ptr [rbp + 0x10]
 ; X64-NEXT:    movzx eax, word ptr [rbp + 0x18]
 ; X64-NEXT:    mov word ptr [rsp], ax
-; X64-NEXT:    movzx eax, word ptr [rbp + 0x20]
-; X64-NEXT:    mov word ptr [rsp + 0x8], ax
-; X64-NEXT:    xor r10d, r10d
-; X64-NEXT:    mov word ptr [rsp + 0x10], r10w
+; X64-NEXT:    movzx r10d, word ptr [rbp + 0x20]
+; X64-NEXT:    mov word ptr [rsp + 0x8], r10w
+; X64-NEXT:    xor r11d, r11d
+; X64-NEXT:    mov word ptr [rsp + 0x10], r11w
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_i16-0x4
@@ -1771,7 +1777,11 @@ define i16 @fn_many_args_i16(i16 %p0, i16 %p1, i16 %p2, i16 %p3, i16 %p4, i16 %p
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    add x17, sp, #0xb0
 ; ARM64-NEXT:    ldrh w0, [x17]
-; ARM64-NEXT:    mov w8, w1
+; ARM64-NEXT:    mov w8, #0x0 // =0
+; ARM64-NEXT:    sub sp, sp, #0x10
+; ARM64-NEXT:    mov w16, w8
+; ARM64-NEXT:    strh w16, [sp]
+; ARM64-NEXT:    mov w9, w1
 ; ARM64-NEXT:    mov w1, w2
 ; ARM64-NEXT:    mov w2, w3
 ; ARM64-NEXT:    mov w3, w4
@@ -1780,11 +1790,7 @@ define i16 @fn_many_args_i16(i16 %p0, i16 %p1, i16 %p2, i16 %p3, i16 %p4, i16 %p
 ; ARM64-NEXT:    mov w6, w7
 ; ARM64-NEXT:    mov w7, w0
 ; ARM64-NEXT:    strh w0, [x29, #0xa0]
-; ARM64-NEXT:    mov w0, w8
-; ARM64-NEXT:    mov w8, #0x0 // =0
-; ARM64-NEXT:    sub sp, sp, #0x10
-; ARM64-NEXT:    mov w16, w8
-; ARM64-NEXT:    strh w16, [sp]
+; ARM64-NEXT:    mov w0, w9
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fn_many_args_i16
@@ -1809,10 +1815,10 @@ define i8 @fn_many_args_i8(i8 %p0, i8 %p1, i8 %p2, i8 %p3, i8 %p4, i8 %p5, i8 %p
 ; X64-NEXT:    movzx r9d, byte ptr [rbp + 0x10]
 ; X64-NEXT:    movzx eax, byte ptr [rbp + 0x18]
 ; X64-NEXT:    mov byte ptr [rsp], al
-; X64-NEXT:    movzx eax, byte ptr [rbp + 0x20]
-; X64-NEXT:    mov byte ptr [rsp + 0x8], al
-; X64-NEXT:    xor r10d, r10d
-; X64-NEXT:    mov byte ptr [rsp + 0x10], r10b
+; X64-NEXT:    movzx r10d, byte ptr [rbp + 0x20]
+; X64-NEXT:    mov byte ptr [rsp + 0x8], r10b
+; X64-NEXT:    xor r11d, r11d
+; X64-NEXT:    mov byte ptr [rsp + 0x10], r11b
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_i8-0x4
@@ -1826,7 +1832,11 @@ define i8 @fn_many_args_i8(i8 %p0, i8 %p1, i8 %p2, i8 %p3, i8 %p4, i8 %p5, i8 %p
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    add x17, sp, #0xb0
 ; ARM64-NEXT:    ldrb w0, [x17]
-; ARM64-NEXT:    mov w8, w1
+; ARM64-NEXT:    mov w8, #0x0 // =0
+; ARM64-NEXT:    sub sp, sp, #0x10
+; ARM64-NEXT:    mov w16, w8
+; ARM64-NEXT:    strb w16, [sp]
+; ARM64-NEXT:    mov w9, w1
 ; ARM64-NEXT:    mov w1, w2
 ; ARM64-NEXT:    mov w2, w3
 ; ARM64-NEXT:    mov w3, w4
@@ -1835,11 +1845,7 @@ define i8 @fn_many_args_i8(i8 %p0, i8 %p1, i8 %p2, i8 %p3, i8 %p4, i8 %p5, i8 %p
 ; ARM64-NEXT:    mov w6, w7
 ; ARM64-NEXT:    mov w7, w0
 ; ARM64-NEXT:    strb w0, [x29, #0xa0]
-; ARM64-NEXT:    mov w0, w8
-; ARM64-NEXT:    mov w8, #0x0 // =0
-; ARM64-NEXT:    sub sp, sp, #0x10
-; ARM64-NEXT:    mov w16, w8
-; ARM64-NEXT:    strb w16, [sp]
+; ARM64-NEXT:    mov w0, w9
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fn_many_args_i8
@@ -1855,7 +1861,14 @@ define float @fn_many_args_float(float %p0, float %p1, float %p2, float %p3, flo
 ; X64-LABEL: <fn_many_args_float>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    sub rsp, 0x40
+; X64-NEXT:    sub rsp, 0x60
+; X64-NEXT:    movd dword ptr [rbp - 0x2c], xmm1
+; X64-NEXT:    movd dword ptr [rbp - 0x30], xmm2
+; X64-NEXT:    movd dword ptr [rbp - 0x34], xmm3
+; X64-NEXT:    movd dword ptr [rbp - 0x38], xmm4
+; X64-NEXT:    movd dword ptr [rbp - 0x3c], xmm5
+; X64-NEXT:    movd dword ptr [rbp - 0x40], xmm6
+; X64-NEXT:    movd dword ptr [rbp - 0x44], xmm7
 ; X64-NEXT:    movapd xmm0, xmm1
 ; X64-NEXT:    movapd xmm1, xmm2
 ; X64-NEXT:    movapd xmm2, xmm3
@@ -1866,15 +1879,15 @@ define float @fn_many_args_float(float %p0, float %p1, float %p2, float %p3, flo
 ; X64-NEXT:    movd xmm7, dword ptr [rbp + 0x10]
 ; X64-NEXT:    movd xmm8, dword ptr [rbp + 0x18]
 ; X64-NEXT:    movss dword ptr [rsp], xmm8
-; X64-NEXT:    movd xmm8, dword ptr [rbp + 0x20]
-; X64-NEXT:    movss dword ptr [rsp + 0x8], xmm8
-; X64-NEXT:    pxor xmm9, xmm9
-; X64-NEXT:    movss dword ptr [rsp + 0x10], xmm9
+; X64-NEXT:    movd xmm9, dword ptr [rbp + 0x20]
+; X64-NEXT:    movss dword ptr [rsp + 0x8], xmm9
+; X64-NEXT:    pxor xmm10, xmm10
+; X64-NEXT:    movss dword ptr [rsp + 0x10], xmm10
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_float-0x4
 ; X64-NEXT:    movd xmm0, dword ptr [rbp + 0x20]
-; X64-NEXT:    add rsp, 0x40
+; X64-NEXT:    add rsp, 0x60
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -1883,9 +1896,17 @@ define float @fn_many_args_float(float %p0, float %p1, float %p2, float %p3, flo
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    add x17, sp, #0xb0
 ; ARM64-NEXT:    ldr s0, [x17]
+; ARM64-NEXT:    str s0, [x29, #0xa0]
 ; ARM64-NEXT:    ldr s16, [x17, #0x8]
+; ARM64-NEXT:    str s16, [x29, #0xa4]
 ; ARM64-NEXT:    ldr s17, [x17, #0x10]
-; ARM64-NEXT:    mov v18.16b, v1.16b
+; ARM64-NEXT:    sub sp, sp, #0x20
+; ARM64-NEXT:    str s16, [sp]
+; ARM64-NEXT:    str s17, [sp, #0x8]
+; ARM64-NEXT:    movi v18.8b, #0x0
+; ARM64-NEXT:    str s18, [sp, #0x10]
+; ARM64-NEXT:    str s17, [x29, #0xa4]
+; ARM64-NEXT:    mov v19.16b, v1.16b
 ; ARM64-NEXT:    mov v1.16b, v2.16b
 ; ARM64-NEXT:    mov v2.16b, v3.16b
 ; ARM64-NEXT:    mov v3.16b, v4.16b
@@ -1893,18 +1914,12 @@ define float @fn_many_args_float(float %p0, float %p1, float %p2, float %p3, flo
 ; ARM64-NEXT:    mov v5.16b, v6.16b
 ; ARM64-NEXT:    mov v6.16b, v7.16b
 ; ARM64-NEXT:    mov v7.16b, v0.16b
-; ARM64-NEXT:    mov v0.16b, v18.16b
-; ARM64-NEXT:    sub sp, sp, #0x20
-; ARM64-NEXT:    str s16, [sp]
-; ARM64-NEXT:    str s17, [sp, #0x8]
-; ARM64-NEXT:    movi v16.8b, #0x0
-; ARM64-NEXT:    str s16, [sp, #0x10]
-; ARM64-NEXT:    str s17, [x29, #0xa0]
+; ARM64-NEXT:    mov v0.16b, v19.16b
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fn_many_args_float
 ; ARM64-NEXT:    add sp, sp, #0x20
-; ARM64-NEXT:    ldr s0, [x29, #0xa0]
+; ARM64-NEXT:    ldr s0, [x29, #0xa4]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   %r = call float @fn_many_args_float(float %p1, float %p2, float %p3, float %p4, float %p5, float %p6, float %p7, float %p8, float %p9, float %p10, float 0.0)
@@ -1915,7 +1930,14 @@ define double @fn_many_args_double(double %p0, double %p1, double %p2, double %p
 ; X64-LABEL: <fn_many_args_double>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    sub rsp, 0x40
+; X64-NEXT:    sub rsp, 0x80
+; X64-NEXT:    movq qword ptr [rbp - 0x30], xmm1
+; X64-NEXT:    movq qword ptr [rbp - 0x38], xmm2
+; X64-NEXT:    movq qword ptr [rbp - 0x40], xmm3
+; X64-NEXT:    movq qword ptr [rbp - 0x48], xmm4
+; X64-NEXT:    movq qword ptr [rbp - 0x50], xmm5
+; X64-NEXT:    movq qword ptr [rbp - 0x58], xmm6
+; X64-NEXT:    movq qword ptr [rbp - 0x60], xmm7
 ; X64-NEXT:    movapd xmm0, xmm1
 ; X64-NEXT:    movapd xmm1, xmm2
 ; X64-NEXT:    movapd xmm2, xmm3
@@ -1926,15 +1948,15 @@ define double @fn_many_args_double(double %p0, double %p1, double %p2, double %p
 ; X64-NEXT:    movq xmm7, qword ptr [rbp + 0x10]
 ; X64-NEXT:    movq xmm8, qword ptr [rbp + 0x18]
 ; X64-NEXT:    movsd qword ptr [rsp], xmm8
-; X64-NEXT:    movq xmm8, qword ptr [rbp + 0x20]
-; X64-NEXT:    movsd qword ptr [rsp + 0x8], xmm8
-; X64-NEXT:    pxor xmm9, xmm9
-; X64-NEXT:    movsd qword ptr [rsp + 0x10], xmm9
+; X64-NEXT:    movq xmm9, qword ptr [rbp + 0x20]
+; X64-NEXT:    movsd qword ptr [rsp + 0x8], xmm9
+; X64-NEXT:    pxor xmm10, xmm10
+; X64-NEXT:    movsd qword ptr [rsp + 0x10], xmm10
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_double-0x4
 ; X64-NEXT:    movq xmm0, qword ptr [rbp + 0x20]
-; X64-NEXT:    add rsp, 0x40
+; X64-NEXT:    add rsp, 0x80
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -1943,9 +1965,17 @@ define double @fn_many_args_double(double %p0, double %p1, double %p2, double %p
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    add x17, sp, #0xb0
 ; ARM64-NEXT:    ldr d0, [x17]
+; ARM64-NEXT:    str d0, [x29, #0xa0]
 ; ARM64-NEXT:    ldr d16, [x17, #0x8]
+; ARM64-NEXT:    str d16, [x29, #0xa8]
 ; ARM64-NEXT:    ldr d17, [x17, #0x10]
-; ARM64-NEXT:    mov v18.16b, v1.16b
+; ARM64-NEXT:    sub sp, sp, #0x20
+; ARM64-NEXT:    str d16, [sp]
+; ARM64-NEXT:    str d17, [sp, #0x8]
+; ARM64-NEXT:    movi v18.8b, #0x0
+; ARM64-NEXT:    str d18, [sp, #0x10]
+; ARM64-NEXT:    str d17, [x29, #0xa8]
+; ARM64-NEXT:    mov v19.16b, v1.16b
 ; ARM64-NEXT:    mov v1.16b, v2.16b
 ; ARM64-NEXT:    mov v2.16b, v3.16b
 ; ARM64-NEXT:    mov v3.16b, v4.16b
@@ -1953,18 +1983,12 @@ define double @fn_many_args_double(double %p0, double %p1, double %p2, double %p
 ; ARM64-NEXT:    mov v5.16b, v6.16b
 ; ARM64-NEXT:    mov v6.16b, v7.16b
 ; ARM64-NEXT:    mov v7.16b, v0.16b
-; ARM64-NEXT:    mov v0.16b, v18.16b
-; ARM64-NEXT:    sub sp, sp, #0x20
-; ARM64-NEXT:    str d16, [sp]
-; ARM64-NEXT:    str d17, [sp, #0x8]
-; ARM64-NEXT:    movi v16.8b, #0x0
-; ARM64-NEXT:    str d16, [sp, #0x10]
-; ARM64-NEXT:    str d17, [x29, #0xa0]
+; ARM64-NEXT:    mov v0.16b, v19.16b
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fn_many_args_double
 ; ARM64-NEXT:    add sp, sp, #0x20
-; ARM64-NEXT:    ldr d0, [x29, #0xa0]
+; ARM64-NEXT:    ldr d0, [x29, #0xa8]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   %r = call double @fn_many_args_double(double %p1, double %p2, double %p3, double %p4, double %p5, double %p6, double %p7, double %p8, double %p9, double %p10, double 0.0)
@@ -1975,7 +1999,13 @@ define double @fn_many_args_floatdouble(double %p0, float %p1, double %p2, float
 ; X64-LABEL: <fn_many_args_floatdouble>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    sub rsp, 0x40
+; X64-NEXT:    sub rsp, 0x70
+; X64-NEXT:    movq qword ptr [rbp - 0x30], xmm2
+; X64-NEXT:    movd dword ptr [rbp - 0x34], xmm3
+; X64-NEXT:    movq qword ptr [rbp - 0x40], xmm4
+; X64-NEXT:    movd dword ptr [rbp - 0x38], xmm5
+; X64-NEXT:    movq qword ptr [rbp - 0x48], xmm6
+; X64-NEXT:    movd dword ptr [rbp - 0x4c], xmm7
 ; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    movapd xmm1, xmm3
 ; X64-NEXT:    movapd xmm2, xmm4
@@ -1988,45 +2018,48 @@ define double @fn_many_args_floatdouble(double %p0, float %p1, double %p2, float
 ; X64-NEXT:    movsd qword ptr [rsp], xmm8
 ; X64-NEXT:    pxor xmm9, xmm9
 ; X64-NEXT:    movss dword ptr [rsp + 0x8], xmm9
-; X64-NEXT:    pxor xmm9, xmm9
-; X64-NEXT:    movsd qword ptr [rsp + 0x10], xmm9
+; X64-NEXT:    pxor xmm10, xmm10
+; X64-NEXT:    movsd qword ptr [rsp + 0x10], xmm10
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_many_args_double-0x4
 ; X64-NEXT:    movq xmm0, qword ptr [rbp + 0x20]
-; X64-NEXT:    add rsp, 0x40
+; X64-NEXT:    add rsp, 0x70
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <fn_many_args_floatdouble>:
 ; ARM64:         stp x29, x30, [sp, #-0xb0]!
 ; ARM64-NEXT:    mov x29, sp
+; ARM64-NEXT:    str s7, [x29, #0xa0]
 ; ARM64-NEXT:    add x17, sp, #0xb0
 ; ARM64-NEXT:    ldr d0, [x17]
+; ARM64-NEXT:    str d0, [x29, #0xa8]
 ; ARM64-NEXT:    ldr s1, [x17, #0x8]
+; ARM64-NEXT:    str s1, [x29, #0xa4]
 ; ARM64-NEXT:    ldr d16, [x17, #0x10]
-; ARM64-NEXT:    mov v17.16b, v2.16b
-; ARM64-NEXT:    mov v2.16b, v4.16b
-; ARM64-NEXT:    mov v4.16b, v6.16b
-; ARM64-NEXT:    mov v6.16b, v0.16b
-; ARM64-NEXT:    mov v0.16b, v17.16b
-; ARM64-NEXT:    mov v17.16b, v3.16b
-; ARM64-NEXT:    mov v3.16b, v5.16b
-; ARM64-NEXT:    mov v5.16b, v7.16b
-; ARM64-NEXT:    mov v7.16b, v1.16b
-; ARM64-NEXT:    mov v1.16b, v17.16b
 ; ARM64-NEXT:    sub sp, sp, #0x20
 ; ARM64-NEXT:    str d16, [sp]
 ; ARM64-NEXT:    movi v17.8b, #0x0
 ; ARM64-NEXT:    str s17, [sp, #0x8]
-; ARM64-NEXT:    movi v17.8b, #0x0
-; ARM64-NEXT:    str d17, [sp, #0x10]
-; ARM64-NEXT:    str d16, [x29, #0xa0]
+; ARM64-NEXT:    movi v18.8b, #0x0
+; ARM64-NEXT:    str d18, [sp, #0x10]
+; ARM64-NEXT:    str d16, [x29, #0xa8]
+; ARM64-NEXT:    mov v19.16b, v2.16b
+; ARM64-NEXT:    mov v2.16b, v4.16b
+; ARM64-NEXT:    mov v4.16b, v6.16b
+; ARM64-NEXT:    mov v6.16b, v0.16b
+; ARM64-NEXT:    mov v0.16b, v19.16b
+; ARM64-NEXT:    mov v20.16b, v3.16b
+; ARM64-NEXT:    mov v3.16b, v5.16b
+; ARM64-NEXT:    mov v5.16b, v7.16b
+; ARM64-NEXT:    mov v7.16b, v1.16b
+; ARM64-NEXT:    mov v1.16b, v20.16b
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 fn_many_args_double
 ; ARM64-NEXT:    add sp, sp, #0x20
-; ARM64-NEXT:    ldr d0, [x29, #0xa0]
+; ARM64-NEXT:    ldr d0, [x29, #0xa8]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   %r = call double @fn_many_args_double(double %p2, float %p3, double %p4, float %p5, double %p6, float %p7, double %p8, float %p9, double %p10, float 0.0, double 0.0)
@@ -2064,4 +2097,74 @@ entry:
   %data.addr = alloca ptr, align 8
   %call1 = call i32 (ptr, ...) null(ptr @.str.1)
   ret i32 %call1
+}
+declare ptr @_Znwm(i64)
+
+define void @_ZNSt11_Deque_baseIdSaIdEE15_M_create_nodesEPPdS3_(ptr %this, ptr %__nstart, ptr %__nfinish) {
+; X64-LABEL: <_ZNSt11_Deque_baseIdSaIdEE15_M_create_nodesEPPdS3_>:
+; X64:         push rbp
+; X64-NEXT:    mov rbp, rsp
+; X64-NEXT:    push rbx
+; X64-NEXT:    sub rsp, 0x38
+; X64-NEXT:    mov rbx, rdi
+; X64-NEXT:    xor edx, edx
+; X64-NEXT:    xor esi, esi
+; X64-NEXT:  <L0>:
+; X64-NEXT:    mov qword ptr [rbp - 0x40], rdx
+; X64-NEXT:    mov qword ptr [rbp - 0x38], rsi
+; X64-NEXT:    xor edi, edi
+; X64-NEXT:  <L1>:
+; X64-NEXT:    call <L1>
+; X64-NEXT:     R_X86_64_PLT32 _Znwm-0x4
+; X64-NEXT:    test rbx, rbx
+; X64-NEXT:    seta dil
+; X64-NEXT:    xor r8d, r8d
+; X64-NEXT:    test r8b, 0x1
+; X64-NEXT:    je <L2>
+; X64-NEXT:    xor edx, edx
+; X64-NEXT:    xor esi, esi
+; X64-NEXT:    jmp <L0>
+; X64-NEXT:  <L2>:
+; X64-NEXT:    add rsp, 0x38
+; X64-NEXT:    pop rbx
+; X64-NEXT:    pop rbp
+; X64-NEXT:    ret
+;
+; ARM64-LABEL: <_ZNSt11_Deque_baseIdSaIdEE15_M_create_nodesEPPdS3_>:
+; ARM64:         stp x29, x30, [sp, #-0xb0]!
+; ARM64-NEXT:    mov x29, sp
+; ARM64-NEXT:    str x19, [sp, #0x10]
+; ARM64-NEXT:    mov x19, x0
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    mov w3, #0x0 // =0
+; ARM64-NEXT:  <L0>:
+; ARM64-NEXT:    str x2, [x29, #0xa0]
+; ARM64-NEXT:    str x3, [x29, #0xa8]
+; ARM64-NEXT:    mov w0, #0x0 // =0
+; ARM64-NEXT:  <L1>:
+; ARM64-NEXT:    bl <L1>
+; ARM64-NEXT:     R_AARCH64_CALL26 _Znwm
+; ARM64-NEXT:    cmp x19, #0x0
+; ARM64-NEXT:    cset w4, hi
+; ARM64-NEXT:    mov w5, #0x0 // =0
+; ARM64-NEXT:    tst w5, #0x1
+; ARM64-NEXT:    b.eq <L2>
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    mov w3, #0x0 // =0
+; ARM64-NEXT:    b <L0>
+; ARM64-NEXT:  <L2>:
+; ARM64-NEXT:    ldr x19, [sp, #0x10]
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
+; ARM64-NEXT:    ret
+entry:
+  br label %for.body
+
+for.body:                                         ; preds = %for.body, %entry
+  %__cur.013 = phi i128 [ zeroinitializer, %for.body ], [ zeroinitializer, %entry ]
+  %call5.i.i10 = call ptr @_Znwm(i64 0)
+  %cmp = icmp ult ptr null, %this
+  br i1 false, label %for.body, label %try.cont
+
+try.cont:                                         ; preds = %for.body
+  ret void
 }

@@ -413,8 +413,8 @@ define void @add_i128_1001_1001(i128 %0) {
 ; ARM64-LABEL: <add_i128_1001_1001>:
 ; ARM64:         mov x2, #0x1001 // =4097
 ; ARM64-NEXT:    adds x2, x2, x0
-; ARM64-NEXT:    mov x0, #0x1001 // =4097
-; ARM64-NEXT:    adc x0, x0, x1
+; ARM64-NEXT:    mov x3, #0x1001 // =4097
+; ARM64-NEXT:    adc x3, x3, x1
 ; ARM64-NEXT:    ret
   entry:
     %1 = add nsw i128 %0, u0x10010000000000001001
@@ -609,12 +609,12 @@ define void @add_i128_no_salvage_reg2(i128 %0, i128 %1) {
 ; X64-NEXT:    add rax, rdx
 ; X64-NEXT:    mov rdx, rsi
 ; X64-NEXT:    adc rdx, rcx
-; X64-NEXT:    mov rcx, rdi
-; X64-NEXT:    add rcx, rax
-; X64-NEXT:    mov rax, rsi
-; X64-NEXT:    adc rax, rdx
-; X64-NEXT:    add rdi, rcx
-; X64-NEXT:    adc rsi, rax
+; X64-NEXT:    mov r8, rdi
+; X64-NEXT:    add r8, rax
+; X64-NEXT:    mov r9, rsi
+; X64-NEXT:    adc r9, rdx
+; X64-NEXT:    add rdi, r8
+; X64-NEXT:    adc rsi, r9
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <add_i128_no_salvage_reg2>:

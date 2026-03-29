@@ -403,8 +403,8 @@ define void @sub_i128_1_reorder(i128 %0) {
 ; ARM64-LABEL: <sub_i128_1_reorder>:
 ; ARM64:         mov x2, #0x1 // =1
 ; ARM64-NEXT:    subs x2, x2, x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    sbc x0, x0, x1
+; ARM64-NEXT:    mov w3, #0x0 // =0
+; ARM64-NEXT:    sbc x3, x3, x1
 ; ARM64-NEXT:    ret
   entry:
     %1 = sub nsw i128 1, %0
@@ -420,8 +420,8 @@ define void @sub_i128_1001_1001(i128 %0) {
 ; ARM64-LABEL: <sub_i128_1001_1001>:
 ; ARM64:         mov x2, #0x1001 // =4097
 ; ARM64-NEXT:    subs x0, x0, x2
-; ARM64-NEXT:    mov x2, #0x1001 // =4097
-; ARM64-NEXT:    sbc x1, x1, x2
+; ARM64-NEXT:    mov x3, #0x1001 // =4097
+; ARM64-NEXT:    sbc x1, x1, x3
 ; ARM64-NEXT:    ret
   entry:
     %1 = sub nsw i128 %0, u0x10010000000000001001

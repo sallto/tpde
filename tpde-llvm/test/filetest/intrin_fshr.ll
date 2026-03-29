@@ -27,8 +27,8 @@ define i8 @fshr_i8_3(i8 %a, i8 %b) {
 ; ARM64-NEXT:    and x3, x3, #0x7
 ; ARM64-NEXT:    lsr w2, w1, w2
 ; ARM64-NEXT:    lsl w1, w0, w3
-; ARM64-NEXT:    orr w4, w1, w2
-; ARM64-NEXT:    mov w0, w4
+; ARM64-NEXT:    orr w5, w1, w2
+; ARM64-NEXT:    mov w0, w5
 ; ARM64-NEXT:    ret
   %res = call i8 @llvm.fshr(i8 %a, i8 %b, i8 3)
   ret i8 %res
@@ -55,8 +55,8 @@ define i8 @fshr_i8_221(i8 %a, i8 %b) {
 ; ARM64-NEXT:    and x4, x4, #0x7
 ; ARM64-NEXT:    lsr w2, w1, w2
 ; ARM64-NEXT:    lsl w1, w0, w4
-; ARM64-NEXT:    orr w3, w1, w2
-; ARM64-NEXT:    mov w0, w3
+; ARM64-NEXT:    orr w5, w1, w2
+; ARM64-NEXT:    mov w0, w5
 ; ARM64-NEXT:    ret
   %res = call i8 @llvm.fshr(i8 %a, i8 %b, i8 221)
   ret i8 %res
@@ -81,8 +81,8 @@ define i8 @fshr_i8_dyn(i8 %a, i8 %b, i8 %c) {
 ; ARM64-NEXT:    and x4, x4, #0x7
 ; ARM64-NEXT:    lsr w3, w1, w3
 ; ARM64-NEXT:    lsl w1, w0, w4
-; ARM64-NEXT:    orr w2, w1, w3
-; ARM64-NEXT:    mov w0, w2
+; ARM64-NEXT:    orr w5, w1, w3
+; ARM64-NEXT:    mov w0, w5
 ; ARM64-NEXT:    ret
   %res = call i8 @llvm.fshr(i8 %a, i8 %b, i8 %c)
   ret i8 %res
@@ -102,7 +102,8 @@ define i8 @fshr_rotate_i8_3(i8 %a) {
 ; ARM64-NEXT:    and w2, w2, #0x7
 ; ARM64-NEXT:    lsr w3, w3, w1
 ; ARM64-NEXT:    lsl w2, w0, w2
-; ARM64-NEXT:    orr w0, w3, w2
+; ARM64-NEXT:    orr w4, w3, w2
+; ARM64-NEXT:    mov w0, w4
 ; ARM64-NEXT:    ret
   %res = call i8 @llvm.fshr(i8 %a, i8 %a, i8 3)
   ret i8 %res
@@ -122,7 +123,8 @@ define i8 @fshr_rotate_i8_221(i8 %a) {
 ; ARM64-NEXT:    and w2, w2, #0x7
 ; ARM64-NEXT:    lsr w3, w3, w1
 ; ARM64-NEXT:    lsl w2, w0, w2
-; ARM64-NEXT:    orr w0, w3, w2
+; ARM64-NEXT:    orr w4, w3, w2
+; ARM64-NEXT:    mov w0, w4
 ; ARM64-NEXT:    ret
   %res = call i8 @llvm.fshr(i8 %a, i8 %a, i8 221)
   ret i8 %res
@@ -142,7 +144,8 @@ define i8 @fshr_rotate_i8_dyn(i8 %a, i8 %c) {
 ; ARM64-NEXT:    and w2, w2, #0x7
 ; ARM64-NEXT:    lsr w3, w3, w1
 ; ARM64-NEXT:    lsl w2, w0, w2
-; ARM64-NEXT:    orr w0, w3, w2
+; ARM64-NEXT:    orr w4, w3, w2
+; ARM64-NEXT:    mov w0, w4
 ; ARM64-NEXT:    ret
   %res = call i8 @llvm.fshr(i8 %a, i8 %a, i8 %c)
   ret i8 %res
@@ -170,8 +173,8 @@ define i16 @fshr_i16_3(i16 %a, i16 %b) {
 ; ARM64-NEXT:    and x3, x3, #0xf
 ; ARM64-NEXT:    lsr w2, w1, w2
 ; ARM64-NEXT:    lsl w1, w0, w3
-; ARM64-NEXT:    orr w4, w1, w2
-; ARM64-NEXT:    mov w0, w4
+; ARM64-NEXT:    orr w5, w1, w2
+; ARM64-NEXT:    mov w0, w5
 ; ARM64-NEXT:    ret
   %res = call i16 @llvm.fshr(i16 %a, i16 %b, i16 3)
   ret i16 %res
@@ -198,8 +201,8 @@ define i16 @fshr_i16_221(i16 %a, i16 %b) {
 ; ARM64-NEXT:    and x4, x4, #0xf
 ; ARM64-NEXT:    lsr w2, w1, w2
 ; ARM64-NEXT:    lsl w1, w0, w4
-; ARM64-NEXT:    orr w3, w1, w2
-; ARM64-NEXT:    mov w0, w3
+; ARM64-NEXT:    orr w5, w1, w2
+; ARM64-NEXT:    mov w0, w5
 ; ARM64-NEXT:    ret
   %res = call i16 @llvm.fshr(i16 %a, i16 %b, i16 221)
   ret i16 %res
@@ -224,8 +227,8 @@ define i16 @fshr_i16_dyn(i16 %a, i16 %b, i16 %c) {
 ; ARM64-NEXT:    and x4, x4, #0xf
 ; ARM64-NEXT:    lsr w3, w1, w3
 ; ARM64-NEXT:    lsl w1, w0, w4
-; ARM64-NEXT:    orr w2, w1, w3
-; ARM64-NEXT:    mov w0, w2
+; ARM64-NEXT:    orr w5, w1, w3
+; ARM64-NEXT:    mov w0, w5
 ; ARM64-NEXT:    ret
   %res = call i16 @llvm.fshr(i16 %a, i16 %b, i16 %c)
   ret i16 %res
@@ -245,7 +248,8 @@ define i16 @fshr_rotate_i16_3(i16 %a) {
 ; ARM64-NEXT:    and w2, w2, #0xf
 ; ARM64-NEXT:    lsr w3, w3, w1
 ; ARM64-NEXT:    lsl w2, w0, w2
-; ARM64-NEXT:    orr w0, w3, w2
+; ARM64-NEXT:    orr w4, w3, w2
+; ARM64-NEXT:    mov w0, w4
 ; ARM64-NEXT:    ret
   %res = call i16 @llvm.fshr(i16 %a, i16 %a, i16 3)
   ret i16 %res
@@ -265,7 +269,8 @@ define i16 @fshr_rotate_i16_221(i16 %a) {
 ; ARM64-NEXT:    and w2, w2, #0xf
 ; ARM64-NEXT:    lsr w3, w3, w1
 ; ARM64-NEXT:    lsl w2, w0, w2
-; ARM64-NEXT:    orr w0, w3, w2
+; ARM64-NEXT:    orr w4, w3, w2
+; ARM64-NEXT:    mov w0, w4
 ; ARM64-NEXT:    ret
   %res = call i16 @llvm.fshr(i16 %a, i16 %a, i16 221)
   ret i16 %res
@@ -285,7 +290,8 @@ define i16 @fshr_rotate_i16_dyn(i16 %a, i16 %c) {
 ; ARM64-NEXT:    and w2, w2, #0xf
 ; ARM64-NEXT:    lsr w3, w3, w1
 ; ARM64-NEXT:    lsl w2, w0, w2
-; ARM64-NEXT:    orr w0, w3, w2
+; ARM64-NEXT:    orr w4, w3, w2
+; ARM64-NEXT:    mov w0, w4
 ; ARM64-NEXT:    ret
   %res = call i16 @llvm.fshr(i16 %a, i16 %a, i16 %c)
   ret i16 %res
@@ -334,8 +340,8 @@ define i32 @fshr_i32_221(i32 %a, i32 %b) {
 ; ARM64-NEXT:    mvn w3, w2
 ; ARM64-NEXT:    lsr w1, w1, #29
 ; ARM64-NEXT:    lsl w0, w0, w3
-; ARM64-NEXT:    orr w2, w0, w1
-; ARM64-NEXT:    mov w0, w2
+; ARM64-NEXT:    orr w4, w0, w1
+; ARM64-NEXT:    mov w0, w4
 ; ARM64-NEXT:    ret
   %res = call i32 @llvm.fshr(i32 %a, i32 %b, i32 221)
   ret i32 %res
@@ -358,8 +364,8 @@ define i32 @fshr_i32_dyn(i32 %a, i32 %b, i32 %c) {
 ; ARM64-NEXT:    mvn w3, w2
 ; ARM64-NEXT:    lsr w1, w1, w2
 ; ARM64-NEXT:    lsl w0, w0, w3
-; ARM64-NEXT:    orr w2, w0, w1
-; ARM64-NEXT:    mov w0, w2
+; ARM64-NEXT:    orr w4, w0, w1
+; ARM64-NEXT:    mov w0, w4
 ; ARM64-NEXT:    ret
   %res = call i32 @llvm.fshr(i32 %a, i32 %b, i32 %c)
   ret i32 %res
@@ -448,8 +454,8 @@ define i64 @fshr_i64_221(i64 %a, i64 %b) {
 ; ARM64-NEXT:    mvn w3, w2
 ; ARM64-NEXT:    lsr x1, x1, #29
 ; ARM64-NEXT:    lsl x0, x0, x3
-; ARM64-NEXT:    orr x2, x0, x1
-; ARM64-NEXT:    mov x0, x2
+; ARM64-NEXT:    orr x4, x0, x1
+; ARM64-NEXT:    mov x0, x4
 ; ARM64-NEXT:    ret
   %res = call i64 @llvm.fshr(i64 %a, i64 %b, i64 221)
   ret i64 %res
@@ -472,8 +478,8 @@ define i64 @fshr_i64_dyn(i64 %a, i64 %b, i64 %c) {
 ; ARM64-NEXT:    mvn w3, w2
 ; ARM64-NEXT:    lsr x1, x1, x2
 ; ARM64-NEXT:    lsl x0, x0, x3
-; ARM64-NEXT:    orr x2, x0, x1
-; ARM64-NEXT:    mov x0, x2
+; ARM64-NEXT:    orr x4, x0, x1
+; ARM64-NEXT:    mov x0, x4
 ; ARM64-NEXT:    ret
   %res = call i64 @llvm.fshr(i64 %a, i64 %b, i64 %c)
   ret i64 %res

@@ -57,10 +57,10 @@ define i32 @f64tou32(double %f) {
 ; X64-LABEL: <f64tou32>:
 ; X64:         xorpd xmm1, xmm1
 ; X64-NEXT:    maxsd xmm1, xmm0
-; X64-NEXT:    movsd xmm0, qword ptr <f64tou32+0x8>
+; X64-NEXT:    movsd xmm2, qword ptr <f64tou32+0x8>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
-; X64-NEXT:    minsd xmm0, xmm1
-; X64-NEXT:    cvttsd2si rax, xmm0
+; X64-NEXT:    minsd xmm2, xmm1
+; X64-NEXT:    cvttsd2si rax, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <f64tou32>:

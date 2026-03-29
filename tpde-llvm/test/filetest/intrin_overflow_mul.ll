@@ -167,7 +167,7 @@ define i64 @umul_i64_0(i64 %0, i64 %1) {
 ; ARM64:         umulh x2, x0, x1
 ; ARM64-NEXT:    mul x0, x0, x1
 ; ARM64-NEXT:    cmp xzr, x2
-; ARM64-NEXT:    cset w1, ne
+; ARM64-NEXT:    cset w3, ne
 ; ARM64-NEXT:    ret
 entry:
   %2 = call {i64, i1} @llvm.umul.with.overflow.i64(i64 %0, i64 %1)
@@ -188,8 +188,8 @@ define i1 @umul_i64_1(i64 %0, i64 %1) {
 ; ARM64:         umulh x2, x0, x1
 ; ARM64-NEXT:    mul x0, x0, x1
 ; ARM64-NEXT:    cmp xzr, x2
-; ARM64-NEXT:    cset w1, ne
-; ARM64-NEXT:    mov w0, w1
+; ARM64-NEXT:    cset w3, ne
+; ARM64-NEXT:    mov w0, w3
 ; ARM64-NEXT:    ret
 entry:
   %2 = call {i64, i1} @llvm.umul.with.overflow.i64(i64 %0, i64 %1)
@@ -343,10 +343,10 @@ define i64 @smul_i64_0(i64 %0, i64 %1) {
 ; ARM64-LABEL: <smul_i64_0>:
 ; ARM64:         mul x2, x0, x1
 ; ARM64-NEXT:    smulh x0, x0, x1
-; ARM64-NEXT:    mov x1, x2
+; ARM64-NEXT:    mov x3, x2
 ; ARM64-NEXT:    cmp x0, x2, asr #63
-; ARM64-NEXT:    cset w3, ne
-; ARM64-NEXT:    mov x0, x1
+; ARM64-NEXT:    cset w4, ne
+; ARM64-NEXT:    mov x0, x3
 ; ARM64-NEXT:    ret
 entry:
   %2 = call {i64, i1} @llvm.smul.with.overflow.i64(i64 %0, i64 %1)
@@ -364,10 +364,10 @@ define i1 @smul_i64_1(i64 %0, i64 %1) {
 ; ARM64-LABEL: <smul_i64_1>:
 ; ARM64:         mul x2, x0, x1
 ; ARM64-NEXT:    smulh x0, x0, x1
-; ARM64-NEXT:    mov x1, x2
+; ARM64-NEXT:    mov x3, x2
 ; ARM64-NEXT:    cmp x0, x2, asr #63
-; ARM64-NEXT:    cset w3, ne
-; ARM64-NEXT:    mov w0, w3
+; ARM64-NEXT:    cset w4, ne
+; ARM64-NEXT:    mov w0, w4
 ; ARM64-NEXT:    ret
 entry:
   %2 = call {i64, i1} @llvm.smul.with.overflow.i64(i64 %0, i64 %1)

@@ -132,25 +132,26 @@ define i37 @ctpop_i37(i37 %0) {
 ; X64-LABEL: <ctpop_i37>:
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
-; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    shr rax
-; X64-NEXT:    movabs rcx, 0x5555555555555555
-; X64-NEXT:    and rcx, rax
-; X64-NEXT:    sub rdi, rcx
-; X64-NEXT:    movabs rax, 0x3333333333333333
 ; X64-NEXT:    mov rcx, rdi
-; X64-NEXT:    and rcx, rax
-; X64-NEXT:    shr rdi, 0x2
-; X64-NEXT:    and rax, rdi
-; X64-NEXT:    add rax, rcx
-; X64-NEXT:    mov rcx, rax
-; X64-NEXT:    shr rcx, 0x4
-; X64-NEXT:    add rcx, rax
-; X64-NEXT:    movabs rdx, 0xf0f0f0f0f0f0f0f
+; X64-NEXT:    shr rcx
+; X64-NEXT:    movabs rdx, 0x5555555555555555
 ; X64-NEXT:    and rdx, rcx
-; X64-NEXT:    movabs rax, 0x101010101010101
-; X64-NEXT:    imul rax, rdx
-; X64-NEXT:    shr rax, 0x38
+; X64-NEXT:    sub rdi, rdx
+; X64-NEXT:    movabs rcx, 0x3333333333333333
+; X64-NEXT:    mov rdx, rdi
+; X64-NEXT:    and rdx, rcx
+; X64-NEXT:    shr rdi, 0x2
+; X64-NEXT:    and rcx, rdi
+; X64-NEXT:    add rcx, rdx
+; X64-NEXT:    mov rdx, rcx
+; X64-NEXT:    shr rdx, 0x4
+; X64-NEXT:    add rdx, rcx
+; X64-NEXT:    movabs rsi, 0xf0f0f0f0f0f0f0f
+; X64-NEXT:    and rsi, rdx
+; X64-NEXT:    movabs rcx, 0x101010101010101
+; X64-NEXT:    imul rcx, rsi
+; X64-NEXT:    shr rcx, 0x38
+; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ctpop_i37>:

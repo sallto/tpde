@@ -191,9 +191,9 @@ define i8 @ext_v5i8_3_twice(ptr %p) {
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
 ; X64-NEXT:    movzx esi, byte ptr [rdi + 0x3]
 ; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x4]
-; X64-NEXT:    mov edi, esi
-; X64-NEXT:    lea edi, [rdi + rsi]
-; X64-NEXT:    mov eax, edi
+; X64-NEXT:    mov r9d, esi
+; X64-NEXT:    lea r9d, [r9 + rsi]
+; X64-NEXT:    mov eax, r9d
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ext_v5i8_3_twice>:
@@ -202,8 +202,8 @@ define i8 @ext_v5i8_3_twice(ptr %p) {
 ; ARM64-NEXT:    ldrb w3, [x0, #0x2]
 ; ARM64-NEXT:    ldrb w4, [x0, #0x3]
 ; ARM64-NEXT:    ldrb w5, [x0, #0x4]
-; ARM64-NEXT:    mov w0, w4
-; ARM64-NEXT:    add w4, w4, w0
+; ARM64-NEXT:    mov w6, w4
+; ARM64-NEXT:    add w4, w4, w6
 ; ARM64-NEXT:    mov w0, w4
 ; ARM64-NEXT:    ret
   %v = load <5 x i8>, ptr %p
@@ -227,12 +227,12 @@ define i8 @ext_v5i8_dyn(ptr %p, i32 %i) {
 ; X64-NEXT:    mov byte ptr [rbp - 0x2e], dl
 ; X64-NEXT:    mov byte ptr [rbp - 0x2d], r8b
 ; X64-NEXT:    mov byte ptr [rbp - 0x2c], r9b
-; X64-NEXT:    mov edi, eax
-; X64-NEXT:    mov r10d, edx
+; X64-NEXT:    mov r10d, eax
+; X64-NEXT:    mov r11d, edx
 ; X64-NEXT:    xor edx, edx
-; X64-NEXT:    mov r11d, 0x5
+; X64-NEXT:    mov edi, 0x5
 ; X64-NEXT:    mov rax, rsi
-; X64-NEXT:    div r11
+; X64-NEXT:    div rdi
 ; X64-NEXT:    movzx eax, byte ptr [rbp + rdx - 0x30]
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -250,12 +250,12 @@ define i8 @ext_v5i8_dyn(ptr %p, i32 %i) {
 ; ARM64-NEXT:    strb w4, [x29, #0xa2]
 ; ARM64-NEXT:    strb w5, [x29, #0xa3]
 ; ARM64-NEXT:    strb w6, [x29, #0xa4]
-; ARM64-NEXT:    mov x0, #0x5 // =5
-; ARM64-NEXT:    udiv x7, x1, x0
-; ARM64-NEXT:    msub x0, x7, x0, x1
-; ARM64-NEXT:    add x0, x29, x0
-; ARM64-NEXT:    ldrb w1, [x0, #0xa0]
-; ARM64-NEXT:    mov w0, w1
+; ARM64-NEXT:    mov x7, #0x5 // =5
+; ARM64-NEXT:    udiv x8, x1, x7
+; ARM64-NEXT:    msub x7, x8, x7, x1
+; ARM64-NEXT:    add x7, x29, x7
+; ARM64-NEXT:    ldrb w9, [x7, #0xa0]
+; ARM64-NEXT:    mov w0, w9
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   %v = load <5 x i8>, ptr %p

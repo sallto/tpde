@@ -52,12 +52,13 @@ define i37 @ucmpi37(i37 %0, i37 %1) {
 ; X64-LABEL: <ucmpi37>:
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
-; X64-NEXT:    movabs rax, 0x1fffffffff
-; X64-NEXT:    and rsi, rax
+; X64-NEXT:    movabs rcx, 0x1fffffffff
+; X64-NEXT:    and rsi, rcx
 ; X64-NEXT:    cmp rdi, rsi
-; X64-NEXT:    seta al
-; X64-NEXT:    sbb al, 0x0
-; X64-NEXT:    movsx rax, al
+; X64-NEXT:    seta dl
+; X64-NEXT:    sbb dl, 0x0
+; X64-NEXT:    movsx rdx, dl
+; X64-NEXT:    mov rax, rdx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ucmpi37>:

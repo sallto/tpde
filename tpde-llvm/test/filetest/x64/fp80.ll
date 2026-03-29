@@ -61,8 +61,8 @@ define void @call_args(x86_fp80 %a, x86_fp80 %b) {
 ; X64-NEXT:    movaps xmm0, xmmword ptr <call_args+0x7>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
 ; X64-NEXT:    movdqa xmmword ptr [rsp], xmm0
-; X64-NEXT:    movapd xmm0, xmmword ptr [rbp + 0x10]
-; X64-NEXT:    movdqa xmmword ptr [rsp + 0x10], xmm0
+; X64-NEXT:    movapd xmm1, xmmword ptr [rbp + 0x10]
+; X64-NEXT:    movdqa xmmword ptr [rsp + 0x10], xmm1
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 call_args-0x4
@@ -117,8 +117,8 @@ define void @load_store_agg(ptr %p, ptr %q) {
 ; X64-NEXT:    mov qword ptr [rsi + 0x10], rax
 ; X64-NEXT:    movss dword ptr [rsi + 0x18], xmm0
 ; X64-NEXT:    fld tbyte ptr [rbp - 0x40]
-; X64-NEXT:    lea rax, [rsi + 0x20]
-; X64-NEXT:    fstp tbyte ptr [rax]
+; X64-NEXT:    lea rdx, [rsi + 0x20]
+; X64-NEXT:    fstp tbyte ptr [rdx]
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
   %l = load {x86_fp80, i64, float, x86_fp80}, ptr %p
@@ -288,9 +288,9 @@ define x86_fp80 @uitofp_37(i37 %v) {
 ; X64-NEXT:    mov qword ptr [rbp - 0x40], rdi
 ; X64-NEXT:    fild qword ptr [rbp - 0x40]
 ; X64-NEXT:    shr rdi, 0x3f
-; X64-NEXT:    lea rax, <uitofp_37+0x1b>
+; X64-NEXT:    lea rcx, <uitofp_37+0x1b>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
-; X64-NEXT:    fadd dword ptr [rax + 4*rdi]
+; X64-NEXT:    fadd dword ptr [rcx + 4*rdi]
 ; X64-NEXT:    fstp tbyte ptr [rbp - 0x40]
 ; X64-NEXT:    fld tbyte ptr [rbp - 0x40]
 ; X64-NEXT:    pop rbp
@@ -372,14 +372,14 @@ define x86_fp80 @uitofp_37_twice(i37 %v) {
 ; X64-NEXT:     R_X86_64_PC32 -0x4
 ; X64-NEXT:    fadd dword ptr [rcx + 4*rax]
 ; X64-NEXT:    fstp tbyte ptr [rbp - 0x40]
-; X64-NEXT:    movabs rax, 0x1fffffffff
-; X64-NEXT:    and rdi, rax
+; X64-NEXT:    movabs rdx, 0x1fffffffff
+; X64-NEXT:    and rdi, rdx
 ; X64-NEXT:    mov qword ptr [rbp - 0x40], rdi
 ; X64-NEXT:    fild qword ptr [rbp - 0x40]
 ; X64-NEXT:    shr rdi, 0x3f
-; X64-NEXT:    lea rax, <uitofp_37_twice+0x40>
+; X64-NEXT:    lea rsi, <uitofp_37_twice+0x40>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
-; X64-NEXT:    fadd dword ptr [rax + 4*rdi]
+; X64-NEXT:    fadd dword ptr [rsi + 4*rdi]
 ; X64-NEXT:    fstp tbyte ptr [rbp - 0x40]
 ; X64-NEXT:    fld tbyte ptr [rbp - 0x40]
 ; X64-NEXT:    pop rbp
@@ -403,9 +403,9 @@ define x86_fp80 @uitofp_64_twice(i64 %v) {
 ; X64-NEXT:    fstp tbyte ptr [rbp - 0x40]
 ; X64-NEXT:    fild qword ptr [rbp - 0x30]
 ; X64-NEXT:    shr rdi, 0x3f
-; X64-NEXT:    lea rax, <uitofp_64_twice+0x25>
+; X64-NEXT:    lea rdx, <uitofp_64_twice+0x25>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
-; X64-NEXT:    fadd dword ptr [rax + 4*rdi]
+; X64-NEXT:    fadd dword ptr [rdx + 4*rdi]
 ; X64-NEXT:    fstp tbyte ptr [rbp - 0x40]
 ; X64-NEXT:    fld tbyte ptr [rbp - 0x40]
 ; X64-NEXT:    pop rbp
@@ -445,8 +445,9 @@ define i32 @fptoui_32(x86_fp80 %v) {
 ; X64-NEXT:    mov word ptr [rbp - 0x2a], ax
 ; X64-NEXT:    fldcw word ptr [rbp - 0x2a]
 ; X64-NEXT:    fistp qword ptr [rbp - 0x38]
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x38]
+; X64-NEXT:    mov ecx, dword ptr [rbp - 0x38]
 ; X64-NEXT:    fldcw word ptr [rbp - 0x2c]
+; X64-NEXT:    mov eax, ecx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
   %res = fptoui x86_fp80 %v to i32

@@ -55,9 +55,10 @@ define void @ashr_v5i8(ptr %p, ptr %q) {
 ; X64-LABEL: <ashr_v5i8>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    push r12
 ; X64-NEXT:    push r13
+; X64-NEXT:    push r14
+; X64-NEXT:    mov qword ptr [rbp - 0x30], rdi
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
@@ -65,9 +66,9 @@ define void @ashr_v5i8(ptr %p, ptr %q) {
 ; X64-NEXT:    movzx r9d, byte ptr [rdi + 0x4]
 ; X64-NEXT:    movzx r10d, byte ptr [rsi]
 ; X64-NEXT:    movzx r11d, byte ptr [rsi + 0x1]
-; X64-NEXT:    movzx ebx, byte ptr [rsi + 0x2]
-; X64-NEXT:    movzx r12d, byte ptr [rsi + 0x3]
-; X64-NEXT:    movzx r13d, byte ptr [rsi + 0x4]
+; X64-NEXT:    movzx r12d, byte ptr [rsi + 0x2]
+; X64-NEXT:    movzx r13d, byte ptr [rsi + 0x3]
+; X64-NEXT:    movzx r14d, byte ptr [rsi + 0x4]
 ; X64-NEXT:    movsx eax, al
 ; X64-NEXT:    mov esi, ecx
 ; X64-NEXT:    mov ecx, r10d
@@ -76,22 +77,27 @@ define void @ashr_v5i8(ptr %p, ptr %q) {
 ; X64-NEXT:    mov ecx, r11d
 ; X64-NEXT:    sar esi, cl
 ; X64-NEXT:    movsx edx, dl
-; X64-NEXT:    mov ecx, ebx
+; X64-NEXT:    mov ecx, r12d
 ; X64-NEXT:    sar edx, cl
 ; X64-NEXT:    movsx r8d, r8b
-; X64-NEXT:    mov ecx, r12d
+; X64-NEXT:    mov ecx, r13d
 ; X64-NEXT:    sar r8d, cl
 ; X64-NEXT:    movsx r9d, r9b
-; X64-NEXT:    mov ecx, r13d
+; X64-NEXT:    mov ecx, r14d
 ; X64-NEXT:    sar r9d, cl
+; X64-NEXT:    mov byte ptr [rbp - 0x38], al
+; X64-NEXT:    mov byte ptr [rbp - 0x37], sil
+; X64-NEXT:    mov byte ptr [rbp - 0x36], dl
+; X64-NEXT:    mov byte ptr [rbp - 0x35], r8b
+; X64-NEXT:    mov byte ptr [rbp - 0x34], r9b
 ; X64-NEXT:    mov byte ptr [rdi], al
 ; X64-NEXT:    mov byte ptr [rdi + 0x1], sil
 ; X64-NEXT:    mov byte ptr [rdi + 0x2], dl
 ; X64-NEXT:    mov byte ptr [rdi + 0x3], r8b
 ; X64-NEXT:    mov byte ptr [rdi + 0x4], r9b
+; X64-NEXT:    pop r14
 ; X64-NEXT:    pop r13
 ; X64-NEXT:    pop r12
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -459,60 +465,60 @@ define void @ashr_v32i8(ptr %p, ptr %q) {
 ; X64-NEXT:    por xmm0, xmm2
 ; X64-NEXT:    psrlw xmm0, 0x8
 ; X64-NEXT:    packuswb xmm0, xmm4
-; X64-NEXT:    punpckhbw {{.*#+}} xmm2 = xmm2[8],xmm1[8],xmm2[9],xmm1[9],xmm2[10],xmm1[10],xmm2[11],xmm1[11],xmm2[12],xmm1[12],xmm2[13],xmm1[13],xmm2[14],xmm1[14],xmm2[15],xmm1[15]
+; X64-NEXT:    punpckhbw {{.*#+}} xmm9 = xmm9[8],xmm1[8],xmm9[9],xmm1[9],xmm9[10],xmm1[10],xmm9[11],xmm1[11],xmm9[12],xmm1[12],xmm9[13],xmm1[13],xmm9[14],xmm1[14],xmm9[15],xmm1[15]
 ; X64-NEXT:    psllw xmm3, 0x5
-; X64-NEXT:    punpckhbw {{.*#+}} xmm4 = xmm4[8],xmm3[8],xmm4[9],xmm3[9],xmm4[10],xmm3[10],xmm4[11],xmm3[11],xmm4[12],xmm3[12],xmm4[13],xmm3[13],xmm4[14],xmm3[14],xmm4[15],xmm3[15]
-; X64-NEXT:    pxor xmm5, xmm5
-; X64-NEXT:    pxor xmm6, xmm6
-; X64-NEXT:    pcmpgtw xmm6, xmm4
-; X64-NEXT:    movdqa xmm7, xmm6
-; X64-NEXT:    pandn xmm7, xmm2
-; X64-NEXT:    psraw xmm2, 0x4
-; X64-NEXT:    pand xmm2, xmm6
-; X64-NEXT:    por xmm2, xmm7
-; X64-NEXT:    paddw xmm4, xmm4
-; X64-NEXT:    pxor xmm6, xmm6
-; X64-NEXT:    pcmpgtw xmm6, xmm4
-; X64-NEXT:    movdqa xmm7, xmm6
-; X64-NEXT:    pandn xmm7, xmm2
-; X64-NEXT:    psraw xmm2, 0x2
-; X64-NEXT:    pand xmm2, xmm6
-; X64-NEXT:    por xmm2, xmm7
-; X64-NEXT:    paddw xmm4, xmm4
-; X64-NEXT:    pxor xmm6, xmm6
-; X64-NEXT:    pcmpgtw xmm6, xmm4
-; X64-NEXT:    movdqa xmm4, xmm6
-; X64-NEXT:    pandn xmm4, xmm2
-; X64-NEXT:    psraw xmm2, 0x1
-; X64-NEXT:    pand xmm2, xmm6
-; X64-NEXT:    por xmm2, xmm4
-; X64-NEXT:    psrlw xmm2, 0x8
+; X64-NEXT:    punpckhbw {{.*#+}} xmm10 = xmm10[8],xmm3[8],xmm10[9],xmm3[9],xmm10[10],xmm3[10],xmm10[11],xmm3[11],xmm10[12],xmm3[12],xmm10[13],xmm3[13],xmm10[14],xmm3[14],xmm10[15],xmm3[15]
+; X64-NEXT:    pxor xmm11, xmm11
+; X64-NEXT:    pxor xmm12, xmm12
+; X64-NEXT:    pcmpgtw xmm12, xmm10
+; X64-NEXT:    movdqa xmm13, xmm12
+; X64-NEXT:    pandn xmm13, xmm9
+; X64-NEXT:    psraw xmm9, 0x4
+; X64-NEXT:    pand xmm9, xmm12
+; X64-NEXT:    por xmm9, xmm13
+; X64-NEXT:    paddw xmm10, xmm10
+; X64-NEXT:    pxor xmm12, xmm12
+; X64-NEXT:    pcmpgtw xmm12, xmm10
+; X64-NEXT:    movdqa xmm13, xmm12
+; X64-NEXT:    pandn xmm13, xmm9
+; X64-NEXT:    psraw xmm9, 0x2
+; X64-NEXT:    pand xmm9, xmm12
+; X64-NEXT:    por xmm9, xmm13
+; X64-NEXT:    paddw xmm10, xmm10
+; X64-NEXT:    pxor xmm12, xmm12
+; X64-NEXT:    pcmpgtw xmm12, xmm10
+; X64-NEXT:    movdqa xmm10, xmm12
+; X64-NEXT:    pandn xmm10, xmm9
+; X64-NEXT:    psraw xmm9, 0x1
+; X64-NEXT:    pand xmm9, xmm12
+; X64-NEXT:    por xmm9, xmm10
+; X64-NEXT:    psrlw xmm9, 0x8
 ; X64-NEXT:    punpcklbw {{.*#+}} xmm1 = xmm1[0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7]
 ; X64-NEXT:    punpcklbw {{.*#+}} xmm3 = xmm3[0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7]
-; X64-NEXT:    pxor xmm4, xmm4
-; X64-NEXT:    pcmpgtw xmm4, xmm3
-; X64-NEXT:    movdqa xmm6, xmm4
-; X64-NEXT:    pandn xmm6, xmm1
+; X64-NEXT:    pxor xmm10, xmm10
+; X64-NEXT:    pcmpgtw xmm10, xmm3
+; X64-NEXT:    movdqa xmm12, xmm10
+; X64-NEXT:    pandn xmm12, xmm1
 ; X64-NEXT:    psraw xmm1, 0x4
-; X64-NEXT:    pand xmm1, xmm4
-; X64-NEXT:    por xmm1, xmm6
+; X64-NEXT:    pand xmm1, xmm10
+; X64-NEXT:    por xmm1, xmm12
 ; X64-NEXT:    paddw xmm3, xmm3
-; X64-NEXT:    pxor xmm4, xmm4
-; X64-NEXT:    pcmpgtw xmm4, xmm3
-; X64-NEXT:    movdqa xmm6, xmm4
-; X64-NEXT:    pandn xmm6, xmm1
+; X64-NEXT:    pxor xmm10, xmm10
+; X64-NEXT:    pcmpgtw xmm10, xmm3
+; X64-NEXT:    movdqa xmm12, xmm10
+; X64-NEXT:    pandn xmm12, xmm1
 ; X64-NEXT:    psraw xmm1, 0x2
-; X64-NEXT:    pand xmm1, xmm4
-; X64-NEXT:    por xmm1, xmm6
+; X64-NEXT:    pand xmm1, xmm10
+; X64-NEXT:    por xmm1, xmm12
 ; X64-NEXT:    paddw xmm3, xmm3
-; X64-NEXT:    pcmpgtw xmm5, xmm3
-; X64-NEXT:    movdqa xmm3, xmm5
+; X64-NEXT:    pcmpgtw xmm11, xmm3
+; X64-NEXT:    movdqa xmm3, xmm11
 ; X64-NEXT:    pandn xmm3, xmm1
 ; X64-NEXT:    psraw xmm1, 0x1
-; X64-NEXT:    pand xmm1, xmm5
+; X64-NEXT:    pand xmm1, xmm11
 ; X64-NEXT:    por xmm1, xmm3
 ; X64-NEXT:    psrlw xmm1, 0x8
-; X64-NEXT:    packuswb xmm1, xmm2
+; X64-NEXT:    packuswb xmm1, xmm9
 ; X64-NEXT:    movups xmmword ptr [rdi], xmm0
 ; X64-NEXT:    movups xmmword ptr [rdi + 0x10], xmm1
 ; X64-NEXT:    ret
@@ -596,62 +602,62 @@ define void @ashr_v32i8_3(ptr %p) {
 ; X64-NEXT:    por xmm0, xmm3
 ; X64-NEXT:    psrlw xmm0, 0x8
 ; X64-NEXT:    packuswb xmm0, xmm2
-; X64-NEXT:    punpckhbw {{.*#+}} xmm2 = xmm2[8],xmm1[8],xmm2[9],xmm1[9],xmm2[10],xmm1[10],xmm2[11],xmm1[11],xmm2[12],xmm1[12],xmm2[13],xmm1[13],xmm2[14],xmm1[14],xmm2[15],xmm1[15]
-; X64-NEXT:    movaps xmm3, xmmword ptr <ashr_v32i8_3+0xf2>
+; X64-NEXT:    punpckhbw {{.*#+}} xmm8 = xmm8[8],xmm1[8],xmm8[9],xmm1[9],xmm8[10],xmm1[10],xmm8[11],xmm1[11],xmm8[12],xmm1[12],xmm8[13],xmm1[13],xmm8[14],xmm1[14],xmm8[15],xmm1[15]
+; X64-NEXT:    movaps xmm9, xmmword ptr <ashr_v32i8_3+0xf3>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
-; X64-NEXT:    psllw xmm3, 0x5
-; X64-NEXT:    punpckhbw {{.*#+}} xmm4 = xmm4[8],xmm3[8],xmm4[9],xmm3[9],xmm4[10],xmm3[10],xmm4[11],xmm3[11],xmm4[12],xmm3[12],xmm4[13],xmm3[13],xmm4[14],xmm3[14],xmm4[15],xmm3[15]
-; X64-NEXT:    pxor xmm5, xmm5
-; X64-NEXT:    pxor xmm6, xmm6
-; X64-NEXT:    pcmpgtw xmm6, xmm4
-; X64-NEXT:    movdqa xmm7, xmm6
-; X64-NEXT:    pandn xmm7, xmm2
-; X64-NEXT:    psraw xmm2, 0x4
-; X64-NEXT:    pand xmm2, xmm6
-; X64-NEXT:    por xmm2, xmm7
-; X64-NEXT:    paddw xmm4, xmm4
-; X64-NEXT:    pxor xmm6, xmm6
-; X64-NEXT:    pcmpgtw xmm6, xmm4
-; X64-NEXT:    movdqa xmm7, xmm6
-; X64-NEXT:    pandn xmm7, xmm2
-; X64-NEXT:    psraw xmm2, 0x2
-; X64-NEXT:    pand xmm2, xmm6
-; X64-NEXT:    por xmm2, xmm7
-; X64-NEXT:    paddw xmm4, xmm4
-; X64-NEXT:    pxor xmm6, xmm6
-; X64-NEXT:    pcmpgtw xmm6, xmm4
-; X64-NEXT:    movdqa xmm4, xmm6
-; X64-NEXT:    pandn xmm4, xmm2
-; X64-NEXT:    psraw xmm2, 0x1
-; X64-NEXT:    pand xmm2, xmm6
-; X64-NEXT:    por xmm2, xmm4
-; X64-NEXT:    psrlw xmm2, 0x8
+; X64-NEXT:    psllw xmm9, 0x5
+; X64-NEXT:    punpckhbw {{.*#+}} xmm10 = xmm10[8],xmm9[8],xmm10[9],xmm9[9],xmm10[10],xmm9[10],xmm10[11],xmm9[11],xmm10[12],xmm9[12],xmm10[13],xmm9[13],xmm10[14],xmm9[14],xmm10[15],xmm9[15]
+; X64-NEXT:    pxor xmm11, xmm11
+; X64-NEXT:    pxor xmm12, xmm12
+; X64-NEXT:    pcmpgtw xmm12, xmm10
+; X64-NEXT:    movdqa xmm13, xmm12
+; X64-NEXT:    pandn xmm13, xmm8
+; X64-NEXT:    psraw xmm8, 0x4
+; X64-NEXT:    pand xmm8, xmm12
+; X64-NEXT:    por xmm8, xmm13
+; X64-NEXT:    paddw xmm10, xmm10
+; X64-NEXT:    pxor xmm12, xmm12
+; X64-NEXT:    pcmpgtw xmm12, xmm10
+; X64-NEXT:    movdqa xmm13, xmm12
+; X64-NEXT:    pandn xmm13, xmm8
+; X64-NEXT:    psraw xmm8, 0x2
+; X64-NEXT:    pand xmm8, xmm12
+; X64-NEXT:    por xmm8, xmm13
+; X64-NEXT:    paddw xmm10, xmm10
+; X64-NEXT:    pxor xmm12, xmm12
+; X64-NEXT:    pcmpgtw xmm12, xmm10
+; X64-NEXT:    movdqa xmm10, xmm12
+; X64-NEXT:    pandn xmm10, xmm8
+; X64-NEXT:    psraw xmm8, 0x1
+; X64-NEXT:    pand xmm8, xmm12
+; X64-NEXT:    por xmm8, xmm10
+; X64-NEXT:    psrlw xmm8, 0x8
 ; X64-NEXT:    punpcklbw {{.*#+}} xmm1 = xmm1[0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7]
-; X64-NEXT:    punpcklbw {{.*#+}} xmm3 = xmm3[0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7]
-; X64-NEXT:    pxor xmm4, xmm4
-; X64-NEXT:    pcmpgtw xmm4, xmm3
-; X64-NEXT:    movdqa xmm6, xmm4
-; X64-NEXT:    pandn xmm6, xmm1
+; X64-NEXT:    punpcklbw {{.*#+}} xmm9 = xmm9[0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7]
+; X64-NEXT:    pxor xmm10, xmm10
+; X64-NEXT:    pcmpgtw xmm10, xmm9
+; X64-NEXT:    movdqa xmm12, xmm10
+; X64-NEXT:    pandn xmm12, xmm1
 ; X64-NEXT:    psraw xmm1, 0x4
-; X64-NEXT:    pand xmm1, xmm4
-; X64-NEXT:    por xmm1, xmm6
-; X64-NEXT:    paddw xmm3, xmm3
-; X64-NEXT:    pxor xmm4, xmm4
-; X64-NEXT:    pcmpgtw xmm4, xmm3
-; X64-NEXT:    movdqa xmm6, xmm4
-; X64-NEXT:    pandn xmm6, xmm1
+; X64-NEXT:    pand xmm1, xmm10
+; X64-NEXT:    por xmm1, xmm12
+; X64-NEXT:    paddw xmm9, xmm9
+; X64-NEXT:    pxor xmm10, xmm10
+; X64-NEXT:    pcmpgtw xmm10, xmm9
+; X64-NEXT:    movdqa xmm12, xmm10
+; X64-NEXT:    pandn xmm12, xmm1
 ; X64-NEXT:    psraw xmm1, 0x2
-; X64-NEXT:    pand xmm1, xmm4
-; X64-NEXT:    por xmm1, xmm6
-; X64-NEXT:    paddw xmm3, xmm3
-; X64-NEXT:    pcmpgtw xmm5, xmm3
-; X64-NEXT:    movdqa xmm3, xmm5
-; X64-NEXT:    pandn xmm3, xmm1
+; X64-NEXT:    pand xmm1, xmm10
+; X64-NEXT:    por xmm1, xmm12
+; X64-NEXT:    paddw xmm9, xmm9
+; X64-NEXT:    pcmpgtw xmm11, xmm9
+; X64-NEXT:    movdqa xmm9, xmm11
+; X64-NEXT:    pandn xmm9, xmm1
 ; X64-NEXT:    psraw xmm1, 0x1
-; X64-NEXT:    pand xmm1, xmm5
-; X64-NEXT:    por xmm1, xmm3
+; X64-NEXT:    pand xmm1, xmm11
+; X64-NEXT:    por xmm1, xmm9
 ; X64-NEXT:    psrlw xmm1, 0x8
-; X64-NEXT:    packuswb xmm1, xmm2
+; X64-NEXT:    packuswb xmm1, xmm8
 ; X64-NEXT:    movups xmmword ptr [rdi], xmm0
 ; X64-NEXT:    movups xmmword ptr [rdi + 0x10], xmm1
 ; X64-NEXT:    ret
@@ -662,9 +668,9 @@ define void @ashr_v32i8_3(ptr %p) {
 ; ARM64-NEXT:    movi v2.16b, #0x3
 ; ARM64-NEXT:    neg v2.16b, v2.16b
 ; ARM64-NEXT:    sshl v0.16b, v0.16b, v2.16b
-; ARM64-NEXT:    movi v2.16b, #0x3
-; ARM64-NEXT:    neg v2.16b, v2.16b
-; ARM64-NEXT:    sshl v1.16b, v1.16b, v2.16b
+; ARM64-NEXT:    movi v3.16b, #0x3
+; ARM64-NEXT:    neg v3.16b, v3.16b
+; ARM64-NEXT:    sshl v1.16b, v1.16b, v3.16b
 ; ARM64-NEXT:    str q0, [x0]
 ; ARM64-NEXT:    str q1, [x0, #0x10]
 ; ARM64-NEXT:    ret

@@ -134,15 +134,15 @@ define void @cttz_i32_no_salvage(i32 %0) {
 ; X64-LABEL: <cttz_i32_no_salvage>:
 ; X64:         mov eax, 0x20
 ; X64-NEXT:    bsf eax, edi
-; X64-NEXT:    mov eax, 0x20
-; X64-NEXT:    bsf eax, edi
+; X64-NEXT:    mov ecx, 0x20
+; X64-NEXT:    bsf ecx, edi
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <cttz_i32_no_salvage>:
 ; ARM64:         rbit w1, w0
 ; ARM64-NEXT:    clz w2, w1
 ; ARM64-NEXT:    rbit w0, w0
-; ARM64-NEXT:    clz w1, w0
+; ARM64-NEXT:    clz w3, w0
 ; ARM64-NEXT:    ret
   entry:
     %1 = call i32 @llvm.cttz.i32(i32 %0, i1 0)
@@ -154,15 +154,15 @@ define void @cttz_i64_no_salvage(i64 %0) {
 ; X64-LABEL: <cttz_i64_no_salvage>:
 ; X64:         mov eax, 0x40
 ; X64-NEXT:    bsf rax, rdi
-; X64-NEXT:    mov eax, 0x40
-; X64-NEXT:    bsf rax, rdi
+; X64-NEXT:    mov ecx, 0x40
+; X64-NEXT:    bsf rcx, rdi
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <cttz_i64_no_salvage>:
 ; ARM64:         rbit x1, x0
 ; ARM64-NEXT:    clz x2, x1
 ; ARM64-NEXT:    rbit x0, x0
-; ARM64-NEXT:    clz x1, x0
+; ARM64-NEXT:    clz x3, x0
 ; ARM64-NEXT:    ret
   entry:
     %1 = call i64 @llvm.cttz.i64(i64 %0, i1 0)
@@ -176,7 +176,7 @@ define void @cttz_i16_no_salvage(i16 %0) {
 ; X64-NEXT:    or eax, 0x10000
 ; X64-NEXT:    bsf ecx, eax
 ; X64-NEXT:    or edi, 0x10000
-; X64-NEXT:    bsf eax, edi
+; X64-NEXT:    bsf edx, edi
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <cttz_i16_no_salvage>:
@@ -185,7 +185,7 @@ define void @cttz_i16_no_salvage(i16 %0) {
 ; ARM64-NEXT:    clz w2, w1
 ; ARM64-NEXT:    orr w0, w0, #0x10000
 ; ARM64-NEXT:    rbit w0, w0
-; ARM64-NEXT:    clz w1, w0
+; ARM64-NEXT:    clz w3, w0
 ; ARM64-NEXT:    ret
   entry:
 

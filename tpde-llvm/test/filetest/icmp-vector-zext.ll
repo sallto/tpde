@@ -238,8 +238,8 @@ define <2 x i64> @icmp_eq_v2i64_0(<2 x i64> %a) {
 ; X64-LABEL: <icmp_eq_v2i64_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpeqd xmm0, xmm1
-; X64-NEXT:    pshufd {{.*#+}} xmm1 = xmm0[1,0,3,2]
-; X64-NEXT:    pand xmm0, xmm1
+; X64-NEXT:    pshufd {{.*#+}} xmm2 = xmm0[1,0,3,2]
+; X64-NEXT:    pand xmm0, xmm2
 ; X64-NEXT:    pand xmm0, xmmword ptr <icmp_eq_v2i64_0+0x11>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
 ; X64-NEXT:    ret
@@ -248,8 +248,8 @@ define <2 x i64> @icmp_eq_v2i64_0(<2 x i64> %a) {
 ; ARM64:         mov w0, #0x1 // =1
 ; ARM64-NEXT:    movi v1.16b, #0x0
 ; ARM64-NEXT:    cmeq v0.2d, v0.2d, v1.2d
-; ARM64-NEXT:    dup v1.2d, x0
-; ARM64-NEXT:    and v0.16b, v0.16b, v1.16b
+; ARM64-NEXT:    dup v2.2d, x0
+; ARM64-NEXT:    and v0.16b, v0.16b, v2.16b
 ; ARM64-NEXT:    ret
   %r = icmp eq <2 x i64> %a, zeroinitializer
   %x = zext <2 x i1> %r to <2 x i64>
@@ -496,8 +496,8 @@ define <2 x i64> @icmp_ne_v2i64_0(<2 x i64> %a) {
 ; X64-LABEL: <icmp_ne_v2i64_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    pcmpeqd xmm0, xmm1
-; X64-NEXT:    pshufd {{.*#+}} xmm1 = xmm0[1,0,3,2]
-; X64-NEXT:    pand xmm0, xmm1
+; X64-NEXT:    pshufd {{.*#+}} xmm2 = xmm0[1,0,3,2]
+; X64-NEXT:    pand xmm0, xmm2
 ; X64-NEXT:    pandn xmm0, xmmword ptr <icmp_ne_v2i64_0+0x11>
 ; X64-NEXT:     R_X86_64_PC32 -0x4
 ; X64-NEXT:    ret
@@ -506,8 +506,8 @@ define <2 x i64> @icmp_ne_v2i64_0(<2 x i64> %a) {
 ; ARM64:         mov w0, #0x1 // =1
 ; ARM64-NEXT:    movi v1.16b, #0x0
 ; ARM64-NEXT:    cmeq v0.2d, v0.2d, v1.2d
-; ARM64-NEXT:    dup v1.2d, x0
-; ARM64-NEXT:    bic v0.16b, v1.16b, v0.16b
+; ARM64-NEXT:    dup v2.2d, x0
+; ARM64-NEXT:    bic v0.16b, v2.16b, v0.16b
 ; ARM64-NEXT:    ret
   %r = icmp ne <2 x i64> %a, zeroinitializer
   %x = zext <2 x i1> %r to <2 x i64>
@@ -808,8 +808,8 @@ define <2 x i64> @icmp_ugt_v2i64_0(<2 x i64> %a) {
 ; ARM64:         mov w0, #0x1 // =1
 ; ARM64-NEXT:    movi v1.16b, #0x0
 ; ARM64-NEXT:    cmhi v0.2d, v0.2d, v1.2d
-; ARM64-NEXT:    dup v1.2d, x0
-; ARM64-NEXT:    and v0.16b, v0.16b, v1.16b
+; ARM64-NEXT:    dup v2.2d, x0
+; ARM64-NEXT:    and v0.16b, v0.16b, v2.16b
 ; ARM64-NEXT:    ret
   %r = icmp ugt <2 x i64> %a, zeroinitializer
   %x = zext <2 x i1> %r to <2 x i64>
@@ -914,9 +914,10 @@ define <4 x i16> @icmp_uge_v4i16_0(<4 x i16> %a) {
 ; X64-LABEL: <icmp_uge_v4i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    psubusw xmm1, xmm0
-; X64-NEXT:    pxor xmm0, xmm0
-; X64-NEXT:    pcmpeqw xmm0, xmm1
-; X64-NEXT:    psrlw xmm0, 0xf
+; X64-NEXT:    pxor xmm2, xmm2
+; X64-NEXT:    pcmpeqw xmm2, xmm1
+; X64-NEXT:    psrlw xmm2, 0xf
+; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_uge_v4i16_0>:
@@ -952,9 +953,10 @@ define <8 x i16> @icmp_uge_v8i16_0(<8 x i16> %a) {
 ; X64-LABEL: <icmp_uge_v8i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    psubusw xmm1, xmm0
-; X64-NEXT:    pxor xmm0, xmm0
-; X64-NEXT:    pcmpeqw xmm0, xmm1
-; X64-NEXT:    psrlw xmm0, 0xf
+; X64-NEXT:    pxor xmm2, xmm2
+; X64-NEXT:    pcmpeqw xmm2, xmm1
+; X64-NEXT:    psrlw xmm2, 0xf
+; X64-NEXT:    movapd xmm0, xmm2
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_uge_v8i16_0>:
@@ -1110,8 +1112,8 @@ define <2 x i64> @icmp_uge_v2i64_0(<2 x i64> %a) {
 ; ARM64:         mov w0, #0x1 // =1
 ; ARM64-NEXT:    movi v1.16b, #0x0
 ; ARM64-NEXT:    cmhs v0.2d, v0.2d, v1.2d
-; ARM64-NEXT:    dup v1.2d, x0
-; ARM64-NEXT:    and v0.16b, v0.16b, v1.16b
+; ARM64-NEXT:    dup v2.2d, x0
+; ARM64-NEXT:    and v0.16b, v0.16b, v2.16b
 ; ARM64-NEXT:    ret
   %r = icmp uge <2 x i64> %a, zeroinitializer
   %x = zext <2 x i1> %r to <2 x i64>
@@ -1433,8 +1435,8 @@ define <2 x i64> @icmp_ult_v2i64_0(<2 x i64> %a) {
 ; ARM64:         mov w0, #0x1 // =1
 ; ARM64-NEXT:    movi v1.16b, #0x0
 ; ARM64-NEXT:    cmhi v1.2d, v1.2d, v0.2d
-; ARM64-NEXT:    dup v0.2d, x0
-; ARM64-NEXT:    and v1.16b, v1.16b, v0.16b
+; ARM64-NEXT:    dup v2.2d, x0
+; ARM64-NEXT:    and v1.16b, v1.16b, v2.16b
 ; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
   %r = icmp ult <2 x i64> %a, zeroinitializer
@@ -1545,8 +1547,8 @@ define <4 x i16> @icmp_ule_v4i16_0(<4 x i16> %a) {
 ; X64-LABEL: <icmp_ule_v4i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    psubusw xmm0, xmm1
-; X64-NEXT:    pxor xmm1, xmm1
-; X64-NEXT:    pcmpeqw xmm0, xmm1
+; X64-NEXT:    pxor xmm2, xmm2
+; X64-NEXT:    pcmpeqw xmm0, xmm2
 ; X64-NEXT:    psrlw xmm0, 0xf
 ; X64-NEXT:    ret
 ;
@@ -1585,8 +1587,8 @@ define <8 x i16> @icmp_ule_v8i16_0(<8 x i16> %a) {
 ; X64-LABEL: <icmp_ule_v8i16_0>:
 ; X64:         pxor xmm1, xmm1
 ; X64-NEXT:    psubusw xmm0, xmm1
-; X64-NEXT:    pxor xmm1, xmm1
-; X64-NEXT:    pcmpeqw xmm0, xmm1
+; X64-NEXT:    pxor xmm2, xmm2
+; X64-NEXT:    pcmpeqw xmm0, xmm2
 ; X64-NEXT:    psrlw xmm0, 0xf
 ; X64-NEXT:    ret
 ;
@@ -1745,8 +1747,8 @@ define <2 x i64> @icmp_ule_v2i64_0(<2 x i64> %a) {
 ; ARM64:         mov w0, #0x1 // =1
 ; ARM64-NEXT:    movi v1.16b, #0x0
 ; ARM64-NEXT:    cmhs v1.2d, v1.2d, v0.2d
-; ARM64-NEXT:    dup v0.2d, x0
-; ARM64-NEXT:    and v1.16b, v1.16b, v0.16b
+; ARM64-NEXT:    dup v2.2d, x0
+; ARM64-NEXT:    and v1.16b, v1.16b, v2.16b
 ; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
   %r = icmp ule <2 x i64> %a, zeroinitializer
@@ -2012,8 +2014,8 @@ define <2 x i64> @icmp_sgt_v2i64_0(<2 x i64> %a) {
 ; ARM64:         mov w0, #0x1 // =1
 ; ARM64-NEXT:    movi v1.16b, #0x0
 ; ARM64-NEXT:    cmgt v0.2d, v0.2d, v1.2d
-; ARM64-NEXT:    dup v1.2d, x0
-; ARM64-NEXT:    and v0.16b, v0.16b, v1.16b
+; ARM64-NEXT:    dup v2.2d, x0
+; ARM64-NEXT:    and v0.16b, v0.16b, v2.16b
 ; ARM64-NEXT:    ret
   %r = icmp sgt <2 x i64> %a, zeroinitializer
   %x = zext <2 x i1> %r to <2 x i64>
@@ -2298,8 +2300,8 @@ define <2 x i64> @icmp_sge_v2i64_0(<2 x i64> %a) {
 ; ARM64:         mov w0, #0x1 // =1
 ; ARM64-NEXT:    movi v1.16b, #0x0
 ; ARM64-NEXT:    cmge v0.2d, v0.2d, v1.2d
-; ARM64-NEXT:    dup v1.2d, x0
-; ARM64-NEXT:    and v0.16b, v0.16b, v1.16b
+; ARM64-NEXT:    dup v2.2d, x0
+; ARM64-NEXT:    and v0.16b, v0.16b, v2.16b
 ; ARM64-NEXT:    ret
   %r = icmp sge <2 x i64> %a, zeroinitializer
   %x = zext <2 x i1> %r to <2 x i64>
@@ -2589,8 +2591,8 @@ define <2 x i64> @icmp_slt_v2i64_0(<2 x i64> %a) {
 ; ARM64:         mov w0, #0x1 // =1
 ; ARM64-NEXT:    movi v1.16b, #0x0
 ; ARM64-NEXT:    cmgt v1.2d, v1.2d, v0.2d
-; ARM64-NEXT:    dup v0.2d, x0
-; ARM64-NEXT:    and v1.16b, v1.16b, v0.16b
+; ARM64-NEXT:    dup v2.2d, x0
+; ARM64-NEXT:    and v1.16b, v1.16b, v2.16b
 ; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
   %r = icmp slt <2 x i64> %a, zeroinitializer
@@ -2877,8 +2879,8 @@ define <2 x i64> @icmp_sle_v2i64_0(<2 x i64> %a) {
 ; ARM64:         mov w0, #0x1 // =1
 ; ARM64-NEXT:    movi v1.16b, #0x0
 ; ARM64-NEXT:    cmge v1.2d, v1.2d, v0.2d
-; ARM64-NEXT:    dup v0.2d, x0
-; ARM64-NEXT:    and v1.16b, v1.16b, v0.16b
+; ARM64-NEXT:    dup v2.2d, x0
+; ARM64-NEXT:    and v1.16b, v1.16b, v2.16b
 ; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
   %r = icmp sle <2 x i64> %a, zeroinitializer

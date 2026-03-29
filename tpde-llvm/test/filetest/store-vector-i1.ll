@@ -140,8 +140,8 @@ define void @store_a2v4i1_zero(ptr %p) {
 ; ARM64-LABEL: <store_a2v4i1_zero>:
 ; ARM64:         mov w1, #0x0 // =0
 ; ARM64-NEXT:    strb w1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    strb w1, [x0, #0x1]
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    strb w2, [x0, #0x1]
 ; ARM64-NEXT:    ret
   store [2 x <4 x i1>] zeroinitializer, ptr %p
   ret void
@@ -156,8 +156,8 @@ define void @store_a2v37i1_zero(ptr %p) {
 ; ARM64-LABEL: <store_a2v37i1_zero>:
 ; ARM64:         mov w1, #0x0 // =0
 ; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    str x2, [x0, #0x8]
 ; ARM64-NEXT:    ret
   store [2 x <37 x i1>] zeroinitializer, ptr %p
   ret void
@@ -172,8 +172,8 @@ define void @store_a2v64i1_zero(ptr %p) {
 ; ARM64-LABEL: <store_a2v64i1_zero>:
 ; ARM64:         mov w1, #0x0 // =0
 ; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    str x2, [x0, #0x8]
 ; ARM64-NEXT:    ret
   store [2 x <64 x i1>] zeroinitializer, ptr %p
   ret void

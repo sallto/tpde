@@ -19,21 +19,21 @@ define i128 @umul_i128_0(i128 %0, i128 %1) {
 ; X64-NEXT:    and r9b, al
 ; X64-NEXT:    mov rax, rsi
 ; X64-NEXT:    mul r8
-; X64-NEXT:    mov rsi, rax
-; X64-NEXT:    seto r10b
+; X64-NEXT:    mov r10, rax
+; X64-NEXT:    seto r11b
 ; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    seto cl
-; X64-NEXT:    or cl, r10b
+; X64-NEXT:    or cl, r11b
 ; X64-NEXT:    or cl, r9b
-; X64-NEXT:    add rsi, rax
+; X64-NEXT:    add r10, rax
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    mul r8
-; X64-NEXT:    add rsi, rdx
+; X64-NEXT:    add r10, rdx
 ; X64-NEXT:    setb dl
 ; X64-NEXT:    or dl, cl
 ; X64-NEXT:    movzx edx, dl
-; X64-NEXT:    mov rdx, rsi
+; X64-NEXT:    mov rdx, r10
 ; X64-NEXT:    ret
 entry:
   %2 = call {i128, i1} @llvm.umul.with.overflow.i128(i128 %0, i128 %1)
@@ -51,17 +51,17 @@ define i1 @umul_i128_1(i128 %0, i128 %1) {
 ; X64-NEXT:    and r9b, al
 ; X64-NEXT:    mov rax, rsi
 ; X64-NEXT:    mul r8
-; X64-NEXT:    mov rsi, rax
-; X64-NEXT:    seto r10b
+; X64-NEXT:    mov r10, rax
+; X64-NEXT:    seto r11b
 ; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    seto cl
-; X64-NEXT:    or cl, r10b
+; X64-NEXT:    or cl, r11b
 ; X64-NEXT:    or cl, r9b
-; X64-NEXT:    add rsi, rax
+; X64-NEXT:    add r10, rax
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    mul r8
-; X64-NEXT:    add rsi, rdx
+; X64-NEXT:    add r10, rdx
 ; X64-NEXT:    setb dl
 ; X64-NEXT:    or dl, cl
 ; X64-NEXT:    movzx edx, dl
@@ -77,7 +77,7 @@ define i128 @smul_i128_0(i128 %0, i128 %1) {
 ; X64-LABEL: <smul_i128_0>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
+; X64-NEXT:    push r12
 ; X64-NEXT:    mov r8, rdx
 ; X64-NEXT:    mov r9, rsi
 ; X64-NEXT:    sar r9, 0x3f
@@ -93,22 +93,22 @@ define i128 @smul_i128_0(i128 %0, i128 %1) {
 ; X64-NEXT:    adc r8, r9
 ; X64-NEXT:    mov r9, r8
 ; X64-NEXT:    sar r9, 0x3f
-; X64-NEXT:    mov rbx, rcx
-; X64-NEXT:    sar rbx, 0x3f
-; X64-NEXT:    imul rbx, rdi
+; X64-NEXT:    mov r12, rcx
+; X64-NEXT:    sar r12, 0x3f
+; X64-NEXT:    imul r12, rdi
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    mul rcx
 ; X64-NEXT:    mov rdi, rdx
 ; X64-NEXT:    add r10, rax
-; X64-NEXT:    adc rdi, rbx
-; X64-NEXT:    mov rbx, rdi
-; X64-NEXT:    sar rbx, 0x3f
+; X64-NEXT:    adc rdi, r12
+; X64-NEXT:    mov r12, rdi
+; X64-NEXT:    sar r12, 0x3f
 ; X64-NEXT:    add rdi, r8
-; X64-NEXT:    adc rbx, r9
+; X64-NEXT:    adc r12, r9
 ; X64-NEXT:    mov rax, rsi
 ; X64-NEXT:    imul rcx
 ; X64-NEXT:    add rax, rdi
-; X64-NEXT:    adc rdx, rbx
+; X64-NEXT:    adc rdx, r12
 ; X64-NEXT:    mov rcx, r10
 ; X64-NEXT:    sar rcx, 0x3f
 ; X64-NEXT:    xor rdx, rcx
@@ -118,7 +118,7 @@ define i128 @smul_i128_0(i128 %0, i128 %1) {
 ; X64-NEXT:    setne sil
 ; X64-NEXT:    mov rax, r11
 ; X64-NEXT:    mov rdx, r10
-; X64-NEXT:    pop rbx
+; X64-NEXT:    pop r12
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 entry:
@@ -131,7 +131,7 @@ define i1 @smul_i128_1(i128 %0, i128 %1) {
 ; X64-LABEL: <smul_i128_1>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
+; X64-NEXT:    push r12
 ; X64-NEXT:    mov r8, rdx
 ; X64-NEXT:    mov r9, rsi
 ; X64-NEXT:    sar r9, 0x3f
@@ -147,22 +147,22 @@ define i1 @smul_i128_1(i128 %0, i128 %1) {
 ; X64-NEXT:    adc r8, r9
 ; X64-NEXT:    mov r9, r8
 ; X64-NEXT:    sar r9, 0x3f
-; X64-NEXT:    mov rbx, rcx
-; X64-NEXT:    sar rbx, 0x3f
-; X64-NEXT:    imul rbx, rdi
+; X64-NEXT:    mov r12, rcx
+; X64-NEXT:    sar r12, 0x3f
+; X64-NEXT:    imul r12, rdi
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    mul rcx
 ; X64-NEXT:    mov rdi, rdx
 ; X64-NEXT:    add r10, rax
-; X64-NEXT:    adc rdi, rbx
-; X64-NEXT:    mov rbx, rdi
-; X64-NEXT:    sar rbx, 0x3f
+; X64-NEXT:    adc rdi, r12
+; X64-NEXT:    mov r12, rdi
+; X64-NEXT:    sar r12, 0x3f
 ; X64-NEXT:    add rdi, r8
-; X64-NEXT:    adc rbx, r9
+; X64-NEXT:    adc r12, r9
 ; X64-NEXT:    mov rax, rsi
 ; X64-NEXT:    imul rcx
 ; X64-NEXT:    add rax, rdi
-; X64-NEXT:    adc rdx, rbx
+; X64-NEXT:    adc rdx, r12
 ; X64-NEXT:    mov rcx, r10
 ; X64-NEXT:    sar rcx, 0x3f
 ; X64-NEXT:    xor rdx, rcx
@@ -171,7 +171,7 @@ define i1 @smul_i128_1(i128 %0, i128 %1) {
 ; X64-NEXT:    or rcx, rdx
 ; X64-NEXT:    setne sil
 ; X64-NEXT:    mov eax, esi
-; X64-NEXT:    pop rbx
+; X64-NEXT:    pop r12
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 entry:

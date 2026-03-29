@@ -228,17 +228,17 @@ define void @mul_i128_1(i128 %0) {
 ; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    add rdx, rsi
-; X64-NEXT:    xor ecx, ecx
-; X64-NEXT:    imul rcx, rdi
-; X64-NEXT:    add rdx, rcx
+; X64-NEXT:    xor r8d, r8d
+; X64-NEXT:    imul r8, rdi
+; X64-NEXT:    add rdx, r8
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <mul_i128_1>:
 ; ARM64:         mov x2, #0x1 // =1
 ; ARM64-NEXT:    umulh x3, x2, x0
 ; ARM64-NEXT:    madd x3, x2, x1, x3
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    madd x1, x1, x0, x3
+; ARM64-NEXT:    mov w4, #0x0 // =0
+; ARM64-NEXT:    madd x4, x4, x0, x3
 ; ARM64-NEXT:    mul x2, x2, x0
 ; ARM64-NEXT:    ret
   entry:
@@ -253,17 +253,17 @@ define void @mul_i128_1_reorder(i128 %0) {
 ; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    add rdx, rsi
-; X64-NEXT:    xor ecx, ecx
-; X64-NEXT:    imul rcx, rdi
-; X64-NEXT:    add rdx, rcx
+; X64-NEXT:    xor r8d, r8d
+; X64-NEXT:    imul r8, rdi
+; X64-NEXT:    add rdx, r8
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <mul_i128_1_reorder>:
 ; ARM64:         mov x2, #0x1 // =1
 ; ARM64-NEXT:    umulh x3, x2, x0
 ; ARM64-NEXT:    madd x3, x2, x1, x3
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    madd x1, x1, x0, x3
+; ARM64-NEXT:    mov w4, #0x0 // =0
+; ARM64-NEXT:    madd x4, x4, x0, x3
 ; ARM64-NEXT:    mul x2, x2, x0
 ; ARM64-NEXT:    ret
   entry:
@@ -278,17 +278,17 @@ define void @mul_i128_1001_1002(i128 %0) {
 ; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    add rdx, rsi
-; X64-NEXT:    mov ecx, 0x1001
-; X64-NEXT:    imul rcx, rdi
-; X64-NEXT:    add rdx, rcx
+; X64-NEXT:    mov r8d, 0x1001
+; X64-NEXT:    imul r8, rdi
+; X64-NEXT:    add rdx, r8
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <mul_i128_1001_1002>:
 ; ARM64:         mov x2, #0x1002 // =4098
 ; ARM64-NEXT:    umulh x3, x2, x0
 ; ARM64-NEXT:    madd x3, x2, x1, x3
-; ARM64-NEXT:    mov x1, #0x1001 // =4097
-; ARM64-NEXT:    madd x1, x1, x0, x3
+; ARM64-NEXT:    mov x4, #0x1001 // =4097
+; ARM64-NEXT:    madd x4, x4, x0, x3
 ; ARM64-NEXT:    mul x2, x2, x0
 ; ARM64-NEXT:    ret
   entry:
@@ -327,17 +327,17 @@ define void @mul_i128_salvage_imm(i128 %0) {
 ; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    add rdx, rsi
-; X64-NEXT:    xor ecx, ecx
-; X64-NEXT:    imul rcx, rdi
-; X64-NEXT:    add rdx, rcx
+; X64-NEXT:    xor r8d, r8d
+; X64-NEXT:    imul r8, rdi
+; X64-NEXT:    add rdx, r8
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <mul_i128_salvage_imm>:
 ; ARM64:         mov x2, #0x1 // =1
 ; ARM64-NEXT:    umulh x3, x2, x0
 ; ARM64-NEXT:    madd x3, x2, x1, x3
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    madd x1, x1, x0, x3
+; ARM64-NEXT:    mov w4, #0x0 // =0
+; ARM64-NEXT:    madd x4, x4, x0, x3
 ; ARM64-NEXT:    mul x2, x2, x0
 ; ARM64-NEXT:    ret
   entry:
@@ -447,17 +447,17 @@ define void @mul_i128_no_salvage_imm_1(i128 %0) {
 ; X64-NEXT:    mov rax, r8
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    add rdx, rcx
-; X64-NEXT:    xor r8d, r8d
-; X64-NEXT:    imul r8, rdi
-; X64-NEXT:    add rdx, r8
-; X64-NEXT:    mov rcx, rax
-; X64-NEXT:    mov r8, rdx
-; X64-NEXT:    imul rsi, rcx
-; X64-NEXT:    mov rax, rcx
+; X64-NEXT:    xor r9d, r9d
+; X64-NEXT:    imul r9, rdi
+; X64-NEXT:    add rdx, r9
+; X64-NEXT:    mov r10, rax
+; X64-NEXT:    mov r11, rdx
+; X64-NEXT:    imul rsi, r10
+; X64-NEXT:    mov rax, r10
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    add rdx, rsi
-; X64-NEXT:    imul r8, rdi
-; X64-NEXT:    add rdx, r8
+; X64-NEXT:    imul r11, rdi
+; X64-NEXT:    add rdx, r11
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <mul_i128_no_salvage_imm_1>:
@@ -467,9 +467,9 @@ define void @mul_i128_no_salvage_imm_1(i128 %0) {
 ; ARM64-NEXT:    mov w4, #0x0 // =0
 ; ARM64-NEXT:    madd x4, x4, x0, x3
 ; ARM64-NEXT:    mul x2, x2, x0
-; ARM64-NEXT:    umulh x3, x2, x0
-; ARM64-NEXT:    madd x3, x2, x1, x3
-; ARM64-NEXT:    madd x4, x4, x0, x3
+; ARM64-NEXT:    umulh x5, x2, x0
+; ARM64-NEXT:    madd x5, x2, x1, x5
+; ARM64-NEXT:    madd x4, x4, x0, x5
 ; ARM64-NEXT:    mul x2, x2, x0
 ; ARM64-NEXT:    ret
   entry:
@@ -486,17 +486,17 @@ define void @mul_i128_no_salvage_imm_1001_1002(i128 %0) {
 ; X64-NEXT:    mov rax, r8
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    add rdx, rcx
-; X64-NEXT:    mov r8d, 0x1001
-; X64-NEXT:    imul r8, rdi
-; X64-NEXT:    add rdx, r8
-; X64-NEXT:    mov rcx, rax
-; X64-NEXT:    mov r8, rdx
-; X64-NEXT:    imul rsi, rcx
-; X64-NEXT:    mov rax, rcx
+; X64-NEXT:    mov r9d, 0x1001
+; X64-NEXT:    imul r9, rdi
+; X64-NEXT:    add rdx, r9
+; X64-NEXT:    mov r10, rax
+; X64-NEXT:    mov r11, rdx
+; X64-NEXT:    imul rsi, r10
+; X64-NEXT:    mov rax, r10
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    add rdx, rsi
-; X64-NEXT:    imul r8, rdi
-; X64-NEXT:    add rdx, r8
+; X64-NEXT:    imul r11, rdi
+; X64-NEXT:    add rdx, r11
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <mul_i128_no_salvage_imm_1001_1002>:
@@ -506,9 +506,9 @@ define void @mul_i128_no_salvage_imm_1001_1002(i128 %0) {
 ; ARM64-NEXT:    mov x4, #0x1001 // =4097
 ; ARM64-NEXT:    madd x4, x4, x0, x3
 ; ARM64-NEXT:    mul x2, x2, x0
-; ARM64-NEXT:    umulh x3, x2, x0
-; ARM64-NEXT:    madd x3, x2, x1, x3
-; ARM64-NEXT:    madd x4, x4, x0, x3
+; ARM64-NEXT:    umulh x5, x2, x0
+; ARM64-NEXT:    madd x5, x2, x1, x5
+; ARM64-NEXT:    madd x4, x4, x0, x5
 ; ARM64-NEXT:    mul x2, x2, x0
 ; ARM64-NEXT:    ret
   entry:
@@ -527,14 +527,14 @@ define void @mul_i128_no_salvage_reg(i128 %0, i128 %1) {
 ; X64-NEXT:    add rdx, r9
 ; X64-NEXT:    imul rcx, rdi
 ; X64-NEXT:    add rdx, rcx
-; X64-NEXT:    mov rcx, rax
-; X64-NEXT:    mov r8, rdx
-; X64-NEXT:    imul rsi, rcx
-; X64-NEXT:    mov rax, rcx
+; X64-NEXT:    mov r10, rax
+; X64-NEXT:    mov r11, rdx
+; X64-NEXT:    imul rsi, r10
+; X64-NEXT:    mov rax, r10
 ; X64-NEXT:    mul rdi
 ; X64-NEXT:    add rdx, rsi
-; X64-NEXT:    imul r8, rdi
-; X64-NEXT:    add rdx, r8
+; X64-NEXT:    imul r11, rdi
+; X64-NEXT:    add rdx, r11
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <mul_i128_no_salvage_reg>:
@@ -542,9 +542,9 @@ define void @mul_i128_no_salvage_reg(i128 %0, i128 %1) {
 ; ARM64-NEXT:    madd x4, x2, x1, x4
 ; ARM64-NEXT:    madd x3, x3, x0, x4
 ; ARM64-NEXT:    mul x2, x2, x0
-; ARM64-NEXT:    umulh x4, x2, x0
-; ARM64-NEXT:    madd x4, x2, x1, x4
-; ARM64-NEXT:    madd x3, x3, x0, x4
+; ARM64-NEXT:    umulh x5, x2, x0
+; ARM64-NEXT:    madd x5, x2, x1, x5
+; ARM64-NEXT:    madd x3, x3, x0, x5
 ; ARM64-NEXT:    mul x2, x2, x0
 ; ARM64-NEXT:    ret
   entry:

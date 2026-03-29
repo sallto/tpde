@@ -1021,7 +1021,7 @@ define void @icmp_eq_i37_0(i37 %0) {
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
 ; X64-NEXT:    test rdi, rdi
-; X64-NEXT:    sete al
+; X64-NEXT:    sete cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_i37_0>:
@@ -1039,7 +1039,7 @@ define void @icmp_ne_i37_0(i37 %0) {
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
 ; X64-NEXT:    test rdi, rdi
-; X64-NEXT:    setne al
+; X64-NEXT:    setne cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ne_i37_0>:
@@ -1057,7 +1057,7 @@ define void @icmp_eq_i37_1(i37 %0) {
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
 ; X64-NEXT:    cmp rdi, 0x1
-; X64-NEXT:    sete al
+; X64-NEXT:    sete cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_i37_1>:
@@ -1074,9 +1074,9 @@ define void @icmp_eq_i37_-1(i37 %0) {
 ; X64-LABEL: <icmp_eq_i37_-1>:
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
-; X64-NEXT:    movabs rax, 0x1fffffffff
-; X64-NEXT:    cmp rdi, rax
-; X64-NEXT:    sete al
+; X64-NEXT:    movabs rcx, 0x1fffffffff
+; X64-NEXT:    cmp rdi, rcx
+; X64-NEXT:    sete dl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_i37_-1>:
@@ -1095,7 +1095,7 @@ define void @icmp_eq_i37_f000(i37 %0) {
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
 ; X64-NEXT:    cmp rdi, 0xf000
-; X64-NEXT:    sete al
+; X64-NEXT:    sete cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_i37_f000>:
@@ -1113,7 +1113,7 @@ define void @icmp_eq_i37_1001(i37 %0) {
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
 ; X64-NEXT:    cmp rdi, 0x1001
-; X64-NEXT:    sete al
+; X64-NEXT:    sete cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_i37_1001>:
@@ -1131,10 +1131,10 @@ define void @icmp_eq_i37_i37(i37 %0, i37 %1) {
 ; X64-LABEL: <icmp_eq_i37_i37>:
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
-; X64-NEXT:    movabs rax, 0x1fffffffff
-; X64-NEXT:    and rsi, rax
+; X64-NEXT:    movabs rcx, 0x1fffffffff
+; X64-NEXT:    and rsi, rcx
 ; X64-NEXT:    cmp rdi, rsi
-; X64-NEXT:    sete al
+; X64-NEXT:    sete dl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_i37_i37>:
@@ -1174,7 +1174,7 @@ define void @icmp_ugt_i37_1(i37 %0) {
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
 ; X64-NEXT:    cmp rdi, 0x1
-; X64-NEXT:    seta al
+; X64-NEXT:    seta cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ugt_i37_1>:
@@ -1192,7 +1192,7 @@ define void @icmp_uge_i37_1(i37 %0) {
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
 ; X64-NEXT:    cmp rdi, 0x1
-; X64-NEXT:    setae al
+; X64-NEXT:    setae cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_uge_i37_1>:
@@ -1210,7 +1210,7 @@ define void @icmp_ult_i37_1(i37 %0) {
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
 ; X64-NEXT:    cmp rdi, 0x1
-; X64-NEXT:    setb al
+; X64-NEXT:    setb cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ult_i37_1>:
@@ -1228,7 +1228,7 @@ define void @icmp_ule_i37_1(i37 %0) {
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
 ; X64-NEXT:    cmp rdi, 0x1
-; X64-NEXT:    setbe al
+; X64-NEXT:    setbe cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ule_i37_1>:
@@ -1301,7 +1301,8 @@ define i1 @icmp_slt_i37_largeimm(i37 %0) {
 ; X64-NEXT:    sar rdi, 0x1b
 ; X64-NEXT:    movabs rax, -0x111111111
 ; X64-NEXT:    cmp rdi, rax
-; X64-NEXT:    setl al
+; X64-NEXT:    setl cl
+; X64-NEXT:    mov eax, ecx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_slt_i37_largeimm>:
@@ -1341,14 +1342,14 @@ define void @icmp_eq_i64_no_salvage_imm(i64 %0) {
 ; X64:         cmp rdi, 0x1
 ; X64-NEXT:    sete al
 ; X64-NEXT:    cmp rdi, 0x2
-; X64-NEXT:    sete al
+; X64-NEXT:    sete cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_i64_no_salvage_imm>:
 ; ARM64:         cmp x0, #0x1
 ; ARM64-NEXT:    cset w1, eq
 ; ARM64-NEXT:    cmp x0, #0x2
-; ARM64-NEXT:    cset w0, eq
+; ARM64-NEXT:    cset w2, eq
 ; ARM64-NEXT:    ret
   entry:
     %1 = icmp eq i64 %0, 1
@@ -1361,14 +1362,14 @@ define void @icmp_eq_i64_no_salvage_reg(i64 %0, i64 %1) {
 ; X64:         cmp rdi, rsi
 ; X64-NEXT:    sete al
 ; X64-NEXT:    cmp rdi, rsi
-; X64-NEXT:    sete al
+; X64-NEXT:    sete cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_i64_no_salvage_reg>:
 ; ARM64:         cmp x0, x1
 ; ARM64-NEXT:    cset w2, eq
 ; ARM64-NEXT:    cmp x0, x1
-; ARM64-NEXT:    cset w0, eq
+; ARM64-NEXT:    cset w3, eq
 ; ARM64-NEXT:    ret
   entry:
     %2 = icmp eq i64 %0, %1
@@ -1401,7 +1402,7 @@ define void @icmp_eq_i128_0(i128 %0) {
 ; X64-NEXT:    xor rdx, rax
 ; X64-NEXT:    xor r8, rcx
 ; X64-NEXT:    or rdx, r8
-; X64-NEXT:    sete al
+; X64-NEXT:    sete r9b
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_i128_0>:
@@ -1409,7 +1410,7 @@ define void @icmp_eq_i128_0(i128 %0) {
 ; ARM64-NEXT:    mov w3, #0x0 // =0
 ; ARM64-NEXT:    cmp x0, x2
 ; ARM64-NEXT:    ccmp x1, x3, #0x0, eq
-; ARM64-NEXT:    cset w0, eq
+; ARM64-NEXT:    cset w4, eq
 ; ARM64-NEXT:    ret
   entry:
     %2 = icmp eq i128 %0, 0
@@ -1423,7 +1424,7 @@ define void @icmp_eq_i128_i128(i128 %0, i128 %1) {
 ; X64-NEXT:    xor rax, rdx
 ; X64-NEXT:    xor r8, rcx
 ; X64-NEXT:    or rax, r8
-; X64-NEXT:    sete al
+; X64-NEXT:    sete r9b
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_eq_i128_i128>:
@@ -1443,7 +1444,7 @@ define void @icmp_ne_i128_i128(i128 %0, i128 %1) {
 ; X64-NEXT:    xor rax, rdx
 ; X64-NEXT:    xor r8, rcx
 ; X64-NEXT:    or rax, r8
-; X64-NEXT:    setne al
+; X64-NEXT:    setne r9b
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ne_i128_i128>:
@@ -1461,7 +1462,7 @@ define void @icmp_ugt_i128_i128(i128 %0, i128 %1) {
 ; X64:         mov rax, rcx
 ; X64-NEXT:    cmp rdx, rdi
 ; X64-NEXT:    sbb rax, rsi
-; X64-NEXT:    setb al
+; X64-NEXT:    setb cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ugt_i128_i128>:
@@ -1479,7 +1480,7 @@ define void @icmp_uge_i128_i128(i128 %0, i128 %1) {
 ; X64:         mov rax, rsi
 ; X64-NEXT:    cmp rdi, rdx
 ; X64-NEXT:    sbb rax, rcx
-; X64-NEXT:    setae al
+; X64-NEXT:    setae cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_uge_i128_i128>:
@@ -1497,7 +1498,7 @@ define void @icmp_ult_i128_i128(i128 %0, i128 %1) {
 ; X64:         mov rax, rsi
 ; X64-NEXT:    cmp rdi, rdx
 ; X64-NEXT:    sbb rax, rcx
-; X64-NEXT:    setb al
+; X64-NEXT:    setb cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ult_i128_i128>:
@@ -1515,7 +1516,7 @@ define void @icmp_ule_i128_i128(i128 %0, i128 %1) {
 ; X64:         mov rax, rcx
 ; X64-NEXT:    cmp rdx, rdi
 ; X64-NEXT:    sbb rax, rsi
-; X64-NEXT:    setae al
+; X64-NEXT:    setae cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_ule_i128_i128>:
@@ -1533,7 +1534,7 @@ define void @icmp_sgt_i128_i128(i128 %0, i128 %1) {
 ; X64:         mov rax, rcx
 ; X64-NEXT:    cmp rdx, rdi
 ; X64-NEXT:    sbb rax, rsi
-; X64-NEXT:    setl al
+; X64-NEXT:    setl cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sgt_i128_i128>:
@@ -1551,7 +1552,7 @@ define void @icmp_sge_i128_i128(i128 %0, i128 %1) {
 ; X64:         mov rax, rsi
 ; X64-NEXT:    cmp rdi, rdx
 ; X64-NEXT:    sbb rax, rcx
-; X64-NEXT:    setge al
+; X64-NEXT:    setge cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sge_i128_i128>:
@@ -1569,7 +1570,7 @@ define void @icmp_slt_i128_i128(i128 %0, i128 %1) {
 ; X64:         mov rax, rsi
 ; X64-NEXT:    cmp rdi, rdx
 ; X64-NEXT:    sbb rax, rcx
-; X64-NEXT:    setl al
+; X64-NEXT:    setl cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_slt_i128_i128>:
@@ -1587,7 +1588,7 @@ define void @icmp_sle_i128_i128(i128 %0, i128 %1) {
 ; X64:         mov rax, rcx
 ; X64-NEXT:    cmp rdx, rdi
 ; X64-NEXT:    sbb rax, rsi
-; X64-NEXT:    setge al
+; X64-NEXT:    setge cl
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <icmp_sle_i128_i128>:

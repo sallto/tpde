@@ -281,9 +281,10 @@ define i128 @ashr_i128_i128(i128 %v, i128 %s) {
 ; ARM64-NEXT:    lsl x4, x4, x5
 ; ARM64-NEXT:    asr x5, x1, x2
 ; ARM64-NEXT:    orr x4, x4, x0
-; ARM64-NEXT:    csel x1, x6, x5, ne
-; ARM64-NEXT:    csel x2, x5, x4, ne
-; ARM64-NEXT:    mov x0, x2
+; ARM64-NEXT:    csel x7, x6, x5, ne
+; ARM64-NEXT:    csel x8, x5, x4, ne
+; ARM64-NEXT:    mov x0, x8
+; ARM64-NEXT:    mov x1, x7
 ; ARM64-NEXT:    ret
   %r = ashr i128 %v, %s
   ret i128 %r

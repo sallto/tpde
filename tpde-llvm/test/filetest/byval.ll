@@ -20,8 +20,8 @@ define i32 @fn_i32_byval_ptr_i32_i32(ptr byval(%struct.ptr_i32) align 8 %0, i32 
 ; ARM64-LABEL: <fn_i32_byval_ptr_i32_i32>:
 ; ARM64:         mov x17, sp
 ; ARM64-NEXT:    add x9, x17, #0x0
-; ARM64-NEXT:    ldr w1, [x9, #0x8]
-; ARM64-NEXT:    add w0, w0, w1
+; ARM64-NEXT:    ldr w10, [x9, #0x8]
+; ARM64-NEXT:    add w0, w0, w10
 ; ARM64-NEXT:    ret
 entry:
   %addr = getelementptr %struct.ptr_i32, ptr %0, i64 0, i32 1
@@ -76,28 +76,25 @@ define i128 @fn_byval2(ptr byval({ptr, ptr}) %a, ptr byval(i64) %b, ptr byval(i1
 ; X64-NEXT:    mov rcx, qword ptr [rbp + 0x10]
 ; X64-NEXT:    mov qword ptr [rcx], rax
 ; X64-NEXT:    mov qword ptr [rbp + 0x18], rcx
-; X64-NEXT:    mov rax, qword ptr [rbp + 0x30]
-; X64-NEXT:    mov rcx, qword ptr [rbp + 0x38]
-; X64-NEXT:    mov rdx, rcx
+; X64-NEXT:    mov rdx, qword ptr [rbp + 0x30]
+; X64-NEXT:    mov rsi, qword ptr [rbp + 0x38]
+; X64-NEXT:    mov rax, rdx
+; X64-NEXT:    mov rdx, rsi
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <fn_byval2>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    add x17, sp, #0xb0
+; ARM64:         mov x17, sp
 ; ARM64-NEXT:    add x9, x17, #0x0
 ; ARM64-NEXT:    add x10, x17, #0x10
 ; ARM64-NEXT:    add x11, x17, #0x20
 ; ARM64-NEXT:    ldr x10, [x10]
-; ARM64-NEXT:    ldr x0, [x9]
-; ARM64-NEXT:    str x10, [x0]
-; ARM64-NEXT:    str x0, [x9, #0x8]
-; ARM64-NEXT:    ldp x11, x0, [x11]
-; ARM64-NEXT:    str x0, [x29, #0xa8]
+; ARM64-NEXT:    ldr x12, [x9]
+; ARM64-NEXT:    str x10, [x12]
+; ARM64-NEXT:    str x12, [x9, #0x8]
+; ARM64-NEXT:    ldp x11, x13, [x11]
 ; ARM64-NEXT:    mov x0, x11
-; ARM64-NEXT:    ldr x1, [x29, #0xa8]
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
+; ARM64-NEXT:    mov x1, x13
 ; ARM64-NEXT:    ret
   %l1 = load i64, ptr %b
   %l2 = load ptr, ptr %a
@@ -117,12 +114,12 @@ define void @call_byval2(ptr %a, ptr %b, ptr %c) {
 ; X64-NEXT:    mov qword ptr [rsp], rax
 ; X64-NEXT:    mov rax, qword ptr [rdi + 0x8]
 ; X64-NEXT:    mov qword ptr [rsp + 0x8], rax
-; X64-NEXT:    mov rax, qword ptr [rsi]
-; X64-NEXT:    mov qword ptr [rsp + 0x10], rax
-; X64-NEXT:    mov rax, qword ptr [rdx]
-; X64-NEXT:    mov qword ptr [rsp + 0x20], rax
-; X64-NEXT:    mov rax, qword ptr [rdx + 0x8]
-; X64-NEXT:    mov qword ptr [rsp + 0x28], rax
+; X64-NEXT:    mov rcx, qword ptr [rsi]
+; X64-NEXT:    mov qword ptr [rsp + 0x10], rcx
+; X64-NEXT:    mov rsi, qword ptr [rdx]
+; X64-NEXT:    mov qword ptr [rsp + 0x20], rsi
+; X64-NEXT:    mov rsi, qword ptr [rdx + 0x8]
+; X64-NEXT:    mov qword ptr [rsp + 0x28], rsi
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 fn_byval2-0x4
@@ -161,10 +158,10 @@ define void @fn_byval3(ptr byval(i8) align 1 %a, ptr byval(i32) align 2 %b, ptr 
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    movzx eax, byte ptr [rbp + 0x10]
 ; X64-NEXT:    mov byte ptr [rdi], al
-; X64-NEXT:    mov eax, dword ptr [rbp + 0x18]
-; X64-NEXT:    mov dword ptr [rdi], eax
-; X64-NEXT:    movzx eax, byte ptr [rbp + 0x20]
-; X64-NEXT:    mov byte ptr [rdi], al
+; X64-NEXT:    mov ecx, dword ptr [rbp + 0x18]
+; X64-NEXT:    mov dword ptr [rdi], ecx
+; X64-NEXT:    movzx edx, byte ptr [rbp + 0x20]
+; X64-NEXT:    mov byte ptr [rdi], dl
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -196,10 +193,10 @@ define void @call_byval3(ptr %a, ptr %b, ptr %c, ptr %d) {
 ; X64-NEXT:    sub rsp, 0x40
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    mov byte ptr [rsp], al
-; X64-NEXT:    mov eax, dword ptr [rsi]
-; X64-NEXT:    mov dword ptr [rsp + 0x8], eax
-; X64-NEXT:    movzx eax, byte ptr [rdx]
-; X64-NEXT:    mov byte ptr [rsp + 0x10], al
+; X64-NEXT:    mov edi, dword ptr [rsi]
+; X64-NEXT:    mov dword ptr [rsp + 0x8], edi
+; X64-NEXT:    movzx r8d, byte ptr [rdx]
+; X64-NEXT:    mov byte ptr [rsp + 0x10], r8b
 ; X64-NEXT:    mov rdi, rcx
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
@@ -304,7 +301,8 @@ define i64 @fn_byval5(ptr byval(i64) %a) {
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
 ; X64-NEXT:    push rbx
-; X64-NEXT:    mov rax, qword ptr [rbp + 0x10]
+; X64-NEXT:    mov rcx, qword ptr [rbp + 0x10]
+; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret

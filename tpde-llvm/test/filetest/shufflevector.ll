@@ -17,8 +17,8 @@ define void @shufflevector_unused() {
 ; ARM64-LABEL: <shufflevector_unused>:
 ; ARM64:         mov w0, #0x0 // =0
 ; ARM64-NEXT:    mov v0.d[0], x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    mov v0.d[1], x0
+; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    mov v0.d[1], x1
 ; ARM64-NEXT:    ret
   %1 = shufflevector <2 x i64> zeroinitializer, <2 x i64> zeroinitializer, <2 x i32> <i32 1, i32 0>
   ret void
@@ -32,24 +32,24 @@ define void @shufflevector_v5i8_v16i8(ptr %p, <16 x i8> %a, <16 x i8> %b) {
 ; X64-NEXT:    movzx eax, byte ptr [rbp - 0x40]
 ; X64-NEXT:    mov byte ptr [rbp - 0x30], al
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x50], xmm1
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x4f]
-; X64-NEXT:    mov byte ptr [rbp - 0x2f], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x3e]
-; X64-NEXT:    mov byte ptr [rbp - 0x2e], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x4d]
-; X64-NEXT:    mov byte ptr [rbp - 0x2d], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x3c]
-; X64-NEXT:    mov byte ptr [rbp - 0x2c], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x30]
-; X64-NEXT:    mov byte ptr [rdi], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2f]
-; X64-NEXT:    mov byte ptr [rdi + 0x1], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2e]
-; X64-NEXT:    mov byte ptr [rdi + 0x2], al
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x4f]
+; X64-NEXT:    mov byte ptr [rbp - 0x2f], cl
+; X64-NEXT:    movzx edx, byte ptr [rbp - 0x3e]
+; X64-NEXT:    mov byte ptr [rbp - 0x2e], dl
+; X64-NEXT:    movzx esi, byte ptr [rbp - 0x4d]
+; X64-NEXT:    mov byte ptr [rbp - 0x2d], sil
+; X64-NEXT:    movzx r8d, byte ptr [rbp - 0x3c]
+; X64-NEXT:    mov byte ptr [rbp - 0x2c], r8b
+; X64-NEXT:    movzx r9d, byte ptr [rbp - 0x30]
+; X64-NEXT:    mov byte ptr [rdi], r9b
+; X64-NEXT:    movzx r10d, byte ptr [rbp - 0x2f]
+; X64-NEXT:    mov byte ptr [rdi + 0x1], r10b
+; X64-NEXT:    movzx r11d, byte ptr [rbp - 0x2e]
+; X64-NEXT:    mov byte ptr [rdi + 0x2], r11b
 ; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2d]
 ; X64-NEXT:    mov byte ptr [rdi + 0x3], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2c]
-; X64-NEXT:    mov byte ptr [rdi + 0x4], al
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x2c]
+; X64-NEXT:    mov byte ptr [rdi + 0x4], cl
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -58,24 +58,24 @@ define void @shufflevector_v5i8_v16i8(ptr %p, <16 x i8> %a, <16 x i8> %b) {
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    umov w1, v0.b[0]
 ; ARM64-NEXT:    strb w1, [x29, #0xa0]
-; ARM64-NEXT:    umov w1, v1.b[1]
-; ARM64-NEXT:    strb w1, [x29, #0xa1]
-; ARM64-NEXT:    umov w1, v0.b[2]
-; ARM64-NEXT:    strb w1, [x29, #0xa2]
-; ARM64-NEXT:    umov w1, v1.b[3]
-; ARM64-NEXT:    strb w1, [x29, #0xa3]
-; ARM64-NEXT:    umov w1, v0.b[4]
-; ARM64-NEXT:    strb w1, [x29, #0xa4]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa0]
-; ARM64-NEXT:    strb w1, [x0]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa1]
-; ARM64-NEXT:    strb w1, [x0, #0x1]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa2]
-; ARM64-NEXT:    strb w1, [x0, #0x2]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa3]
-; ARM64-NEXT:    strb w1, [x0, #0x3]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa4]
-; ARM64-NEXT:    strb w1, [x0, #0x4]
+; ARM64-NEXT:    umov w2, v1.b[1]
+; ARM64-NEXT:    strb w2, [x29, #0xa1]
+; ARM64-NEXT:    umov w3, v0.b[2]
+; ARM64-NEXT:    strb w3, [x29, #0xa2]
+; ARM64-NEXT:    umov w4, v1.b[3]
+; ARM64-NEXT:    strb w4, [x29, #0xa3]
+; ARM64-NEXT:    umov w5, v0.b[4]
+; ARM64-NEXT:    strb w5, [x29, #0xa4]
+; ARM64-NEXT:    ldrb w6, [x29, #0xa0]
+; ARM64-NEXT:    strb w6, [x0]
+; ARM64-NEXT:    ldrb w7, [x29, #0xa1]
+; ARM64-NEXT:    strb w7, [x0, #0x1]
+; ARM64-NEXT:    ldrb w8, [x29, #0xa2]
+; ARM64-NEXT:    strb w8, [x0, #0x2]
+; ARM64-NEXT:    ldrb w9, [x29, #0xa3]
+; ARM64-NEXT:    strb w9, [x0, #0x3]
+; ARM64-NEXT:    ldrb w10, [x29, #0xa4]
+; ARM64-NEXT:    strb w10, [x0, #0x4]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   %r = shufflevector <16 x i8> %a, <16 x i8> %b, <5 x i32> <i32 0, i32 17, i32 2, i32 19, i32 4>
@@ -87,75 +87,78 @@ define <16 x i8> @shufflevector_v16i8_v5i8(ptr %pa, ptr %pb) {
 ; X64-LABEL: <shufflevector_v16i8_v5i8>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    push r12
+; X64-NEXT:    push r13
 ; X64-NEXT:    movzx eax, byte ptr [rdi]
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x1]
 ; X64-NEXT:    movzx edx, byte ptr [rdi + 0x2]
 ; X64-NEXT:    movzx r8d, byte ptr [rdi + 0x3]
 ; X64-NEXT:    movzx r9d, byte ptr [rdi + 0x4]
-; X64-NEXT:    movzx edi, byte ptr [rsi]
-; X64-NEXT:    movzx r10d, byte ptr [rsi + 0x1]
-; X64-NEXT:    movzx r11d, byte ptr [rsi + 0x2]
-; X64-NEXT:    movzx ebx, byte ptr [rsi + 0x3]
-; X64-NEXT:    movzx r12d, byte ptr [rsi + 0x4]
+; X64-NEXT:    movzx r10d, byte ptr [rsi]
+; X64-NEXT:    movzx r11d, byte ptr [rsi + 0x1]
+; X64-NEXT:    movzx edi, byte ptr [rsi + 0x2]
+; X64-NEXT:    movzx r12d, byte ptr [rsi + 0x3]
+; X64-NEXT:    movzx r13d, byte ptr [rsi + 0x4]
 ; X64-NEXT:    mov esi, eax
 ; X64-NEXT:    mov byte ptr [rbp - 0x40], sil
-; X64-NEXT:    mov esi, edi
+; X64-NEXT:    mov esi, r10d
 ; X64-NEXT:    mov byte ptr [rbp - 0x3f], sil
 ; X64-NEXT:    mov esi, ecx
 ; X64-NEXT:    mov byte ptr [rbp - 0x3e], sil
-; X64-NEXT:    mov esi, r10d
+; X64-NEXT:    mov esi, r11d
 ; X64-NEXT:    mov byte ptr [rbp - 0x3d], sil
 ; X64-NEXT:    mov esi, edx
 ; X64-NEXT:    mov byte ptr [rbp - 0x3c], sil
-; X64-NEXT:    mov esi, r11d
+; X64-NEXT:    mov esi, edi
 ; X64-NEXT:    mov byte ptr [rbp - 0x3b], sil
 ; X64-NEXT:    mov esi, r8d
 ; X64-NEXT:    mov byte ptr [rbp - 0x3a], sil
-; X64-NEXT:    mov esi, ebx
+; X64-NEXT:    mov esi, r12d
 ; X64-NEXT:    mov byte ptr [rbp - 0x39], sil
 ; X64-NEXT:    mov esi, r9d
 ; X64-NEXT:    mov byte ptr [rbp - 0x38], sil
-; X64-NEXT:    mov esi, r12d
+; X64-NEXT:    mov esi, r13d
 ; X64-NEXT:    mov byte ptr [rbp - 0x37], sil
 ; X64-NEXT:    movapd xmm0, xmmword ptr [rbp - 0x40]
+; X64-NEXT:    pop r13
 ; X64-NEXT:    pop r12
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <shufflevector_v16i8_v5i8>:
-; ARM64:         ldrb w2, [x0]
+; ARM64:         stp x29, x30, [sp, #-0xa0]!
+; ARM64-NEXT:    mov x29, sp
+; ARM64-NEXT:    ldrb w2, [x0]
 ; ARM64-NEXT:    ldrb w3, [x0, #0x1]
 ; ARM64-NEXT:    ldrb w4, [x0, #0x2]
 ; ARM64-NEXT:    ldrb w5, [x0, #0x3]
 ; ARM64-NEXT:    ldrb w6, [x0, #0x4]
-; ARM64-NEXT:    ldrb w0, [x1]
-; ARM64-NEXT:    ldrb w7, [x1, #0x1]
-; ARM64-NEXT:    ldrb w8, [x1, #0x2]
-; ARM64-NEXT:    ldrb w9, [x1, #0x3]
-; ARM64-NEXT:    ldrb w10, [x1, #0x4]
-; ARM64-NEXT:    mov w1, w2
-; ARM64-NEXT:    mov v0.b[0], w1
-; ARM64-NEXT:    mov w1, w0
-; ARM64-NEXT:    mov v0.b[1], w1
-; ARM64-NEXT:    mov w1, w3
-; ARM64-NEXT:    mov v0.b[2], w1
-; ARM64-NEXT:    mov w1, w7
-; ARM64-NEXT:    mov v0.b[3], w1
-; ARM64-NEXT:    mov w1, w4
-; ARM64-NEXT:    mov v0.b[4], w1
-; ARM64-NEXT:    mov w1, w8
-; ARM64-NEXT:    mov v0.b[5], w1
-; ARM64-NEXT:    mov w1, w5
-; ARM64-NEXT:    mov v0.b[6], w1
-; ARM64-NEXT:    mov w1, w9
-; ARM64-NEXT:    mov v0.b[7], w1
-; ARM64-NEXT:    mov w1, w6
-; ARM64-NEXT:    mov v0.b[8], w1
+; ARM64-NEXT:    ldrb w7, [x1]
+; ARM64-NEXT:    ldrb w8, [x1, #0x1]
+; ARM64-NEXT:    ldrb w9, [x1, #0x2]
+; ARM64-NEXT:    ldrb w10, [x1, #0x3]
+; ARM64-NEXT:    ldrb w11, [x1, #0x4]
+; ARM64-NEXT:    mov w12, w2
+; ARM64-NEXT:    mov v0.b[0], w12
+; ARM64-NEXT:    mov w13, w7
+; ARM64-NEXT:    mov v0.b[1], w13
+; ARM64-NEXT:    mov w14, w3
+; ARM64-NEXT:    mov v0.b[2], w14
+; ARM64-NEXT:    mov w15, w8
+; ARM64-NEXT:    mov v0.b[3], w15
+; ARM64-NEXT:    mov w18, w4
+; ARM64-NEXT:    mov v0.b[4], w18
+; ARM64-NEXT:    mov w30, w9
+; ARM64-NEXT:    mov v0.b[5], w30
+; ARM64-NEXT:    mov w0, w5
+; ARM64-NEXT:    mov v0.b[6], w0
 ; ARM64-NEXT:    mov w1, w10
-; ARM64-NEXT:    mov v0.b[9], w1
+; ARM64-NEXT:    mov v0.b[7], w1
+; ARM64-NEXT:    mov w12, w6
+; ARM64-NEXT:    mov v0.b[8], w12
+; ARM64-NEXT:    mov w13, w11
+; ARM64-NEXT:    mov v0.b[9], w13
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
   %a = load <5 x i8>, ptr %pa
   %b = load <5 x i8>, ptr %pb
@@ -170,38 +173,38 @@ define <16 x i8> @shufflevector_v16i8_v16i8_interim_illegal(<16 x i8> %a, <16 x 
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    movzx eax, byte ptr [rbp - 0x40]
 ; X64-NEXT:    mov byte ptr [rbp - 0x30], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x30]
-; X64-NEXT:    mov byte ptr [rbp - 0x40], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2f]
-; X64-NEXT:    mov byte ptr [rbp - 0x3f], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2e]
-; X64-NEXT:    mov byte ptr [rbp - 0x3e], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2d]
-; X64-NEXT:    mov byte ptr [rbp - 0x3d], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2c]
-; X64-NEXT:    mov byte ptr [rbp - 0x3c], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x30]
-; X64-NEXT:    mov byte ptr [rbp - 0x3b], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2f]
-; X64-NEXT:    mov byte ptr [rbp - 0x3a], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2e]
-; X64-NEXT:    mov byte ptr [rbp - 0x39], al
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x30]
+; X64-NEXT:    mov byte ptr [rbp - 0x40], cl
+; X64-NEXT:    movzx edx, byte ptr [rbp - 0x2f]
+; X64-NEXT:    mov byte ptr [rbp - 0x3f], dl
+; X64-NEXT:    movzx esi, byte ptr [rbp - 0x2e]
+; X64-NEXT:    mov byte ptr [rbp - 0x3e], sil
+; X64-NEXT:    movzx edi, byte ptr [rbp - 0x2d]
+; X64-NEXT:    mov byte ptr [rbp - 0x3d], dil
+; X64-NEXT:    movzx r8d, byte ptr [rbp - 0x2c]
+; X64-NEXT:    mov byte ptr [rbp - 0x3c], r8b
+; X64-NEXT:    movzx r9d, byte ptr [rbp - 0x30]
+; X64-NEXT:    mov byte ptr [rbp - 0x3b], r9b
+; X64-NEXT:    movzx r10d, byte ptr [rbp - 0x2f]
+; X64-NEXT:    mov byte ptr [rbp - 0x3a], r10b
+; X64-NEXT:    movzx r11d, byte ptr [rbp - 0x2e]
+; X64-NEXT:    mov byte ptr [rbp - 0x39], r11b
 ; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2d]
 ; X64-NEXT:    mov byte ptr [rbp - 0x38], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2c]
-; X64-NEXT:    mov byte ptr [rbp - 0x37], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x30]
-; X64-NEXT:    mov byte ptr [rbp - 0x36], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2f]
-; X64-NEXT:    mov byte ptr [rbp - 0x35], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2e]
-; X64-NEXT:    mov byte ptr [rbp - 0x34], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2d]
-; X64-NEXT:    mov byte ptr [rbp - 0x33], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2c]
-; X64-NEXT:    mov byte ptr [rbp - 0x32], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x30]
-; X64-NEXT:    mov byte ptr [rbp - 0x31], al
+; X64-NEXT:    movzx ecx, byte ptr [rbp - 0x2c]
+; X64-NEXT:    mov byte ptr [rbp - 0x37], cl
+; X64-NEXT:    movzx edx, byte ptr [rbp - 0x30]
+; X64-NEXT:    mov byte ptr [rbp - 0x36], dl
+; X64-NEXT:    movzx esi, byte ptr [rbp - 0x2f]
+; X64-NEXT:    mov byte ptr [rbp - 0x35], sil
+; X64-NEXT:    movzx edi, byte ptr [rbp - 0x2e]
+; X64-NEXT:    mov byte ptr [rbp - 0x34], dil
+; X64-NEXT:    movzx r8d, byte ptr [rbp - 0x2d]
+; X64-NEXT:    mov byte ptr [rbp - 0x33], r8b
+; X64-NEXT:    movzx r9d, byte ptr [rbp - 0x2c]
+; X64-NEXT:    mov byte ptr [rbp - 0x32], r9b
+; X64-NEXT:    movzx r10d, byte ptr [rbp - 0x30]
+; X64-NEXT:    mov byte ptr [rbp - 0x31], r10b
 ; X64-NEXT:    movapd xmm0, xmmword ptr [rbp - 0x40]
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -211,38 +214,38 @@ define <16 x i8> @shufflevector_v16i8_v16i8_interim_illegal(<16 x i8> %a, <16 x 
 ; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    umov w0, v0.b[0]
 ; ARM64-NEXT:    strb w0, [x29, #0xa0]
-; ARM64-NEXT:    ldrb w0, [x29, #0xa0]
-; ARM64-NEXT:    mov v0.b[0], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa1]
-; ARM64-NEXT:    mov v0.b[1], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa2]
-; ARM64-NEXT:    mov v0.b[2], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa3]
-; ARM64-NEXT:    mov v0.b[3], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa4]
-; ARM64-NEXT:    mov v0.b[4], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa0]
-; ARM64-NEXT:    mov v0.b[5], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa1]
-; ARM64-NEXT:    mov v0.b[6], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa2]
-; ARM64-NEXT:    mov v0.b[7], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa3]
-; ARM64-NEXT:    mov v0.b[8], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa4]
-; ARM64-NEXT:    mov v0.b[9], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa0]
-; ARM64-NEXT:    mov v0.b[10], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa1]
-; ARM64-NEXT:    mov v0.b[11], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa2]
-; ARM64-NEXT:    mov v0.b[12], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa3]
-; ARM64-NEXT:    mov v0.b[13], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa4]
-; ARM64-NEXT:    mov v0.b[14], w0
-; ARM64-NEXT:    ldrb w0, [x29, #0xa0]
-; ARM64-NEXT:    mov v0.b[15], w0
+; ARM64-NEXT:    ldrb w1, [x29, #0xa0]
+; ARM64-NEXT:    mov v0.b[0], w1
+; ARM64-NEXT:    ldrb w2, [x29, #0xa1]
+; ARM64-NEXT:    mov v0.b[1], w2
+; ARM64-NEXT:    ldrb w3, [x29, #0xa2]
+; ARM64-NEXT:    mov v0.b[2], w3
+; ARM64-NEXT:    ldrb w4, [x29, #0xa3]
+; ARM64-NEXT:    mov v0.b[3], w4
+; ARM64-NEXT:    ldrb w5, [x29, #0xa4]
+; ARM64-NEXT:    mov v0.b[4], w5
+; ARM64-NEXT:    ldrb w6, [x29, #0xa0]
+; ARM64-NEXT:    mov v0.b[5], w6
+; ARM64-NEXT:    ldrb w7, [x29, #0xa1]
+; ARM64-NEXT:    mov v0.b[6], w7
+; ARM64-NEXT:    ldrb w8, [x29, #0xa2]
+; ARM64-NEXT:    mov v0.b[7], w8
+; ARM64-NEXT:    ldrb w9, [x29, #0xa3]
+; ARM64-NEXT:    mov v0.b[8], w9
+; ARM64-NEXT:    ldrb w10, [x29, #0xa4]
+; ARM64-NEXT:    mov v0.b[9], w10
+; ARM64-NEXT:    ldrb w11, [x29, #0xa0]
+; ARM64-NEXT:    mov v0.b[10], w11
+; ARM64-NEXT:    ldrb w12, [x29, #0xa1]
+; ARM64-NEXT:    mov v0.b[11], w12
+; ARM64-NEXT:    ldrb w13, [x29, #0xa2]
+; ARM64-NEXT:    mov v0.b[12], w13
+; ARM64-NEXT:    ldrb w14, [x29, #0xa3]
+; ARM64-NEXT:    mov v0.b[13], w14
+; ARM64-NEXT:    ldrb w15, [x29, #0xa4]
+; ARM64-NEXT:    mov v0.b[14], w15
+; ARM64-NEXT:    ldrb w18, [x29, #0xa0]
+; ARM64-NEXT:    mov v0.b[15], w18
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   %r1 = shufflevector <16 x i8> %a, <16 x i8> %b, <5 x i32> <i32 0, i32 poison, i32 poison, i32 poison, i32 poison>
@@ -254,42 +257,43 @@ define void @shufflevector_v5i8_v5i8(ptr %p, ptr %pa, ptr %pb) {
 ; X64-LABEL: <shufflevector_v5i8_v5i8>:
 ; X64:         push rbp
 ; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    push rbx
 ; X64-NEXT:    push r12
 ; X64-NEXT:    push r13
+; X64-NEXT:    push r14
+; X64-NEXT:    mov qword ptr [rbp - 0x30], rdi
 ; X64-NEXT:    movzx eax, byte ptr [rsi]
 ; X64-NEXT:    movzx ecx, byte ptr [rsi + 0x1]
 ; X64-NEXT:    movzx r8d, byte ptr [rsi + 0x2]
 ; X64-NEXT:    movzx r9d, byte ptr [rsi + 0x3]
 ; X64-NEXT:    movzx r10d, byte ptr [rsi + 0x4]
-; X64-NEXT:    movzx esi, byte ptr [rdx]
-; X64-NEXT:    movzx r11d, byte ptr [rdx + 0x1]
-; X64-NEXT:    movzx ebx, byte ptr [rdx + 0x2]
-; X64-NEXT:    movzx r12d, byte ptr [rdx + 0x3]
-; X64-NEXT:    movzx r13d, byte ptr [rdx + 0x4]
+; X64-NEXT:    movzx r11d, byte ptr [rdx]
+; X64-NEXT:    movzx esi, byte ptr [rdx + 0x1]
+; X64-NEXT:    movzx r12d, byte ptr [rdx + 0x2]
+; X64-NEXT:    movzx r13d, byte ptr [rdx + 0x3]
+; X64-NEXT:    movzx r14d, byte ptr [rdx + 0x4]
 ; X64-NEXT:    mov edx, eax
-; X64-NEXT:    mov byte ptr [rbp - 0x30], dl
-; X64-NEXT:    mov edx, esi
-; X64-NEXT:    mov byte ptr [rbp - 0x2f], dl
+; X64-NEXT:    mov byte ptr [rbp - 0x38], dl
+; X64-NEXT:    mov edx, r11d
+; X64-NEXT:    mov byte ptr [rbp - 0x37], dl
 ; X64-NEXT:    mov edx, r8d
-; X64-NEXT:    mov byte ptr [rbp - 0x2e], dl
-; X64-NEXT:    mov edx, ebx
-; X64-NEXT:    mov byte ptr [rbp - 0x2d], dl
+; X64-NEXT:    mov byte ptr [rbp - 0x36], dl
+; X64-NEXT:    mov edx, r12d
+; X64-NEXT:    mov byte ptr [rbp - 0x35], dl
 ; X64-NEXT:    mov edx, r10d
-; X64-NEXT:    mov byte ptr [rbp - 0x2c], dl
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x30]
-; X64-NEXT:    mov byte ptr [rdi], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2f]
-; X64-NEXT:    mov byte ptr [rdi + 0x1], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2e]
-; X64-NEXT:    mov byte ptr [rdi + 0x2], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2d]
-; X64-NEXT:    mov byte ptr [rdi + 0x3], al
-; X64-NEXT:    movzx eax, byte ptr [rbp - 0x2c]
-; X64-NEXT:    mov byte ptr [rdi + 0x4], al
+; X64-NEXT:    mov byte ptr [rbp - 0x34], dl
+; X64-NEXT:    movzx esi, byte ptr [rbp - 0x38]
+; X64-NEXT:    mov byte ptr [rdi], sil
+; X64-NEXT:    movzx r8d, byte ptr [rbp - 0x37]
+; X64-NEXT:    mov byte ptr [rdi + 0x1], r8b
+; X64-NEXT:    movzx r9d, byte ptr [rbp - 0x36]
+; X64-NEXT:    mov byte ptr [rdi + 0x2], r9b
+; X64-NEXT:    movzx r10d, byte ptr [rbp - 0x35]
+; X64-NEXT:    mov byte ptr [rdi + 0x3], r10b
+; X64-NEXT:    movzx r11d, byte ptr [rbp - 0x34]
+; X64-NEXT:    mov byte ptr [rdi + 0x4], r11b
+; X64-NEXT:    pop r14
 ; X64-NEXT:    pop r13
 ; X64-NEXT:    pop r12
-; X64-NEXT:    pop rbx
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
@@ -301,31 +305,31 @@ define void @shufflevector_v5i8_v5i8(ptr %p, ptr %pa, ptr %pb) {
 ; ARM64-NEXT:    ldrb w5, [x1, #0x2]
 ; ARM64-NEXT:    ldrb w6, [x1, #0x3]
 ; ARM64-NEXT:    ldrb w7, [x1, #0x4]
-; ARM64-NEXT:    ldrb w1, [x2]
-; ARM64-NEXT:    ldrb w8, [x2, #0x1]
-; ARM64-NEXT:    ldrb w9, [x2, #0x2]
-; ARM64-NEXT:    ldrb w10, [x2, #0x3]
-; ARM64-NEXT:    ldrb w11, [x2, #0x4]
-; ARM64-NEXT:    mov w2, w3
-; ARM64-NEXT:    strb w2, [x29, #0xa0]
-; ARM64-NEXT:    mov w2, w1
-; ARM64-NEXT:    strb w2, [x29, #0xa1]
-; ARM64-NEXT:    mov w2, w5
-; ARM64-NEXT:    strb w2, [x29, #0xa2]
-; ARM64-NEXT:    mov w2, w9
-; ARM64-NEXT:    strb w2, [x29, #0xa3]
-; ARM64-NEXT:    mov w2, w7
-; ARM64-NEXT:    strb w2, [x29, #0xa4]
+; ARM64-NEXT:    ldrb w8, [x2]
+; ARM64-NEXT:    ldrb w9, [x2, #0x1]
+; ARM64-NEXT:    ldrb w10, [x2, #0x2]
+; ARM64-NEXT:    ldrb w11, [x2, #0x3]
+; ARM64-NEXT:    ldrb w12, [x2, #0x4]
+; ARM64-NEXT:    mov w13, w3
+; ARM64-NEXT:    strb w13, [x29, #0xa0]
+; ARM64-NEXT:    mov w14, w8
+; ARM64-NEXT:    strb w14, [x29, #0xa1]
+; ARM64-NEXT:    mov w15, w5
+; ARM64-NEXT:    strb w15, [x29, #0xa2]
+; ARM64-NEXT:    mov w18, w10
+; ARM64-NEXT:    strb w18, [x29, #0xa3]
+; ARM64-NEXT:    mov w30, w7
+; ARM64-NEXT:    strb w30, [x29, #0xa4]
 ; ARM64-NEXT:    ldrb w1, [x29, #0xa0]
 ; ARM64-NEXT:    strb w1, [x0]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa1]
-; ARM64-NEXT:    strb w1, [x0, #0x1]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa2]
-; ARM64-NEXT:    strb w1, [x0, #0x2]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa3]
-; ARM64-NEXT:    strb w1, [x0, #0x3]
-; ARM64-NEXT:    ldrb w1, [x29, #0xa4]
-; ARM64-NEXT:    strb w1, [x0, #0x4]
+; ARM64-NEXT:    ldrb w2, [x29, #0xa1]
+; ARM64-NEXT:    strb w2, [x0, #0x1]
+; ARM64-NEXT:    ldrb w3, [x29, #0xa2]
+; ARM64-NEXT:    strb w3, [x0, #0x2]
+; ARM64-NEXT:    ldrb w4, [x29, #0xa3]
+; ARM64-NEXT:    strb w4, [x0, #0x3]
+; ARM64-NEXT:    ldrb w5, [x29, #0xa4]
+; ARM64-NEXT:    strb w5, [x0, #0x4]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
 ; ARM64-NEXT:    ret
   %a = load <5 x i8>, ptr %pa
@@ -342,12 +346,12 @@ define <4 x i32> @shufflevector_v4i32_v4i32_identity1(<4 x i32> %a) {
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    mov eax, dword ptr [rbp - 0x40]
 ; X64-NEXT:    mov dword ptr [rbp - 0x50], eax
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x3c]
-; X64-NEXT:    mov dword ptr [rbp - 0x4c], eax
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x38]
-; X64-NEXT:    mov dword ptr [rbp - 0x48], eax
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x34]
-; X64-NEXT:    mov dword ptr [rbp - 0x44], eax
+; X64-NEXT:    mov ecx, dword ptr [rbp - 0x3c]
+; X64-NEXT:    mov dword ptr [rbp - 0x4c], ecx
+; X64-NEXT:    mov edx, dword ptr [rbp - 0x38]
+; X64-NEXT:    mov dword ptr [rbp - 0x48], edx
+; X64-NEXT:    mov esi, dword ptr [rbp - 0x34]
+; X64-NEXT:    mov dword ptr [rbp - 0x44], esi
 ; X64-NEXT:    movapd xmm0, xmmword ptr [rbp - 0x50]
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -355,12 +359,12 @@ define <4 x i32> @shufflevector_v4i32_v4i32_identity1(<4 x i32> %a) {
 ; ARM64-LABEL: <shufflevector_v4i32_v4i32_identity1>:
 ; ARM64:         mov w0, v0.s[0]
 ; ARM64-NEXT:    mov v1.s[0], w0
-; ARM64-NEXT:    mov w0, v0.s[1]
-; ARM64-NEXT:    mov v1.s[1], w0
-; ARM64-NEXT:    mov w0, v0.s[2]
-; ARM64-NEXT:    mov v1.s[2], w0
-; ARM64-NEXT:    mov w0, v0.s[3]
-; ARM64-NEXT:    mov v1.s[3], w0
+; ARM64-NEXT:    mov w1, v0.s[1]
+; ARM64-NEXT:    mov v1.s[1], w1
+; ARM64-NEXT:    mov w2, v0.s[2]
+; ARM64-NEXT:    mov v1.s[2], w2
+; ARM64-NEXT:    mov w3, v0.s[3]
+; ARM64-NEXT:    mov v1.s[3], w3
 ; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
   %r = shufflevector <4 x i32> %a, <4 x i32> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 3>
@@ -375,12 +379,12 @@ define <4 x i32> @shufflevector_v4i32_v4i32_mix(<4 x i32> %a, <4 x i32> %b) {
 ; X64-NEXT:    mov eax, dword ptr [rbp - 0x40]
 ; X64-NEXT:    mov dword ptr [rbp - 0x50], eax
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x60], xmm1
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x5c]
-; X64-NEXT:    mov dword ptr [rbp - 0x4c], eax
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x38]
-; X64-NEXT:    mov dword ptr [rbp - 0x48], eax
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x54]
-; X64-NEXT:    mov dword ptr [rbp - 0x44], eax
+; X64-NEXT:    mov ecx, dword ptr [rbp - 0x5c]
+; X64-NEXT:    mov dword ptr [rbp - 0x4c], ecx
+; X64-NEXT:    mov edx, dword ptr [rbp - 0x38]
+; X64-NEXT:    mov dword ptr [rbp - 0x48], edx
+; X64-NEXT:    mov esi, dword ptr [rbp - 0x54]
+; X64-NEXT:    mov dword ptr [rbp - 0x44], esi
 ; X64-NEXT:    movapd xmm0, xmmword ptr [rbp - 0x50]
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -388,12 +392,12 @@ define <4 x i32> @shufflevector_v4i32_v4i32_mix(<4 x i32> %a, <4 x i32> %b) {
 ; ARM64-LABEL: <shufflevector_v4i32_v4i32_mix>:
 ; ARM64:         mov w0, v0.s[0]
 ; ARM64-NEXT:    mov v2.s[0], w0
-; ARM64-NEXT:    mov w0, v1.s[1]
-; ARM64-NEXT:    mov v2.s[1], w0
-; ARM64-NEXT:    mov w0, v0.s[2]
-; ARM64-NEXT:    mov v2.s[2], w0
-; ARM64-NEXT:    mov w0, v1.s[3]
-; ARM64-NEXT:    mov v2.s[3], w0
+; ARM64-NEXT:    mov w1, v1.s[1]
+; ARM64-NEXT:    mov v2.s[1], w1
+; ARM64-NEXT:    mov w2, v0.s[2]
+; ARM64-NEXT:    mov v2.s[2], w2
+; ARM64-NEXT:    mov w3, v1.s[3]
+; ARM64-NEXT:    mov v2.s[3], w3
 ; ARM64-NEXT:    mov v0.16b, v2.16b
 ; ARM64-NEXT:    ret
   %r = shufflevector <4 x i32> %a, <4 x i32> %b, <4 x i32> <i32 0, i32 5, i32 2, i32 7>
@@ -409,8 +413,8 @@ define <4 x i32> @shufflevector_v4i32_v4i32_mix_zero(<4 x i32> %a) {
 ; X64-NEXT:    mov eax, dword ptr [rbp - 0x40]
 ; X64-NEXT:    mov dword ptr [rbp - 0x50], eax
 ; X64-NEXT:    mov dword ptr [rbp - 0x4c], 0x0
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x38]
-; X64-NEXT:    mov dword ptr [rbp - 0x48], eax
+; X64-NEXT:    mov ecx, dword ptr [rbp - 0x38]
+; X64-NEXT:    mov dword ptr [rbp - 0x48], ecx
 ; X64-NEXT:    mov dword ptr [rbp - 0x44], 0x0
 ; X64-NEXT:    movapd xmm0, xmmword ptr [rbp - 0x50]
 ; X64-NEXT:    pop rbp
@@ -419,12 +423,12 @@ define <4 x i32> @shufflevector_v4i32_v4i32_mix_zero(<4 x i32> %a) {
 ; ARM64-LABEL: <shufflevector_v4i32_v4i32_mix_zero>:
 ; ARM64:         mov w0, v0.s[0]
 ; ARM64-NEXT:    mov v1.s[0], w0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    mov v1.s[1], w0
-; ARM64-NEXT:    mov w0, v0.s[2]
-; ARM64-NEXT:    mov v1.s[2], w0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    mov v1.s[3], w0
+; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    mov v1.s[1], w1
+; ARM64-NEXT:    mov w2, v0.s[2]
+; ARM64-NEXT:    mov v1.s[2], w2
+; ARM64-NEXT:    mov w3, #0x0 // =0
+; ARM64-NEXT:    mov v1.s[3], w3
 ; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
   %r = shufflevector <4 x i32> %a, <4 x i32> zeroinitializer, <4 x i32> <i32 0, i32 5, i32 2, i32 7>
@@ -438,8 +442,8 @@ define <2 x i32> @shufflevector_v2i32_v4i32_hightolow(<4 x i32> %a) {
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    mov eax, dword ptr [rbp - 0x38]
 ; X64-NEXT:    mov dword ptr [rbp - 0x30], eax
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x34]
-; X64-NEXT:    mov dword ptr [rbp - 0x2c], eax
+; X64-NEXT:    mov ecx, dword ptr [rbp - 0x34]
+; X64-NEXT:    mov dword ptr [rbp - 0x2c], ecx
 ; X64-NEXT:    movq xmm0, qword ptr [rbp - 0x30]
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -447,8 +451,8 @@ define <2 x i32> @shufflevector_v2i32_v4i32_hightolow(<4 x i32> %a) {
 ; ARM64-LABEL: <shufflevector_v2i32_v4i32_hightolow>:
 ; ARM64:         mov w0, v0.s[2]
 ; ARM64-NEXT:    mov v1.s[0], w0
-; ARM64-NEXT:    mov w0, v0.s[3]
-; ARM64-NEXT:    mov v1.s[1], w0
+; ARM64-NEXT:    mov w1, v0.s[3]
+; ARM64-NEXT:    mov v1.s[1], w1
 ; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
   %r = shufflevector <4 x i32> %a, <4 x i32> poison, <2 x i32> <i32 2, i32 3>
@@ -464,8 +468,8 @@ define <4 x i32> @shufflevector_v4i32_v4i32_mixconst(<4 x i32> %a) {
 ; X64-NEXT:    mov dword ptr [rbp - 0x50], eax
 ; X64-NEXT:    mov dword ptr [rbp - 0x4c], 0x1
 ; X64-NEXT:    mov dword ptr [rbp - 0x48], 0x1
-; X64-NEXT:    mov eax, dword ptr [rbp - 0x3c]
-; X64-NEXT:    mov dword ptr [rbp - 0x44], eax
+; X64-NEXT:    mov ecx, dword ptr [rbp - 0x3c]
+; X64-NEXT:    mov dword ptr [rbp - 0x44], ecx
 ; X64-NEXT:    movapd xmm0, xmmword ptr [rbp - 0x50]
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -473,12 +477,12 @@ define <4 x i32> @shufflevector_v4i32_v4i32_mixconst(<4 x i32> %a) {
 ; ARM64-LABEL: <shufflevector_v4i32_v4i32_mixconst>:
 ; ARM64:         mov w0, v0.s[0]
 ; ARM64-NEXT:    mov v1.s[0], w0
-; ARM64-NEXT:    mov x0, #0x1 // =1
-; ARM64-NEXT:    mov v1.s[1], w0
-; ARM64-NEXT:    mov x0, #0x1 // =1
-; ARM64-NEXT:    mov v1.s[2], w0
-; ARM64-NEXT:    mov w0, v0.s[1]
-; ARM64-NEXT:    mov v1.s[3], w0
+; ARM64-NEXT:    mov x1, #0x1 // =1
+; ARM64-NEXT:    mov v1.s[1], w1
+; ARM64-NEXT:    mov x2, #0x1 // =1
+; ARM64-NEXT:    mov v1.s[2], w2
+; ARM64-NEXT:    mov w3, v0.s[1]
+; ARM64-NEXT:    mov v1.s[3], w3
 ; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
   %r = shufflevector <4 x i32> %a, <4 x i32> <i32 1, i32 2, i32 3, i32 4>, <4 x i32> <i32 0, i32 4, i32 4, i32 1>
@@ -492,8 +496,8 @@ define <2 x ptr> @shufflevector_v2ptr_v2ptr_swap(<2 x ptr> %a) {
 ; X64-NEXT:    movapd xmmword ptr [rbp - 0x40], xmm0
 ; X64-NEXT:    mov rax, qword ptr [rbp - 0x38]
 ; X64-NEXT:    mov qword ptr [rbp - 0x50], rax
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x40]
-; X64-NEXT:    mov qword ptr [rbp - 0x48], rax
+; X64-NEXT:    mov rcx, qword ptr [rbp - 0x40]
+; X64-NEXT:    mov qword ptr [rbp - 0x48], rcx
 ; X64-NEXT:    movapd xmm0, xmmword ptr [rbp - 0x50]
 ; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
@@ -501,8 +505,8 @@ define <2 x ptr> @shufflevector_v2ptr_v2ptr_swap(<2 x ptr> %a) {
 ; ARM64-LABEL: <shufflevector_v2ptr_v2ptr_swap>:
 ; ARM64:         mov x0, v0.d[1]
 ; ARM64-NEXT:    mov v1.d[0], x0
-; ARM64-NEXT:    mov x0, v0.d[0]
-; ARM64-NEXT:    mov v1.d[1], x0
+; ARM64-NEXT:    mov x1, v0.d[0]
+; ARM64-NEXT:    mov v1.d[1], x1
 ; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
   %r = shufflevector <2 x ptr> %a, <2 x ptr> poison, <2 x i32> <i32 1, i32 0>
@@ -544,8 +548,8 @@ define <2 x ptr> @shufflevector_v2ptr_v2ptr_zero(<2 x ptr> %a) {
 ; ARM64-LABEL: <shufflevector_v2ptr_v2ptr_zero>:
 ; ARM64:         mov x0, v0.d[1]
 ; ARM64-NEXT:    mov v1.d[0], x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    mov v1.d[1], x0
+; ARM64-NEXT:    mov w1, #0x0 // =0
+; ARM64-NEXT:    mov v1.d[1], x1
 ; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
   %r = shufflevector <2 x ptr> %a, <2 x ptr> zeroinitializer, <2 x i32> <i32 1, i32 2>

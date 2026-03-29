@@ -24,17 +24,17 @@ define void @f(i64 %0, i64 %1, i64 %2, i64 %3, i64 %4, i64 %5, i64 %6, i64 %7, i
 ; ARM64-NEXT:    ldr x0, [x17]
 ; ARM64-NEXT:    add x17, x17, #0x8
 ; ARM64-NEXT:    str x17, [x29, #0x160]
-; ARM64-NEXT:    add x0, x29, #0x170
+; ARM64-NEXT:    add x1, x29, #0x170
 ; ARM64-NEXT:    ldr x16, [x29, #0x160]
-; ARM64-NEXT:    str x16, [x0]
+; ARM64-NEXT:    str x16, [x1]
 ; ARM64-NEXT:    add x16, x29, #0xe0
-; ARM64-NEXT:    str x16, [x0, #0x8]
+; ARM64-NEXT:    str x16, [x1, #0x8]
 ; ARM64-NEXT:    add x16, x29, #0x160
-; ARM64-NEXT:    str x16, [x0, #0x10]
+; ARM64-NEXT:    str x16, [x1, #0x10]
 ; ARM64-NEXT:    mov w16, #0x0 // =0
-; ARM64-NEXT:    str w16, [x0, #0x18]
+; ARM64-NEXT:    str w16, [x1, #0x18]
 ; ARM64-NEXT:    mov x16, #0xffffff80 // =4294967168
-; ARM64-NEXT:    str w16, [x0, #0x1c]
+; ARM64-NEXT:    str w16, [x1, #0x1c]
 ; ARM64-NEXT:    ldp x29, x30, [sp], #0x190
 ; ARM64-NEXT:    ret
   %10 = alloca %struct.__va_list, align 8

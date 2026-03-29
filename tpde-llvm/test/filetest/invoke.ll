@@ -18,18 +18,18 @@ define i32 @invoke_manyargs() personality ptr @__gxx_personality_v0 {
 ; X64-NEXT:    mov eax, 0x7
 ; X64-NEXT:    sub rsp, 0x20
 ; X64-NEXT:    mov dword ptr [rsp], eax
-; X64-NEXT:    mov eax, 0x8
-; X64-NEXT:    mov dword ptr [rsp + 0x8], eax
+; X64-NEXT:    mov ecx, 0x8
+; X64-NEXT:    mov dword ptr [rsp + 0x8], ecx
+; X64-NEXT:    mov edx, 0x9
+; X64-NEXT:    mov dword ptr [rsp + 0x10], edx
+; X64-NEXT:    mov esi, 0xa
+; X64-NEXT:    mov dword ptr [rsp + 0x18], esi
 ; X64-NEXT:    mov edi, 0x1
 ; X64-NEXT:    mov esi, 0x2
 ; X64-NEXT:    mov edx, 0x3
 ; X64-NEXT:    mov ecx, 0x4
 ; X64-NEXT:    mov r8d, 0x5
 ; X64-NEXT:    mov r9d, 0x6
-; X64-NEXT:    mov eax, 0x9
-; X64-NEXT:    mov dword ptr [rsp + 0x10], eax
-; X64-NEXT:    mov eax, 0xa
-; X64-NEXT:    mov dword ptr [rsp + 0x18], eax
 ; X64-NEXT:  <L0>:
 ; X64-NEXT:    call <L0>
 ; X64-NEXT:     R_X86_64_PLT32 mayThrow-0x4
@@ -50,6 +50,13 @@ define i32 @invoke_manyargs() personality ptr @__gxx_personality_v0 {
 ; ARM64-LABEL: <invoke_manyargs>:
 ; ARM64:         stp x29, x30, [sp, #-0xa0]!
 ; ARM64-NEXT:    mov x29, sp
+; ARM64-NEXT:    mov x0, #0x9 // =9
+; ARM64-NEXT:    sub sp, sp, #0x10
+; ARM64-NEXT:    mov w16, w0
+; ARM64-NEXT:    str w16, [sp]
+; ARM64-NEXT:    mov x1, #0xa // =10
+; ARM64-NEXT:    mov w16, w1
+; ARM64-NEXT:    str w16, [sp, #0x8]
 ; ARM64-NEXT:    mov x0, #0x1 // =1
 ; ARM64-NEXT:    mov x1, #0x2 // =2
 ; ARM64-NEXT:    mov x2, #0x3 // =3
@@ -58,13 +65,6 @@ define i32 @invoke_manyargs() personality ptr @__gxx_personality_v0 {
 ; ARM64-NEXT:    mov x5, #0x6 // =6
 ; ARM64-NEXT:    mov x6, #0x7 // =7
 ; ARM64-NEXT:    mov x7, #0x8 // =8
-; ARM64-NEXT:    mov x8, #0x9 // =9
-; ARM64-NEXT:    sub sp, sp, #0x10
-; ARM64-NEXT:    mov w16, w8
-; ARM64-NEXT:    str w16, [sp]
-; ARM64-NEXT:    mov x8, #0xa // =10
-; ARM64-NEXT:    mov w16, w8
-; ARM64-NEXT:    str w16, [sp, #0x8]
 ; ARM64-NEXT:  <L0>:
 ; ARM64-NEXT:    bl <L0>
 ; ARM64-NEXT:     R_AARCH64_CALL26 mayThrow
@@ -103,25 +103,25 @@ define void @invoke_landingpad_phi() personality ptr @__gxx_personality_v0 {
 ; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    xor esi, esi
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    lea ebx, [1*rax]
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    lea rax, [rax + 0x28]
-; X64-NEXT:    mov r12, rax
-; X64-NEXT:    mov eax, 0x0
-; X64-NEXT:    test al, 0x1
-; X64-NEXT:    mov eax, 0x0
-; X64-NEXT:    mov r13d, eax
-; X64-NEXT:    mov ecx, 0x0
-; X64-NEXT:    cmove r13d, ecx
+; X64-NEXT:    xor edi, edi
+; X64-NEXT:    lea ebx, [1*rdi]
+; X64-NEXT:    xor r8d, r8d
+; X64-NEXT:    lea r8, [r8 + 0x28]
+; X64-NEXT:    mov r12, r8
+; X64-NEXT:    mov r9d, 0x0
+; X64-NEXT:    test r9b, 0x1
+; X64-NEXT:    mov r10d, 0x0
+; X64-NEXT:    mov r13d, r10d
+; X64-NEXT:    mov r11d, 0x0
+; X64-NEXT:    cmove r13d, r11d
 ; X64-NEXT:    xor edi, edi
 ; X64-NEXT:    mov ebx, ebx
 ; X64-NEXT:    mov r12, qword ptr [r12]
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov ebx, eax
+; X64-NEXT:    xor r9d, r9d
+; X64-NEXT:    mov ebx, r9d
 ; X64-NEXT:    shl ebx, 0x0
 ; X64-NEXT:    test r13d, r13d
-; X64-NEXT:    setl al
+; X64-NEXT:    setl r10b
 ; X64-NEXT:    mov dword ptr [rbp - 0x2c], edx
 ; X64-NEXT:    mov qword ptr [rbp - 0x38], rsi
 ; X64-NEXT:    xor edi, edi
@@ -153,23 +153,23 @@ define void @invoke_landingpad_phi() personality ptr @__gxx_personality_v0 {
 ; ARM64-NEXT:    mov w2, #0x0 // =0
 ; ARM64-NEXT:    mov w3, #0x0 // =0
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    add w19, w0, #0x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    add x0, x0, #0x28
-; ARM64-NEXT:    mov x20, x0
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    tst w0, #0x1
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    csel w21, w0, w1, eq
 ; ARM64-NEXT:    mov w4, #0x0 // =0
+; ARM64-NEXT:    add w19, w4, #0x0
+; ARM64-NEXT:    mov w5, #0x0 // =0
+; ARM64-NEXT:    add x5, x5, #0x28
+; ARM64-NEXT:    mov x20, x5
+; ARM64-NEXT:    mov w6, #0x0 // =0
+; ARM64-NEXT:    tst w6, #0x1
+; ARM64-NEXT:    mov w7, #0x0 // =0
+; ARM64-NEXT:    mov w8, #0x0 // =0
+; ARM64-NEXT:    csel w21, w7, w8, eq
+; ARM64-NEXT:    mov w10, #0x0 // =0
 ; ARM64-NEXT:    ubfx x19, x19, #0, #32
 ; ARM64-NEXT:    ldr x20, [x20]
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    lsr w19, w0, #0
+; ARM64-NEXT:    mov w12, #0x0 // =0
+; ARM64-NEXT:    lsr w19, w12, #0
 ; ARM64-NEXT:    cmp w21, #0x0
-; ARM64-NEXT:    cset w0, lt
+; ARM64-NEXT:    cset w13, lt
 ; ARM64-NEXT:    str w2, [x29, #0xa0]
 ; ARM64-NEXT:    str x3, [x29, #0xa8]
 ; ARM64-NEXT:    mov w0, #0x0 // =0
@@ -179,7 +179,7 @@ define void @invoke_landingpad_phi() personality ptr @__gxx_personality_v0 {
 ; ARM64-NEXT:     R_AARCH64_CALL26 foo
 ; ARM64-NEXT:    mov x20, x0
 ; ARM64-NEXT:    b <L2>
-; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    mov w18, #0x0 // =0
 ; ARM64-NEXT:    b <L3>
 ; ARM64-NEXT:  <L2>:
 ; ARM64-NEXT:    mov w2, w19
@@ -298,11 +298,11 @@ define i32 @main(ptr %0, i64 %1) personality ptr @__gxx_personality_v0 {
 ; X64-NEXT:    xor eax, eax
 ; X64-NEXT:    jmp <L3>
 ; X64-NEXT:  <L1>:
-; X64-NEXT:    mov rax, qword ptr [rbp - 0x30]
-; X64-NEXT:    lea rax, [rax + 0x8]
+; X64-NEXT:    mov rcx, qword ptr [rbp - 0x30]
+; X64-NEXT:    lea rcx, [rcx + 0x8]
 ; X64-NEXT:  <L2>:
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    movzx eax, byte ptr [rbx + r12]
+; X64-NEXT:    xor esi, esi
+; X64-NEXT:    movzx edi, byte ptr [rbx + r12]
 ; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L3>:
 ; X64-NEXT:    lea rsp, [rbp - 0x10]
@@ -326,12 +326,12 @@ define i32 @main(ptr %0, i64 %1) personality ptr @__gxx_personality_v0 {
 ; ARM64-NEXT:    mov w0, #0x0 // =0
 ; ARM64-NEXT:    b <L3>
 ; ARM64-NEXT:  <L1>:
-; ARM64-NEXT:    ldr x0, [x29, #0xa0]
-; ARM64-NEXT:    add x0, x0, #0x8
+; ARM64-NEXT:    ldr x1, [x29, #0xa0]
+; ARM64-NEXT:    add x1, x1, #0x8
 ; ARM64-NEXT:  <L2>:
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    add x0, x19, x20
-; ARM64-NEXT:    ldrb w0, [x0]
+; ARM64-NEXT:    mov w3, #0x0 // =0
+; ARM64-NEXT:    add x4, x19, x20
+; ARM64-NEXT:    ldrb w4, [x4]
 ; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L3>:
 ; ARM64-NEXT:    mov sp, x29

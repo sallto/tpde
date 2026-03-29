@@ -307,15 +307,11 @@ entry:
 
 define i128 @zext_i37_to_i128(i37 %0) {
 ; X64-LABEL: <zext_i37_to_i128>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    movabs rax, 0x1fffffffff
+; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rax
+; X64-NEXT:    xor ecx, ecx
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    mov rdx, qword ptr [rbp - 0x38]
-; X64-NEXT:    pop rbp
+; X64-NEXT:    mov rdx, rcx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <zext_i37_to_i128>:

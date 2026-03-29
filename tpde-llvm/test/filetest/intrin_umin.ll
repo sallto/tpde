@@ -43,8 +43,8 @@ define i37 @umini37(i37 %0, i37 %1) {
 ; X64-LABEL: <umini37>:
 ; X64:         movabs rax, 0x1fffffffff
 ; X64-NEXT:    and rdi, rax
-; X64-NEXT:    movabs rax, 0x1fffffffff
-; X64-NEXT:    and rsi, rax
+; X64-NEXT:    movabs rcx, 0x1fffffffff
+; X64-NEXT:    and rsi, rcx
 ; X64-NEXT:    cmp rdi, rsi
 ; X64-NEXT:    cmovb rsi, rdi
 ; X64-NEXT:    mov rax, rsi

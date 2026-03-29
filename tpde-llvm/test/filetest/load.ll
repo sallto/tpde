@@ -128,10 +128,10 @@ define i24 @load_i24_alt(ptr %a) {
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x2]
 ; X64-NEXT:    shl ecx, 0x10
 ; X64-NEXT:    or ecx, eax
-; X64-NEXT:    movzx eax, word ptr [rdi]
+; X64-NEXT:    movzx edx, word ptr [rdi]
 ; X64-NEXT:    movzx edi, byte ptr [rdi + 0x2]
 ; X64-NEXT:    shl edi, 0x10
-; X64-NEXT:    or edi, eax
+; X64-NEXT:    or edi, edx
 ; X64-NEXT:    mov eax, edi
 ; X64-NEXT:    ret
 ;
@@ -139,10 +139,10 @@ define i24 @load_i24_alt(ptr %a) {
 ; ARM64:         ldrb w1, [x0, #0x2]
 ; ARM64-NEXT:    ldrh w2, [x0]
 ; ARM64-NEXT:    orr w3, w2, w1, lsl #16
-; ARM64-NEXT:    ldrb w1, [x0, #0x2]
+; ARM64-NEXT:    ldrb w4, [x0, #0x2]
 ; ARM64-NEXT:    ldrh w0, [x0]
-; ARM64-NEXT:    orr w2, w0, w1, lsl #16
-; ARM64-NEXT:    mov w0, w2
+; ARM64-NEXT:    orr w5, w0, w4, lsl #16
+; ARM64-NEXT:    mov w0, w5
 ; ARM64-NEXT:    ret
 entry:
   %b = load i24, ptr %a, align 2
@@ -249,10 +249,10 @@ define i40 @load_i40_alt(ptr %a) {
 ; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x4]
 ; X64-NEXT:    shl rcx, 0x20
 ; X64-NEXT:    or rcx, rax
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64-NEXT:    mov edx, dword ptr [rdi]
 ; X64-NEXT:    movzx edi, byte ptr [rdi + 0x4]
 ; X64-NEXT:    shl rdi, 0x20
-; X64-NEXT:    or rdi, rax
+; X64-NEXT:    or rdi, rdx
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    ret
 ;
@@ -260,10 +260,10 @@ define i40 @load_i40_alt(ptr %a) {
 ; ARM64:         ldrb w1, [x0, #0x4]
 ; ARM64-NEXT:    ldr w2, [x0]
 ; ARM64-NEXT:    orr x3, x2, x1, lsl #32
-; ARM64-NEXT:    ldrb w1, [x0, #0x4]
+; ARM64-NEXT:    ldrb w4, [x0, #0x4]
 ; ARM64-NEXT:    ldr w0, [x0]
-; ARM64-NEXT:    orr x2, x0, x1, lsl #32
-; ARM64-NEXT:    mov x0, x2
+; ARM64-NEXT:    orr x5, x0, x4, lsl #32
+; ARM64-NEXT:    mov x0, x5
 ; ARM64-NEXT:    ret
 entry:
   %b = load i40, ptr %a, align 2
@@ -298,10 +298,10 @@ define i48 @load_i48_alt(ptr %a) {
 ; X64-NEXT:    movzx ecx, word ptr [rdi + 0x4]
 ; X64-NEXT:    shl rcx, 0x20
 ; X64-NEXT:    or rcx, rax
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64-NEXT:    mov edx, dword ptr [rdi]
 ; X64-NEXT:    movzx edi, word ptr [rdi + 0x4]
 ; X64-NEXT:    shl rdi, 0x20
-; X64-NEXT:    or rdi, rax
+; X64-NEXT:    or rdi, rdx
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    ret
 ;
@@ -309,10 +309,10 @@ define i48 @load_i48_alt(ptr %a) {
 ; ARM64:         ldrh w1, [x0, #0x4]
 ; ARM64-NEXT:    ldr w2, [x0]
 ; ARM64-NEXT:    orr x3, x2, x1, lsl #32
-; ARM64-NEXT:    ldrh w1, [x0, #0x4]
+; ARM64-NEXT:    ldrh w4, [x0, #0x4]
 ; ARM64-NEXT:    ldr w0, [x0]
-; ARM64-NEXT:    orr x2, x0, x1, lsl #32
-; ARM64-NEXT:    mov x0, x2
+; ARM64-NEXT:    orr x5, x0, x4, lsl #32
+; ARM64-NEXT:    mov x0, x5
 ; ARM64-NEXT:    ret
 entry:
   %b = load i48, ptr %a, align 2
@@ -337,7 +337,8 @@ define i56 @load_i56(ptr %a) {
 ; ARM64-NEXT:    ldrh w2, [x0, #0x4]
 ; ARM64-NEXT:    orr w1, w2, w1, lsl #16
 ; ARM64-NEXT:    ldr w2, [x0]
-; ARM64-NEXT:    orr x0, x2, x1, lsl #32
+; ARM64-NEXT:    orr x3, x2, x1, lsl #32
+; ARM64-NEXT:    mov x0, x3
 ; ARM64-NEXT:    ret
 entry:
   %b = load i56, ptr %a, align 2
@@ -384,13 +385,14 @@ define i56 @load_i56_alt(ptr %a) {
 ; X64-NEXT:    shl rcx, 0x20
 ; X64-NEXT:    mov eax, dword ptr [rdi]
 ; X64-NEXT:    or rax, rcx
-; X64-NEXT:    movzx eax, word ptr [rdi + 0x4]
-; X64-NEXT:    movzx ecx, byte ptr [rdi + 0x6]
-; X64-NEXT:    shl ecx, 0x10
-; X64-NEXT:    or ecx, eax
-; X64-NEXT:    shl rcx, 0x20
-; X64-NEXT:    mov eax, dword ptr [rdi]
-; X64-NEXT:    or rax, rcx
+; X64-NEXT:    movzx edx, word ptr [rdi + 0x4]
+; X64-NEXT:    movzx esi, byte ptr [rdi + 0x6]
+; X64-NEXT:    shl esi, 0x10
+; X64-NEXT:    or esi, edx
+; X64-NEXT:    shl rsi, 0x20
+; X64-NEXT:    mov edx, dword ptr [rdi]
+; X64-NEXT:    or rdx, rsi
+; X64-NEXT:    mov rax, rdx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_i56_alt>:
@@ -399,11 +401,12 @@ define i56 @load_i56_alt(ptr %a) {
 ; ARM64-NEXT:    orr w1, w2, w1, lsl #16
 ; ARM64-NEXT:    ldr w2, [x0]
 ; ARM64-NEXT:    orr x3, x2, x1, lsl #32
-; ARM64-NEXT:    ldrb w1, [x0, #0x6]
-; ARM64-NEXT:    ldrh w2, [x0, #0x4]
-; ARM64-NEXT:    orr w1, w2, w1, lsl #16
-; ARM64-NEXT:    ldr w2, [x0]
-; ARM64-NEXT:    orr x0, x2, x1, lsl #32
+; ARM64-NEXT:    ldrb w4, [x0, #0x6]
+; ARM64-NEXT:    ldrh w5, [x0, #0x4]
+; ARM64-NEXT:    orr w4, w5, w4, lsl #16
+; ARM64-NEXT:    ldr w5, [x0]
+; ARM64-NEXT:    orr x6, x5, x4, lsl #32
+; ARM64-NEXT:    mov x0, x6
 ; ARM64-NEXT:    ret
 entry:
   %b = load i56, ptr %a, align 2
@@ -506,14 +509,16 @@ define i128 @load_i128_alt(ptr %a) {
 ; X64-LABEL: <load_i128_alt>:
 ; X64:         mov rax, qword ptr [rdi]
 ; X64-NEXT:    mov rcx, qword ptr [rdi + 0x8]
-; X64-NEXT:    mov rax, qword ptr [rdi]
+; X64-NEXT:    mov rdx, qword ptr [rdi]
 ; X64-NEXT:    mov rdi, qword ptr [rdi + 0x8]
+; X64-NEXT:    mov rax, rdx
 ; X64-NEXT:    mov rdx, rdi
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_i128_alt>:
 ; ARM64:         ldp x1, x2, [x0]
-; ARM64-NEXT:    ldp x0, x1, [x0]
+; ARM64-NEXT:    ldp x0, x3, [x0]
+; ARM64-NEXT:    mov x1, x3
 ; ARM64-NEXT:    ret
 entry:
   %b = load i128, ptr %a, align 8
@@ -558,12 +563,14 @@ entry:
 define float @load_float_alt(ptr %a) {
 ; X64-LABEL: <load_float_alt>:
 ; X64:         movss xmm0, dword ptr [rdi]
-; X64-NEXT:    movss xmm0, dword ptr [rdi]
+; X64-NEXT:    movss xmm1, dword ptr [rdi]
+; X64-NEXT:    movapd xmm0, xmm1
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_float_alt>:
 ; ARM64:         ldr s0, [x0]
-; ARM64-NEXT:    ldr s0, [x0]
+; ARM64-NEXT:    ldr s1, [x0]
+; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
 entry:
   %b = load float, ptr %a, align 4
@@ -588,12 +595,14 @@ entry:
 define double @load_double_alt(ptr %a) {
 ; X64-LABEL: <load_double_alt>:
 ; X64:         movsd xmm0, qword ptr [rdi]
-; X64-NEXT:    movsd xmm0, qword ptr [rdi]
+; X64-NEXT:    movsd xmm1, qword ptr [rdi]
+; X64-NEXT:    movapd xmm0, xmm1
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_double_alt>:
 ; ARM64:         ldr d0, [x0]
-; ARM64-NEXT:    ldr d0, [x0]
+; ARM64-NEXT:    ldr d1, [x0]
+; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
 entry:
   %b = load double, ptr %a, align 8
@@ -618,12 +627,14 @@ entry:
 define <4 x float> @load_4f_alt(ptr %a) {
 ; X64-LABEL: <load_4f_alt>:
 ; X64:         movups xmm0, xmmword ptr [rdi]
-; X64-NEXT:    movups xmm0, xmmword ptr [rdi]
+; X64-NEXT:    movups xmm1, xmmword ptr [rdi]
+; X64-NEXT:    movapd xmm0, xmm1
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_4f_alt>:
 ; ARM64:         ldr q0, [x0]
-; ARM64-NEXT:    ldr q0, [x0]
+; ARM64-NEXT:    ldr q1, [x0]
+; ARM64-NEXT:    mov v0.16b, v1.16b
 ; ARM64-NEXT:    ret
 entry:
   %b = load <4 x float>, ptr %a, align 8

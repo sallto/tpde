@@ -155,9 +155,9 @@ define void @ctlz_i32_no_salvage(i32 %0) {
 ; X64:         mov eax, 0x3f
 ; X64-NEXT:    bsr eax, edi
 ; X64-NEXT:    xor eax, 0x1f
-; X64-NEXT:    mov eax, 0x3f
-; X64-NEXT:    bsr eax, edi
-; X64-NEXT:    xor eax, 0x1f
+; X64-NEXT:    mov ecx, 0x3f
+; X64-NEXT:    bsr ecx, edi
+; X64-NEXT:    xor ecx, 0x1f
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ctlz_i32_no_salvage>:
@@ -175,9 +175,9 @@ define void @ctlz_i64_no_salvage(i64 %0) {
 ; X64:         mov eax, 0x7f
 ; X64-NEXT:    bsr rax, rdi
 ; X64-NEXT:    xor rax, 0x3f
-; X64-NEXT:    mov eax, 0x7f
-; X64-NEXT:    bsr rax, rdi
-; X64-NEXT:    xor rax, 0x3f
+; X64-NEXT:    mov ecx, 0x7f
+; X64-NEXT:    bsr rcx, rdi
+; X64-NEXT:    xor rcx, 0x3f
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ctlz_i64_no_salvage>:
@@ -200,12 +200,12 @@ define void @ctlz_i16_no_salvage(i16 %0) {
 ; X64-NEXT:    mov eax, 0x10
 ; X64-NEXT:    cmovne eax, ecx
 ; X64-NEXT:    movzx edi, di
-; X64-NEXT:    bsr eax, edi
-; X64-NEXT:    xor eax, 0x1f
-; X64-NEXT:    add eax, -0x10
+; X64-NEXT:    bsr edx, edi
+; X64-NEXT:    xor edx, 0x1f
+; X64-NEXT:    add edx, -0x10
 ; X64-NEXT:    test edi, edi
 ; X64-NEXT:    mov edi, 0x10
-; X64-NEXT:    cmovne edi, eax
+; X64-NEXT:    cmovne edi, edx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <ctlz_i16_no_salvage>:
@@ -214,7 +214,7 @@ define void @ctlz_i16_no_salvage(i16 %0) {
 ; ARM64-NEXT:    sub w2, w1, #0x10
 ; ARM64-NEXT:    and w0, w0, #0xffff
 ; ARM64-NEXT:    clz w0, w0
-; ARM64-NEXT:    sub w1, w0, #0x10
+; ARM64-NEXT:    sub w3, w0, #0x10
 ; ARM64-NEXT:    ret
   entry:
     %1 = call i16 @llvm.ctlz.i16(i16 %0, i1 0)

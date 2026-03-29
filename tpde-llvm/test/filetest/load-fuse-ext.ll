@@ -404,32 +404,24 @@ define i64 @load_i24_sext_i64(ptr %a) {
 
 define i128 @load_i24_zext_i128(ptr %a) {
 ; X64-LABEL: <load_i24_zext_i128>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    movzx eax, word ptr [rdi]
+; X64:         movzx eax, word ptr [rdi]
 ; X64-NEXT:    movzx edi, byte ptr [rdi + 0x2]
 ; X64-NEXT:    shl edi, 0x10
 ; X64-NEXT:    or edi, eax
 ; X64-NEXT:    and edi, 0xffffff
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rax
+; X64-NEXT:    xor ecx, ecx
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    mov rdx, qword ptr [rbp - 0x38]
-; X64-NEXT:    pop rbp
+; X64-NEXT:    mov rdx, rcx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_i24_zext_i128>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    ldrb w1, [x0, #0x2]
+; ARM64:         ldrb w1, [x0, #0x2]
 ; ARM64-NEXT:    ldrh w0, [x0]
 ; ARM64-NEXT:    orr w2, w0, w1, lsl #16
 ; ARM64-NEXT:    ubfx x2, x2, #0, #24
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    str x0, [x29, #0xa8]
+; ARM64-NEXT:    mov w3, #0x0 // =0
 ; ARM64-NEXT:    mov x0, x2
-; ARM64-NEXT:    ldr x1, [x29, #0xa8]
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
+; ARM64-NEXT:    mov x1, x3
 ; ARM64-NEXT:    ret
   %l = load i24, ptr %a
   %x = zext i24 %l to i128
@@ -438,34 +430,26 @@ define i128 @load_i24_zext_i128(ptr %a) {
 
 define i128 @load_i24_sext_i128(ptr %a) {
 ; X64-LABEL: <load_i24_sext_i128>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    movzx eax, word ptr [rdi]
+; X64:         movzx eax, word ptr [rdi]
 ; X64-NEXT:    movzx edi, byte ptr [rdi + 0x2]
 ; X64-NEXT:    shl edi, 0x10
 ; X64-NEXT:    or edi, eax
 ; X64-NEXT:    shl rdi, 0x28
 ; X64-NEXT:    sar rdi, 0x28
+; X64-NEXT:    mov rcx, rdi
+; X64-NEXT:    sar rcx, 0x3f
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    sar rax, 0x3f
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rax
-; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    mov rdx, qword ptr [rbp - 0x38]
-; X64-NEXT:    pop rbp
+; X64-NEXT:    mov rdx, rcx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_i24_sext_i128>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    ldrb w1, [x0, #0x2]
+; ARM64:         ldrb w1, [x0, #0x2]
 ; ARM64-NEXT:    ldrh w0, [x0]
 ; ARM64-NEXT:    orr w2, w0, w1, lsl #16
 ; ARM64-NEXT:    sbfx x2, x2, #0, #24
-; ARM64-NEXT:    asr x0, x2, #63
-; ARM64-NEXT:    str x0, [x29, #0xa8]
+; ARM64-NEXT:    asr x3, x2, #63
 ; ARM64-NEXT:    mov x0, x2
-; ARM64-NEXT:    ldr x1, [x29, #0xa8]
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
+; ARM64-NEXT:    mov x1, x3
 ; ARM64-NEXT:    ret
   %l = load i24, ptr %a
   %x = sext i24 %l to i128
@@ -581,8 +565,8 @@ define i37 @load_i33_zext_i37(ptr %a) {
 ; X64-NEXT:    movzx edi, byte ptr [rdi + 0x4]
 ; X64-NEXT:    shl rdi, 0x20
 ; X64-NEXT:    or rdi, rax
-; X64-NEXT:    movabs rax, 0x1ffffffff
-; X64-NEXT:    and rdi, rax
+; X64-NEXT:    movabs rcx, 0x1ffffffff
+; X64-NEXT:    and rdi, rcx
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    ret
 ;
@@ -627,8 +611,8 @@ define i64 @load_i33_zext_i64(ptr %a) {
 ; X64-NEXT:    movzx edi, byte ptr [rdi + 0x4]
 ; X64-NEXT:    shl rdi, 0x20
 ; X64-NEXT:    or rdi, rax
-; X64-NEXT:    movabs rax, 0x1ffffffff
-; X64-NEXT:    and rdi, rax
+; X64-NEXT:    movabs rcx, 0x1ffffffff
+; X64-NEXT:    and rdi, rcx
 ; X64-NEXT:    mov rax, rdi
 ; X64-NEXT:    ret
 ;
@@ -669,33 +653,24 @@ define i64 @load_i33_sext_i64(ptr %a) {
 
 define i128 @load_i33_zext_i128(ptr %a) {
 ; X64-LABEL: <load_i33_zext_i128>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    movzx edi, byte ptr [rdi + 0x4]
 ; X64-NEXT:    shl rdi, 0x20
 ; X64-NEXT:    or rdi, rax
-; X64-NEXT:    movabs rax, 0x1ffffffff
-; X64-NEXT:    and rdi, rax
-; X64-NEXT:    xor eax, eax
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rax
+; X64-NEXT:    movabs rcx, 0x1ffffffff
+; X64-NEXT:    and rdi, rcx
+; X64-NEXT:    xor edx, edx
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    mov rdx, qword ptr [rbp - 0x38]
-; X64-NEXT:    pop rbp
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_i33_zext_i128>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    ldrb w1, [x0, #0x4]
+; ARM64:         ldrb w1, [x0, #0x4]
 ; ARM64-NEXT:    ldr w0, [x0]
 ; ARM64-NEXT:    orr x2, x0, x1, lsl #32
 ; ARM64-NEXT:    ubfx x2, x2, #0, #33
-; ARM64-NEXT:    mov w0, #0x0 // =0
-; ARM64-NEXT:    str x0, [x29, #0xa8]
+; ARM64-NEXT:    mov w3, #0x0 // =0
 ; ARM64-NEXT:    mov x0, x2
-; ARM64-NEXT:    ldr x1, [x29, #0xa8]
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
+; ARM64-NEXT:    mov x1, x3
 ; ARM64-NEXT:    ret
   %l = load i33, ptr %a
   %x = zext i33 %l to i128
@@ -704,34 +679,26 @@ define i128 @load_i33_zext_i128(ptr %a) {
 
 define i128 @load_i33_sext_i128(ptr %a) {
 ; X64-LABEL: <load_i33_sext_i128>:
-; X64:         push rbp
-; X64-NEXT:    mov rbp, rsp
-; X64-NEXT:    mov eax, dword ptr [rdi]
+; X64:         mov eax, dword ptr [rdi]
 ; X64-NEXT:    movzx edi, byte ptr [rdi + 0x4]
 ; X64-NEXT:    shl rdi, 0x20
 ; X64-NEXT:    or rdi, rax
 ; X64-NEXT:    shl rdi, 0x1f
 ; X64-NEXT:    sar rdi, 0x1f
+; X64-NEXT:    mov rcx, rdi
+; X64-NEXT:    sar rcx, 0x3f
 ; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    sar rax, 0x3f
-; X64-NEXT:    mov qword ptr [rbp - 0x38], rax
-; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    mov rdx, qword ptr [rbp - 0x38]
-; X64-NEXT:    pop rbp
+; X64-NEXT:    mov rdx, rcx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <load_i33_sext_i128>:
-; ARM64:         stp x29, x30, [sp, #-0xb0]!
-; ARM64-NEXT:    mov x29, sp
-; ARM64-NEXT:    ldrb w1, [x0, #0x4]
+; ARM64:         ldrb w1, [x0, #0x4]
 ; ARM64-NEXT:    ldr w0, [x0]
 ; ARM64-NEXT:    orr x2, x0, x1, lsl #32
 ; ARM64-NEXT:    sbfx x2, x2, #0, #33
-; ARM64-NEXT:    asr x0, x2, #63
-; ARM64-NEXT:    str x0, [x29, #0xa8]
+; ARM64-NEXT:    asr x3, x2, #63
 ; ARM64-NEXT:    mov x0, x2
-; ARM64-NEXT:    ldr x1, [x29, #0xa8]
-; ARM64-NEXT:    ldp x29, x30, [sp], #0xb0
+; ARM64-NEXT:    mov x1, x3
 ; ARM64-NEXT:    ret
   %l = load i33, ptr %a
   %x = sext i33 %l to i128

@@ -442,10 +442,11 @@ define i8 @sdiv_i8_no_salvage(i8 %0, i8 %1) {
 ; X64-NEXT:    idiv esi
 ; X64-NEXT:    movsx edi, dil
 ; X64-NEXT:    movsx eax, al
-; X64-NEXT:    mov rcx, rax
+; X64-NEXT:    mov rdx, rax
+; X64-NEXT:    mov rsi, rdx
 ; X64-NEXT:    mov eax, edi
 ; X64-NEXT:    cdq
-; X64-NEXT:    idiv ecx
+; X64-NEXT:    idiv esi
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <sdiv_i8_no_salvage>:
@@ -472,10 +473,11 @@ define i16 @sdiv_i16_no_salvage(i16 %0, i16 %1) {
 ; X64-NEXT:    idiv esi
 ; X64-NEXT:    movsx edi, di
 ; X64-NEXT:    movsx eax, ax
-; X64-NEXT:    mov rcx, rax
+; X64-NEXT:    mov rdx, rax
+; X64-NEXT:    mov rsi, rdx
 ; X64-NEXT:    mov eax, edi
 ; X64-NEXT:    cdq
-; X64-NEXT:    idiv ecx
+; X64-NEXT:    idiv esi
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <sdiv_i16_no_salvage>:

@@ -235,8 +235,8 @@ define void @store_i128_const1(ptr %a) {
 ; X64-LABEL: <store_i128_const1>:
 ; X64:         movabs rax, 0x1337133713371337
 ; X64-NEXT:    mov qword ptr [rdi + 0x8], rax
-; X64-NEXT:    movabs rax, 0x1337133713371337
-; X64-NEXT:    mov qword ptr [rdi], rax
+; X64-NEXT:    movabs rcx, 0x1337133713371337
+; X64-NEXT:    mov qword ptr [rdi], rcx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <store_i128_const1>:
@@ -259,8 +259,8 @@ define void @store_i128_const2(ptr %a) {
 ; X64-LABEL: <store_i128_const2>:
 ; X64:         mov eax, 0xf3371337
 ; X64-NEXT:    mov qword ptr [rdi + 0x8], rax
-; X64-NEXT:    mov eax, 0xf3371337
-; X64-NEXT:    mov qword ptr [rdi], rax
+; X64-NEXT:    mov ecx, 0xf3371337
+; X64-NEXT:    mov qword ptr [rdi], rcx
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <store_i128_const2>:
@@ -863,12 +863,12 @@ define void @store_const_struct_i128_i128(ptr %a) {
 ; ARM64-LABEL: <store_const_struct_i128_i128>:
 ; ARM64:         mov x1, #0x7b // =123
 ; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
-; ARM64-NEXT:    mov x1, #0x1c8 // =456
-; ARM64-NEXT:    str x1, [x0, #0x10]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x18]
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    str x2, [x0, #0x8]
+; ARM64-NEXT:    mov x3, #0x1c8 // =456
+; ARM64-NEXT:    str x3, [x0, #0x10]
+; ARM64-NEXT:    mov w4, #0x0 // =0
+; ARM64-NEXT:    str x4, [x0, #0x18]
 ; ARM64-NEXT:    ret
   store { i128, i128 } { i128 123, i128 456 }, ptr %a
   ret void
@@ -912,9 +912,9 @@ define void @store_packed(ptr %0) {
 ; ARM64-LABEL: <store_packed>:
 ; ARM64:         mov x1, #0x1 // =1
 ; ARM64-NEXT:    strh w1, [x0]
-; ARM64-NEXT:    mov x1, #0x2 // =2
-; ARM64-NEXT:    add x2, x0, #0x2
-; ARM64-NEXT:    str w1, [x2]
+; ARM64-NEXT:    mov x2, #0x2 // =2
+; ARM64-NEXT:    add x3, x0, #0x2
+; ARM64-NEXT:    str w2, [x3]
 ; ARM64-NEXT:    ret
   store %struct_i16_i32_packed <{i16 1, i32 2}>, ptr %0
   ret void
@@ -947,50 +947,53 @@ define void @store_mult_const(ptr %p) {
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <store_mult_const>:
-; ARM64:         mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
+; ARM64:         stp x29, x30, [sp, #-0xa0]!
+; ARM64-NEXT:    mov x29, sp
 ; ARM64-NEXT:    mov w1, #0x0 // =0
 ; ARM64-NEXT:    str x1, [x0]
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    str x2, [x0, #0x8]
+; ARM64-NEXT:    mov w3, #0x0 // =0
+; ARM64-NEXT:    str x3, [x0]
+; ARM64-NEXT:    mov w4, #0x0 // =0
+; ARM64-NEXT:    str x4, [x0, #0x8]
+; ARM64-NEXT:    mov w5, #0x0 // =0
+; ARM64-NEXT:    str x5, [x0]
+; ARM64-NEXT:    mov w6, #0x0 // =0
+; ARM64-NEXT:    str x6, [x0, #0x8]
+; ARM64-NEXT:    mov w7, #0x0 // =0
+; ARM64-NEXT:    str x7, [x0]
+; ARM64-NEXT:    mov w8, #0x0 // =0
+; ARM64-NEXT:    str x8, [x0, #0x8]
+; ARM64-NEXT:    mov w9, #0x0 // =0
+; ARM64-NEXT:    str x9, [x0]
+; ARM64-NEXT:    mov w10, #0x0 // =0
+; ARM64-NEXT:    str x10, [x0, #0x8]
+; ARM64-NEXT:    mov w11, #0x0 // =0
+; ARM64-NEXT:    str x11, [x0]
+; ARM64-NEXT:    mov w12, #0x0 // =0
+; ARM64-NEXT:    str x12, [x0, #0x8]
+; ARM64-NEXT:    mov w13, #0x0 // =0
+; ARM64-NEXT:    str x13, [x0]
+; ARM64-NEXT:    mov w14, #0x0 // =0
+; ARM64-NEXT:    str x14, [x0, #0x8]
+; ARM64-NEXT:    mov w15, #0x0 // =0
+; ARM64-NEXT:    str x15, [x0]
+; ARM64-NEXT:    mov w18, #0x0 // =0
+; ARM64-NEXT:    str x18, [x0, #0x8]
+; ARM64-NEXT:    mov w30, #0x0 // =0
+; ARM64-NEXT:    str x30, [x0]
 ; ARM64-NEXT:    mov w1, #0x0 // =0
 ; ARM64-NEXT:    str x1, [x0, #0x8]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0]
-; ARM64-NEXT:    mov w1, #0x0 // =0
-; ARM64-NEXT:    str x1, [x0, #0x8]
+; ARM64-NEXT:    mov w2, #0x0 // =0
+; ARM64-NEXT:    str x2, [x0]
+; ARM64-NEXT:    mov w3, #0x0 // =0
+; ARM64-NEXT:    str x3, [x0, #0x8]
+; ARM64-NEXT:    mov w4, #0x0 // =0
+; ARM64-NEXT:    str x4, [x0]
+; ARM64-NEXT:    mov w5, #0x0 // =0
+; ARM64-NEXT:    str x5, [x0, #0x8]
+; ARM64-NEXT:    ldp x29, x30, [sp], #0xa0
 ; ARM64-NEXT:    ret
   store { i64, i64 } zeroinitializer, ptr %p, align 8
   store { i64, i64 } zeroinitializer, ptr %p, align 8

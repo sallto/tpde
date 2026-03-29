@@ -17,7 +17,8 @@ define <2 x float> @fmuladd_v2f32_1(<2 x float> %a, <2 x float> %c) {
 ; ARM64:         mov x16, #0x3f8000003f800000 // =4575657222473777152
 ; ARM64-NEXT:    fmov d2, x16
 ; ARM64-NEXT:    fmla v1.2s, v2.2s, v0.2s
-; ARM64-NEXT:    fmov d0, d1
+; ARM64-NEXT:    fmov d3, d1
+; ARM64-NEXT:    mov v0.16b, v3.16b
 ; ARM64-NEXT:    ret
   %r = call <2 x float> @llvm.fmuladd(<2 x float> %a, <2 x float> <float 1.0, float 1.0>, <2 x float> %c)
   ret <2 x float> %r
@@ -51,7 +52,8 @@ define <4 x float> @fmuladd_v4f32_1(<4 x float> %a, <4 x float> %c) {
 ; ARM64-NEXT:    ldr q2, [x16]
 ; ARM64-NEXT:     R_AARCH64_LDST128_ABS_LO12_NC
 ; ARM64-NEXT:    fmla v1.4s, v2.4s, v0.4s
-; ARM64-NEXT:    mov v0.16b, v1.16b
+; ARM64-NEXT:    mov v3.16b, v1.16b
+; ARM64-NEXT:    mov v0.16b, v3.16b
 ; ARM64-NEXT:    ret
   %r = call <4 x float> @llvm.fmuladd(<4 x float> %a, <4 x float> <float 1.0, float 1.0, float 1.0, float 1.0>, <4 x float> %c)
   ret <4 x float> %r
@@ -85,7 +87,8 @@ define <2 x double> @fmuladd_v2f64_1(<2 x double> %a, <2 x double> %c) {
 ; ARM64-NEXT:    ldr q2, [x16]
 ; ARM64-NEXT:     R_AARCH64_LDST128_ABS_LO12_NC
 ; ARM64-NEXT:    fmla v1.2d, v2.2d, v0.2d
-; ARM64-NEXT:    mov v0.16b, v1.16b
+; ARM64-NEXT:    mov v3.16b, v1.16b
+; ARM64-NEXT:    mov v0.16b, v3.16b
 ; ARM64-NEXT:    ret
   %r = call <2 x double> @llvm.fmuladd(<2 x double> %a, <2 x double> <double 1.0, double 1.0>, <2 x double> %c)
   ret <2 x double> %r

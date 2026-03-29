@@ -7,7 +7,7 @@
 
 define ptr @f0() {
 ; X64-LABEL: <f0>:
-; X64:         mov rax, qword ptr [rbp + 0x8]
+; X64:         mov rax, qword ptr [rsp + 0x8]
 ; X64-NEXT:    ret
 ;
 ; ARM64-LABEL: <f0>:

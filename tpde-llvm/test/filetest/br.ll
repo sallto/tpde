@@ -91,7 +91,8 @@ define i64 @condbr1(i64 %0, i1 %1) {
 ; X64-NEXT:    je <L0>
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    lea rax, [rbx + 0xa]
+; X64-NEXT:    lea rcx, [rbx + 0xa]
+; X64-NEXT:    mov rax, rcx
 ; X64-NEXT:    jmp <L2>
 ; X64-NEXT:  <L1>:
 ; X64-NEXT:    mov rax, rbx
@@ -109,7 +110,8 @@ define i64 @condbr1(i64 %0, i1 %1) {
 ; ARM64-NEXT:    b.eq <L0>
 ; ARM64-NEXT:    b <L1>
 ; ARM64-NEXT:  <L0>:
-; ARM64-NEXT:    add x0, x19, #0xa
+; ARM64-NEXT:    add x1, x19, #0xa
+; ARM64-NEXT:    mov x0, x1
 ; ARM64-NEXT:    b <L2>
 ; ARM64-NEXT:  <L1>:
 ; ARM64-NEXT:    mov x0, x19

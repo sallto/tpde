@@ -219,6 +219,8 @@ struct TestIRAdaptor {
   };
 
   ValueParts val_parts(IRValueRef) { return ValueParts{}; }
+  ValueParts val_parts(ValLocalIdx) { return ValueParts{}; }
+
   [[nodiscard]] auto val_as_phi(IRValueRef value) const {
     struct PHIRef {
       const u32 *op_begin, *block_begin;

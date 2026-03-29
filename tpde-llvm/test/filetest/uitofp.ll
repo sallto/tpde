@@ -79,10 +79,10 @@ define float @i37tof32(i37 %0) {
 ; X64-NEXT:    cvtsi2ss xmm0, rdi
 ; X64-NEXT:    jmp <L1>
 ; X64-NEXT:  <L0>:
-; X64-NEXT:    mov rax, rdi
-; X64-NEXT:    shr rax
+; X64-NEXT:    mov rcx, rdi
+; X64-NEXT:    shr rcx
 ; X64-NEXT:    and edi, 0x1
-; X64-NEXT:    or rdi, rax
+; X64-NEXT:    or rdi, rcx
 ; X64-NEXT:    cvtsi2ss xmm0, rdi
 ; X64-NEXT:    addss xmm0, xmm0
 ; X64-NEXT:  <L1>:
