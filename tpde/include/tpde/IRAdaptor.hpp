@@ -302,6 +302,7 @@ concept IRAdaptor = requires(T a) {
   } -> std::convertible_to<bool>;
 
    { a.val_parts(ARG(typename T::IRValueRef)) } -> ValueParts;
+  { a.val_parts(ARG(ValLocalIdx)) } -> ValueParts;
 
   /// Indicate whether a value is the result of a PHI node. Used to detect and
   /// resolve dependencies between PHI nodes.

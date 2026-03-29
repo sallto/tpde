@@ -1276,7 +1276,7 @@ public:
         auto it = stack.spill_slot_ref_counts.find(ap.assignment()->frame_off);
 
         if (it != stack.spill_slot_ref_counts.end() && it->second > 1) {
-          auto root_idx = analyzer.val_local_to_root_idx[static_cast<u32>(local_idx)];
+          auto root_idx = analyzer.find_web_idx(static_cast<u32>(local_idx));
           auto &web_members = analyzer.web_members[static_cast<u32>(root_idx)];
           for (const auto member: web_members) {
             if (member == local_idx) {
@@ -1291,7 +1291,7 @@ public:
               if (!web_ap.stack_valid()) {
                 continue;
               }
-              derived()->mov(ap.get_reg(), ap.get_reg(), ap.part_size());
+              derived()->mov(ap.get_reg(), ap.get_reg(), ap.part_size()); // todo remove
               return;
             }
           }
@@ -3311,12 +3311,11 @@ void CompilerBase<Adaptor, Derived, Config>::allocate_spill_slot(
     assert(!ap.stack_valid() && "stack-valid set without spill slot");
 
     bool reused_web_slot = false;
-    if (local_idx != INVALID_VAL_LOCAL_IDX &&
-        static_cast<u32>(local_idx) < analyzer.val_local_to_root_idx.size()) {
+    if (local_idx != INVALID_VAL_LOCAL_IDX) {
       const u32 root_idx =
-          analyzer.val_local_to_root_idx[static_cast<u32>(local_idx)];
+          analyzer.find_web_idx(static_cast<u32>(local_idx));
       auto &web_members = analyzer.web_members[root_idx];
-      if (web_members.size() >= 2) {
+      if (web_members.size() >= 2)[[unlikely]] {
         for (const auto member: web_members) {
           ValueAssignment *candidate = val_assignment(member);
           if (!candidate || candidate->variable_ref) {
@@ -3335,7 +3334,7 @@ void CompilerBase<Adaptor, Derived, Config>::allocate_spill_slot(
           }
 
           const i32 candidate_slot = candidate->frame_off;
-          TPDE_LOG_ERR("reusing spill slot {}", candidate_slot);
+          //TPDE_LOG_ERR("reusing spill slot {}", candidate_slot);
           ap.assignment()->frame_off = candidate_slot;
 
           if (auto ref_it = stack.spill_slot_ref_counts.find(candidate_slot);
@@ -3704,9 +3703,8 @@ void CompilerBase<Adaptor, Derived, Config>::generate_branch_to_block(
   BlockIndex target_idx = this->analyzer.block_idx(target);
   Label target_label = this->block_labels[u32(target_idx)];
   if (!needs_split) {
-    if (!last_inst || target_idx != this->next_block() || analyzer.block_has_multiple_incoming(target_idx)) {
-      move_values_to_match(target_idx);
-    }
+    move_values_to_match(target_idx);
+
     if (!last_inst || target_idx != this->next_block()) {
       derived()->generate_raw_jump(jmp, target_label);
     }
@@ -4382,6 +4380,9 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
           ((derived()->phi_nonallocatable_mask() &
             (1ull << incoming_reg.id())) == 0) &&
           !(used_phi_regs & (1ull << incoming_reg.id()))) {
+        if (incoming_reg.valid() && (1ull << incoming_reg.id()) & pre_freed_regs) {
+          //TPDE_LOG_ERR("reused freed {}", incoming_reg.id());
+        }
         selected = incoming_reg;
       } else {
         selected = register_file.find_first_free_excluding(bank, exclusion);
@@ -4390,6 +4391,7 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
               reusable_freed_regs & register_file.bank_regs(bank) & ~exclusion;
           if (reusable_candidates) {
             selected = Reg{util::cnt_tz(reusable_candidates)};
+            //TPDE_LOG_ERR("reused_freed {}", selected.id());
             reusable_freed_regs &= ~(1ull << selected.id());
           }
         }
@@ -5050,8 +5052,8 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
             idom_stack_valid_single_part_values->contains(
               state.val_local_idx)) {
           mark_modified = false;
-          TPDE_LOG_ERR("Skipping modification for {}",
-                       static_cast<u32>(state.val_local_idx));
+          //TPDE_LOG_ERR("Skipping modification for {}",
+          //             static_cast<u32>(state.val_local_idx));
         }
         if (mark_modified) {
           ap.set_modified(true);
