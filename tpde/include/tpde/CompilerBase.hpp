@@ -1291,7 +1291,7 @@ public:
               if (!web_ap.stack_valid()) {
                 continue;
               }
-              derived()->mov(ap.get_reg(), ap.get_reg(), ap.part_size()); // todo remove
+              //derived()->mov(ap.get_reg(), ap.get_reg(), ap.part_size()); // todo remove
               return;
             }
           }
@@ -1349,7 +1349,7 @@ public:
                                  deferred_phi_reg_materializations,
                                  deferred_phi_stack_materializations,
                                  deferred_phi_reg_spills,
-                                 0);
+                                 pre_freed_regs);
       phi_regs = phi_regs_;
       unallocatable_regs = unallocatable_regs_;
     }
@@ -2410,6 +2410,9 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
     std::variant<SymRef, ValuePart> target) {
   assert(!compiler.stack.is_leaf_function && "leaf func must not have calls");
   compiler.stack.generated_call = true;
+  if (auto *vp = std::get_if<ValuePart>(&target); vp && vp->cur_reg_unlocked().valid()) {
+    arg_regs |= (1ull << vp->cur_reg_unlocked().id());
+  }
   auto spilled = compiler.spill_caller_saved_before_call(arg_regs);
 
   /*
@@ -2704,7 +2707,7 @@ void CompilerBase<Adaptor, Derived, Config>::init_assignment(
 
       // TODO: if the register is used, we can free it most of the time, but not
       // always, e.g. for PHI nodes. Detect this case and free_reg otherwise.
-      if (!reg.invalid() &&
+      if (false && !reg.invalid() &&
           !(used_phi_regs_global & (1ull << reg.id())) &&
           !register_file.is_used(reg)) {
         TPDE_LOG_TRACE("Assigning fixed assignment to reg {} for value {}",
@@ -3365,6 +3368,33 @@ void CompilerBase<Adaptor, Derived, Config>::spill(AssignmentPartRef ap) {
   assert(may_change_value_state());
   if (!ap.stack_valid() && !ap.variable_ref()) {
     assert(ap.register_valid() && "cannot spill uninitialized assignment part");
+    if (ap.is_phi() && ap.assignment()->frame_off != 0) {
+      auto it = stack.spill_slot_ref_counts.find(ap.assignment()->frame_off);
+      auto local_idx = register_file.reg_local_idx(ap.get_reg());
+
+      if (it != stack.spill_slot_ref_counts.end() && it->second > 1) {
+        auto root_idx = analyzer.find_web_idx(static_cast<u32>(local_idx));
+        auto &web_members = analyzer.web_members[static_cast<u32>(root_idx)];
+        for (const auto member: web_members) {
+          if (member == local_idx) {
+            continue;
+          }
+          ValueAssignment *assignment = val_assignment(member);
+          if (!assignment) {
+            continue;
+          }
+          for (u32 i = 0; i < assignment->part_count; i++) {
+            AssignmentPartRef web_ap{assignment, i};
+            if (!web_ap.stack_valid()) {
+              continue;
+            }
+            ap.set_stack_valid();
+            //derived()->mov(ap.get_reg(), ap.get_reg(), ap.part_size()); // todo remove
+            return;
+          }
+        }
+      }
+    }
     allocate_spill_slot(ap);
     // argument stack slot will remain valid
     derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
@@ -5103,6 +5133,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_block(
       stack_valid_single_part_values.insert(idx);
     }
   }
+
   label_place(block_labels[block_idx]);
 #ifndef NDEBUG
   verification_ir.set_current_block(cur_block_idx);

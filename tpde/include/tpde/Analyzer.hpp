@@ -2335,6 +2335,20 @@ void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
                             .num_parts = u32(parts.gp_regs + parts.fp_regs)
                         });
                 }
+                for (const auto &entry: header_pli.live_through) {
+                    const auto val_idx = entry.first;
+                    if (selected_values.contains(val_idx) ||
+                        header_phi_defs.contains(val_idx) ||
+                        header_local_defs.contains(val_idx)) {
+                        continue;
+                    }
+                    header_candidates.push_back(
+                        HeaderCandidate{
+                            .val_idx = val_idx, .entry_next_use = entry.second,
+                            .num_parts = u32(
+                                ensure_parts_cached(val_idx).gp_regs + ensure_parts_cached(val_idx).fp_regs)
+                        });
+                }
 
                 std::sort(header_candidates.begin(),
                           header_candidates.end(),
