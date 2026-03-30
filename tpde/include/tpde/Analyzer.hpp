@@ -656,7 +656,7 @@ namespace tpde {
         collect_value_refs(value_refs);
 
 
-        for (auto web_idx = 0; web_idx < web_members.size(); ++web_idx) {
+        for (u32 web_idx = 0; web_idx < web_members.size(); ++web_idx) {
             auto &members = web_members[web_idx];
 
             if (members.size() < 2) {
