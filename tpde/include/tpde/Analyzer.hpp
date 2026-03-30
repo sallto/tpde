@@ -30,7 +30,6 @@ namespace tpde {
     static constexpr BlockIndex INVALID_BLOCK_IDX = static_cast<BlockIndex>(~0u);
 
 
-
     template<IRAdaptor Adaptor, typename CompilerType>
     struct Analyzer {
         // some forwards for the IR type defs
@@ -119,8 +118,8 @@ namespace tpde {
         // pro block liveness info
         util::SmallVector<PreciseLivenessInfo, 32> precise_liveness;
         /// Initial working set selected at block entry for loop headers.
-        std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx>>
-            initial_working_set_by_block = {};
+        std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx> >
+        initial_working_set_by_block = {};
         // If a value is spilled at any point, it is marked here. During codegen we
         // spill immediately after definition to avoid storing the spill location.
         util::SmallBitSet<SMALL_VALUE_NUM> spilled_values;
@@ -412,18 +411,18 @@ namespace tpde {
             const util::SmallVector<u32, SMALL_BLOCK_NUM> &loop_parent,
             const util::SmallBitSet<256> &loop_heads);
 
-  /// Builds a vector of block references in reverse post-order.
-  void build_rpo_block_order(
-      util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &out) const noexcept;
+        /// Builds a vector of block references in reverse post-order.
+        void build_rpo_block_order(
+            util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &out) const noexcept;
 
         /// Creates a bitset of loop_heads and sets the parent loop of each block.
   /// The u32 in loop_parent is an index into block_rpo
-  void identify_loops(
-      const util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &block_rpo,
-      util::SmallVector<u32, SMALL_BLOCK_NUM> &loop_parent,
-      util::SmallBitSet<256> &loop_heads) const noexcept;
+        void identify_loops(
+            const util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &block_rpo,
+            util::SmallVector<u32, SMALL_BLOCK_NUM> &loop_parent,
+            util::SmallBitSet<256> &loop_heads) const noexcept;
 
-  void compute_liveness() noexcept;
+        void compute_liveness() noexcept;
 
     public:
         std::pair<u32, u32> get_current_and_next_use(const PreciseLivenessInfo &pli,
@@ -529,25 +528,25 @@ namespace tpde {
 
     template<IRAdaptor Adaptor, typename CompilerType>
     void Analyzer<Adaptor, CompilerType>::print_liveness(std::ostream &os) const {
-      for (u32 i = 0; i <= liveness_max_value; ++i) {
-        if (liveness[i].epoch != liveness_epoch) {
-          os << std::format("  {}: ignored\n", i);
-          continue;
-        }
+        for (u32 i = 0; i <= liveness_max_value; ++i) {
+            if (liveness[i].epoch != liveness_epoch) {
+                os << std::format("  {}: ignored\n", i);
+                continue;
+            }
 
-        const auto &info = liveness[i];
-        os << std::format("  {}: {} refs, {}->{} ({}->{}), lf: {}\n",
-                          i,
-                          info.ref_count,
-                          static_cast<u32>(info.first),
-                          static_cast<u32>(info.last),
-                          adaptor->block_fmt_ref(block_ref(info.first)),
-                          adaptor->block_fmt_ref(block_ref(info.last)),
-                          info.last_full);
-      }
+            const auto &info = liveness[i];
+            os << std::format("  {}: {} refs, {}->{} ({}->{}), lf: {}\n",
+                              i,
+                              info.ref_count,
+                              static_cast<u32>(info.first),
+                              static_cast<u32>(info.last),
+                              adaptor->block_fmt_ref(block_ref(info.first)),
+                              adaptor->block_fmt_ref(block_ref(info.last)),
+                              info.last_full);
+        }
     }
 
-    template <IRAdaptor Adaptor, typename CompilerType>
+    template<IRAdaptor Adaptor, typename CompilerType>
     void Analyzer<Adaptor, CompilerType>::print_precise_liveness(
         std::ostream &os) {
         const u32 num_blocks = static_cast<u32>(block_layout.size());
@@ -617,104 +616,102 @@ namespace tpde {
     }
 
 
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::collect_value_refs(
+        std::unordered_map<ValLocalIdx, IRValueRef> &value_refs) const {
+        value_refs.clear();
+        value_refs.reserve(liveness_max_value + 1);
 
-template<IRAdaptor Adaptor, typename CompilerType>
-void Analyzer<Adaptor, CompilerType>::collect_value_refs(
-    std::unordered_map<ValLocalIdx, IRValueRef> &value_refs) const {
-    value_refs.clear();
-    value_refs.reserve(liveness_max_value + 1);
-
-    const auto remember_value = [&](const IRValueRef value) {
-        if (adaptor->val_ignore_in_liveness_analysis(value)) {
-            return;
-        }
-        const ValLocalIdx val_idx = adaptor->val_local_idx(value);
-        if (static_cast<u32>(val_idx) <= liveness_max_value) {
-            value_refs.try_emplace(val_idx, value);
-        }
-    };
-
-    for (const IRValueRef arg: adaptor->cur_args()) {
-        remember_value(arg);
-    }
-    for (const IRBlockRef block: block_layout) {
-        for (const IRValueRef phi: adaptor->block_phis(block)) {
-            remember_value(phi);
-        }
-        for (const IRInstRef inst: adaptor->block_insts(block)) {
-            for (const IRValueRef result: adaptor->inst_results(inst)) {
-                remember_value(result);
+        const auto remember_value = [&](const IRValueRef value) {
+            if (adaptor->val_ignore_in_liveness_analysis(value)) {
+                return;
             }
-            for (const IRValueRef operand: adaptor->inst_operands(inst)) {
-                remember_value(operand);
+            const ValLocalIdx val_idx = adaptor->val_local_idx(value);
+            if (static_cast<u32>(val_idx) <= liveness_max_value) {
+                value_refs.try_emplace(val_idx, value);
+            }
+        };
+
+        for (const IRValueRef arg: adaptor->cur_args()) {
+            remember_value(arg);
+        }
+        for (const IRBlockRef block: block_layout) {
+            for (const IRValueRef phi: adaptor->block_phis(block)) {
+                remember_value(phi);
+            }
+            for (const IRInstRef inst: adaptor->block_insts(block)) {
+                for (const IRValueRef result: adaptor->inst_results(inst)) {
+                    remember_value(result);
+                }
+                for (const IRValueRef operand: adaptor->inst_operands(inst)) {
+                    remember_value(operand);
+                }
             }
         }
     }
-}
 
-template<IRAdaptor Adaptor, typename CompilerType>
-void Analyzer<Adaptor, CompilerType>::print_phi_webs(std::ostream &os) const {
-
-    std::unordered_map<ValLocalIdx, IRValueRef> value_refs;
-    collect_value_refs(value_refs);
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::print_phi_webs(std::ostream &os) const {
+        std::unordered_map<ValLocalIdx, IRValueRef> value_refs;
+        collect_value_refs(value_refs);
 
 
-    for (auto web_idx = 0; web_idx < web_members.size(); ++web_idx) {
-        auto &members = web_members[web_idx];
+        for (auto web_idx = 0; web_idx < web_members.size(); ++web_idx) {
+            auto &members = web_members[web_idx];
 
-        if (members.size() < 2) {
-            continue;
-        }
-
-
-        os << std::format("  web {}: {{ ", web_idx);
-        for (u32 i = 0; i < members.size(); ++i) {
-            if (i != 0) {
-                os << ", ";
+            if (members.size() < 2) {
+                continue;
             }
 
-            const ValLocalIdx val_idx = members[i];
-            std::string_view value_name = "<unknown>";
-            if (const auto it = value_refs.find(val_idx); it != value_refs.end()) {
-                value_name = adaptor->value_fmt_ref(it->second);
+
+            os << std::format("  web {}: {{ ", web_idx);
+            for (u32 i = 0; i < members.size(); ++i) {
+                if (i != 0) {
+                    os << ", ";
+                }
+
+                const ValLocalIdx val_idx = members[i];
+                std::string_view value_name = "<unknown>";
+                if (const auto it = value_refs.find(val_idx); it != value_refs.end()) {
+                    value_name = adaptor->value_fmt_ref(it->second);
+                }
+
+                os << std::format("({}, {})", static_cast<u32>(val_idx), value_name);
             }
-
-            os << std::format("({}, {})", static_cast<u32>(val_idx), value_name);
+            os << " }\n";
         }
-        os << " }\n";
     }
-}
 
-template<IRAdaptor Adaptor, typename CompilerType>
-u32 Analyzer<Adaptor, CompilerType>::find_web_idx(const u32 idx) {
-    const u32 parent = web_parent[idx];
-    if (parent == idx) {
-        return idx;
+    template<IRAdaptor Adaptor, typename CompilerType>
+    u32 Analyzer<Adaptor, CompilerType>::find_web_idx(const u32 idx) {
+        const u32 parent = web_parent[idx];
+        if (parent == idx) {
+            return idx;
+        }
+        const u32 root = find_web_idx(parent);
+        web_parent[idx] = root;
+
+        return root;
     }
-    const u32 root = find_web_idx(parent);
-    web_parent[idx] = root;
 
-    return root;
-}
-
-template<IRAdaptor Adaptor, typename CompilerType>
-typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
+    template<IRAdaptor Adaptor, typename CompilerType>
+    typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
     Analyzer<Adaptor, CompilerType>::liveness_maybe(const IRValueRef val) noexcept {
-  const ValLocalIdx val_idx = adaptor->val_local_idx(val);
-  if constexpr (Adaptor::TPDE_PROVIDES_HIGHEST_VAL_IDX) {
-      assert(liveness.size() > static_cast<u32>(val_idx));
-      return liveness[static_cast<u32>(val_idx)];
-  } else {
-      if (liveness_max_value <= static_cast<u32>(val_idx)) {
-          liveness_max_value = static_cast<u32>(val_idx);
-          if (liveness.size() <= liveness_max_value) {
-              // TODO: better growth strategy?
-              liveness.resize(liveness_max_value + 0x100);
-          }
-      }
-      return liveness[static_cast<u32>(val_idx)];
-  }
-}
+        const ValLocalIdx val_idx = adaptor->val_local_idx(val);
+        if constexpr (Adaptor::TPDE_PROVIDES_HIGHEST_VAL_IDX) {
+            assert(liveness.size() > static_cast<u32>(val_idx));
+            return liveness[static_cast<u32>(val_idx)];
+        } else {
+            if (liveness_max_value <= static_cast<u32>(val_idx)) {
+                liveness_max_value = static_cast<u32>(val_idx);
+                if (liveness.size() <= liveness_max_value) {
+                    // TODO: better growth strategy?
+                    liveness.resize(liveness_max_value + 0x100);
+                }
+            }
+            return liveness[static_cast<u32>(val_idx)];
+        }
+    }
 
     template<IRAdaptor Adaptor, typename CompilerType>
     void Analyzer<Adaptor, CompilerType>::build_block_layout() {
@@ -848,8 +845,8 @@ typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
             loops[parent].end = static_cast<BlockIndex>(static_cast<u32>(loop_begin) +
                                                         loops[loop_idx].num_blocks);
             assert(static_cast<u32>(loops[parent].end) -
-                   static_cast<u32>(loops[parent].begin) <=
-                   loops[parent].num_blocks);
+                static_cast<u32>(loops[parent].begin) <=
+                loops[parent].num_blocks);
 
             loops[loop_idx].begin = loops[loop_idx].end = loop_begin;
         };
@@ -869,13 +866,13 @@ typename Analyzer<Adaptor, CompilerType>::LivenessInfo &
             adaptor->block_set_info(block_ref, block_idx);
         }
 
-  assert(static_cast<u32>(loops[0].end) == block_rpo.size());
-}
+        assert(static_cast<u32>(loops[0].end) == block_rpo.size());
+    }
 
-template<IRAdaptor Adaptor, typename CompilerType>
-void Analyzer<Adaptor,CompilerType>::build_rpo_block_order(
-    util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &out) const noexcept {
-  out.clear();
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::build_rpo_block_order(
+        util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &out) const noexcept {
+        out.clear();
 
         u32 num_blocks = 0;
         {
@@ -1006,14 +1003,14 @@ void Analyzer<Adaptor,CompilerType>::build_rpo_block_order(
             }
 
 #ifndef NDEBUG
-    // In debug builds, reset block index of unreachable blocks.
-    for (IRBlockRef cur : adaptor->cur_blocks()) {
-      if (adaptor->block_info2(cur) == 0) {
-        adaptor->block_set_info(cur, 0xFFFF'FFFF);
-      }
-    }
+            // In debug builds, reset block index of unreachable blocks.
+            for (IRBlockRef cur: adaptor->cur_blocks()) {
+                if (adaptor->block_info2(cur) == 0) {
+                    adaptor->block_set_info(cur, 0xFFFF'FFFF);
+                }
+            }
 #endif
-  }
+        }
 
 #ifdef TPDE_LOGGING
         TPDE_LOG_TRACE("Finished building RPO for blocks:");
@@ -1023,15 +1020,15 @@ void Analyzer<Adaptor,CompilerType>::build_rpo_block_order(
 #endif
     }
 
-template <IRAdaptor Adaptor, typename CompilerType>
-void Analyzer<Adaptor, CompilerType>::identify_loops(
-    const util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &block_rpo,
-    util::SmallVector<u32, SMALL_BLOCK_NUM> &loop_parent,
-    util::SmallBitSet<256> &loop_heads) const noexcept {
-  loop_parent.clear();
-  loop_parent.resize(block_rpo.size());
-  loop_heads.clear();
-  loop_heads.resize(block_rpo.size());
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::identify_loops(
+        const util::SmallVector<IRBlockRef, SMALL_BLOCK_NUM> &block_rpo,
+        util::SmallVector<u32, SMALL_BLOCK_NUM> &loop_parent,
+        util::SmallBitSet<256> &loop_heads) const noexcept {
+        loop_parent.clear();
+        loop_parent.resize(block_rpo.size());
+        loop_heads.clear();
+        loop_heads.resize(block_rpo.size());
 
         // Implement the modified algorithm from Wei et al.: A New Algorithm for
         // Identifying Loops in Decompilation
@@ -1179,418 +1176,794 @@ void Analyzer<Adaptor, CompilerType>::identify_loops(
                     state.state = 1;
                     goto loop_inner;
                 }
-                }
+            }
         }
 
         for (u32 i = 0; i < block_rpo.size(); ++i) {
-          auto &info = block_infos[i];
-          if (info.iloop_header != 0) {
-            loop_parent[i] = info.iloop_header;
-            loop_heads.mark_set(info.iloop_header);
-          }
-          if (info.self_loop) {
-              loop_heads.mark_set(i);
-          }
-  }
-}
-
-template<IRAdaptor Adaptor, typename CompilerType>
-void Analyzer<Adaptor, CompilerType>::compute_precise_liveness() noexcept {
-    // todo(salto): irreducible loops?
-    TPDE_LOG_TRACE("Starting Precise Liveness Analysis");
-    const u32 num_blocks = static_cast<u32>(block_layout.size());
-    // if the next use is "across" a loop, assign a penaltiy to encorouge
-    // spilling this var before the loop.
-
-    // todo(salto): think about epoch system like in og liveness analysis?
-    precise_liveness.resize(num_blocks);
-    for (auto &pli: precise_liveness) {
-        pli.next_uses.clear();
-        pli.live_through.clear();
+            auto &info = block_infos[i];
+            if (info.iloop_header != 0) {
+                loop_parent[i] = info.iloop_header;
+                loop_heads.mark_set(info.iloop_header);
+            }
+            if (info.self_loop) {
+                loop_heads.mark_set(i);
+            }
+        }
     }
-    // Ensure spilled_values is sized appropriately
-    // todo(salto): fix
-    spilled_values.resize(liveness_max_value + 1);
-    spilled_values.zero();
-    value_parts_cache.resize(liveness_max_value + 1);
 
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::compute_precise_liveness() noexcept {
+        // todo(salto): irreducible loops?
+        TPDE_LOG_TRACE("Starting Precise Liveness Analysis");
+        const u32 num_blocks = static_cast<u32>(block_layout.size());
+        // if the next use is "across" a loop, assign a penaltiy to encorouge
+        // spilling this var before the loop.
 
-    // Build DFS order that skips loop/back edges (successors already on
-    // stack).
-    util::SmallBitSet<SMALL_BLOCK_NUM> dfs_on_stack;
-    dfs_on_stack.resize(num_blocks);
-    util::SmallBitSet<SMALL_BLOCK_NUM> dfs_visited;
-    dfs_visited.resize(num_blocks);
-    util::SmallVector<u32, SMALL_BLOCK_NUM> postorder;
-    postorder.reserve(num_blocks);
-    util::SmallVector<util::SmallVector<u32, 4>, SMALL_BLOCK_NUM> non_loop_succs;
-    non_loop_succs.resize(num_blocks);
-
-    const auto dfs = [&](auto &&self, const u32 block_idx) -> void {
-        dfs_on_stack.mark_set(block_idx); // on stack
-        const IRBlockRef block = block_layout[block_idx];
-        for (const IRBlockRef succ_ref : adaptor->block_succs(block)) {
-      const u32 succ_idx = adaptor->block_info(succ_ref);
-      if (dfs_on_stack.is_set(succ_idx)) {
-        // loop/back edge, ignore for this analysis
-        continue;
-      }
-      non_loop_succs[block_idx].push_back(succ_idx);
-      if (!dfs_visited.is_set(succ_idx)) {
-        self(self, succ_idx);
-      }
-    }
-    dfs_on_stack.mark_unset(block_idx);
-    dfs_visited.mark_set(block_idx);
-    postorder.push_back(block_idx);
-  };
-
-  dfs(dfs, 0);
-
-
-    const auto is_phi_def = [this](u32 block_index, u32 firstUse) {
-        // all phis are considered the only 0th instruction so firstUse ==
-        // DEF_BIT + 0 means it's a phi def.
-        return this->block_has_phis(static_cast<BlockIndex>(block_index)) &&
-               firstUse == DEF_BIT;
-    };
-
-    const auto is_live_in = [&](const u32 block_idx,
-                                const ValLocalIdx val_idx) noexcept {
-        const auto &pli = precise_liveness[block_idx];
-        const auto it = pli.next_uses.find(val_idx);
-        if (it == pli.next_uses.end()) {
-            // should be small
-            for (const auto &entry: pli.live_through) {
-                if (entry.first == val_idx) {
-                    return true;
-                }
-            }
-            return false;
+        // todo(salto): think about epoch system like in og liveness analysis?
+        precise_liveness.resize(num_blocks);
+        for (auto &pli: precise_liveness) {
+            pli.next_uses.clear();
+            pli.live_through.clear();
         }
-        const auto &vec = it->second;
-        if (vec.empty()) {
-            return false;
-        }
-        const auto first = vec.front();
-        if (first == INF) {
-            return false;
-        }
-        // values defined in the block are never live-in.
-        return (first & DEF_BIT) == 0;
-    };
-
-    for (u32 order_idx = 0; order_idx < postorder.size(); ++order_idx) {
-        const u32 block_idx = postorder[order_idx];
-        const u32 cur_loop_idx = block_loop_map[block_idx];
-        const IRBlockRef block = block_layout[block_idx];
-        const bool has_phis = true;
-
-        auto &pli = precise_liveness[block_idx];
+        // Ensure spilled_values is sized appropriately
+        // todo(salto): fix
+        spilled_values.resize(liveness_max_value + 1);
+        spilled_values.zero();
+        value_parts_cache.resize(liveness_max_value + 1);
 
 
-        for (const IRValueRef phi: adaptor->block_phis(block)) {
-            if (adaptor->val_ignore_in_liveness_analysis(phi)) {
-                continue;
-            }
-            pli.next_uses[adaptor->val_local_idx(phi)].push_back(DEF_BIT);
-        }
-        u32 inst_i = 0;
-        for (const auto &inst: adaptor->block_insts(block)) {
-            for (const IRValueRef operand: adaptor->inst_operands(inst)) {
-                if (adaptor->val_ignore_in_liveness_analysis(operand)) {
+        // Build DFS order that skips loop/back edges (successors already on
+        // stack).
+        util::SmallBitSet<SMALL_BLOCK_NUM> dfs_on_stack;
+        dfs_on_stack.resize(num_blocks);
+        util::SmallBitSet<SMALL_BLOCK_NUM> dfs_visited;
+        dfs_visited.resize(num_blocks);
+        util::SmallVector<u32, SMALL_BLOCK_NUM> postorder;
+        postorder.reserve(num_blocks);
+        util::SmallVector<util::SmallVector<u32, 4>, SMALL_BLOCK_NUM> non_loop_succs;
+        non_loop_succs.resize(num_blocks);
+
+        const auto dfs = [&](auto &&self, const u32 block_idx) -> void {
+            dfs_on_stack.mark_set(block_idx); // on stack
+            const IRBlockRef block = block_layout[block_idx];
+            for (const IRBlockRef succ_ref: adaptor->block_succs(block)) {
+                const u32 succ_idx = adaptor->block_info(succ_ref);
+                if (dfs_on_stack.is_set(succ_idx)) {
+                    // loop/back edge, ignore for this analysis
                     continue;
                 }
-                const auto val_idx = adaptor->val_local_idx(operand);
-                if (!pli.next_uses[val_idx].empty() &&
-                    pli.next_uses[val_idx].back() ==
-                    static_cast<u32>(inst_i) + has_phis)[[unlikely]] {
-                    //todo check if this ever happens
-                    continue;
-                }
-
-                pli.next_uses[val_idx].push_back(static_cast<u32>(inst_i) + has_phis);
-            }
-
-            // Register definitions with DEF_BIT.
-            for (const IRValueRef res: adaptor->inst_results(inst)) {
-                if (adaptor->val_ignore_in_liveness_analysis(res)) {
-                    continue;
-                }
-                pli.next_uses[adaptor->val_local_idx(res)].push_back(DEF_BIT | (static_cast<u32>(inst_i) + has_phis));
-            }
-            ++inst_i;
-        }
-        assert(inst_i + has_phis < LOOP_EXIT_PENALTY &&
-            "block is larger than the loop exit penalty, spilling will be "
-            "suboptimal");
-        const u32 block_span_with_phis = inst_i + has_phis;
-        const auto is_loop_exit_edge = [&](const u32 succ_idx) -> bool {
-            const u32 succ_loop_idx = block_loop_map[succ_idx];
-            if (succ_loop_idx == cur_loop_idx) {
-                return false;
-            }
-
-            // different loop on the same level
-            if (loops[succ_loop_idx].level == loops[cur_loop_idx].level) {
-                return true;
-            }
-
-            auto loop_it = cur_loop_idx;
-            while (loop_it != 0u) {
-                loop_it = loops[loop_it].parent;
-                if (loop_it == succ_loop_idx) {
-                    return true;
+                non_loop_succs[block_idx].push_back(succ_idx);
+                if (!dfs_visited.is_set(succ_idx)) {
+                    self(self, succ_idx);
                 }
             }
-
-            return false;
+            dfs_on_stack.mark_unset(block_idx);
+            dfs_visited.mark_set(block_idx);
+            postorder.push_back(block_idx);
         };
 
-        const auto add_phi_incoming = [&](const u32 succ_idx,
-                                          const IRBlockRef succ_ref) {
-            const u32 exit_penalty =
-                    is_loop_exit_edge(succ_idx) ? LOOP_EXIT_PENALTY : 0u;
+        dfs(dfs, 0);
 
-            for (const IRValueRef phi: adaptor->block_phis(succ_ref)) {
-                const auto phi_ref = adaptor->val_as_phi(phi);
-                const u32 slot_count = phi_ref.incoming_count();
-                for (u32 i = 0; i < slot_count; ++i) {
-                    if (phi_ref.incoming_block_for_slot(i) != block) {
+
+        const auto is_phi_def = [this](u32 block_index, u32 firstUse) {
+            // all phis are considered the only 0th instruction so firstUse ==
+            // DEF_BIT + 0 means it's a phi def.
+            return this->block_has_phis(static_cast<BlockIndex>(block_index)) &&
+                   firstUse == DEF_BIT;
+        };
+
+        const auto is_live_in = [&](const u32 block_idx,
+                                    const ValLocalIdx val_idx) noexcept {
+            const auto &pli = precise_liveness[block_idx];
+            const auto it = pli.next_uses.find(val_idx);
+            if (it == pli.next_uses.end()) {
+                // should be small
+                for (const auto &entry: pli.live_through) {
+                    if (entry.first == val_idx) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            const auto &vec = it->second;
+            if (vec.empty()) {
+                return false;
+            }
+            const auto first = vec.front();
+            if (first == INF) {
+                return false;
+            }
+            // values defined in the block are never live-in.
+            return (first & DEF_BIT) == 0;
+        };
+
+        for (u32 order_idx = 0; order_idx < postorder.size(); ++order_idx) {
+            const u32 block_idx = postorder[order_idx];
+            const u32 cur_loop_idx = block_loop_map[block_idx];
+            const IRBlockRef block = block_layout[block_idx];
+            const bool has_phis = true;
+
+            auto &pli = precise_liveness[block_idx];
+
+
+            for (const IRValueRef phi: adaptor->block_phis(block)) {
+                if (adaptor->val_ignore_in_liveness_analysis(phi)) {
+                    continue;
+                }
+                pli.next_uses[adaptor->val_local_idx(phi)].push_back(DEF_BIT);
+            }
+            u32 inst_i = 0;
+            for (const auto &inst: adaptor->block_insts(block)) {
+                for (const IRValueRef operand: adaptor->inst_operands(inst)) {
+                    if (adaptor->val_ignore_in_liveness_analysis(operand)) {
                         continue;
                     }
-                    const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(i);
-                    if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+                    const auto val_idx = adaptor->val_local_idx(operand);
+                    if (!pli.next_uses[val_idx].empty() &&
+                        pli.next_uses[val_idx].back() ==
+                        static_cast<u32>(inst_i) + has_phis)[[unlikely]] {
+                        //todo check if this ever happens
                         continue;
                     }
-                    const auto incoming_idx = adaptor->val_local_idx(incoming_val);
-                    const auto dist = block_span_with_phis + exit_penalty;
 
-                    if (!pli.next_uses.contains(incoming_idx)) {
-                        pli.next_uses[incoming_idx].push_back(dist);
+                    pli.next_uses[val_idx].push_back(static_cast<u32>(inst_i) + has_phis);
+                }
+
+                // Register definitions with DEF_BIT.
+                for (const IRValueRef res: adaptor->inst_results(inst)) {
+                    if (adaptor->val_ignore_in_liveness_analysis(res)) {
+                        continue;
+                    }
+                    pli.next_uses[adaptor->val_local_idx(res)].push_back(
+                        DEF_BIT | (static_cast<u32>(inst_i) + has_phis));
+                }
+                ++inst_i;
+            }
+            assert(inst_i + has_phis < LOOP_EXIT_PENALTY &&
+                "block is larger than the loop exit penalty, spilling will be "
+                "suboptimal");
+            const u32 block_span_with_phis = inst_i + has_phis;
+            const auto is_loop_exit_edge = [&](const u32 succ_idx) -> bool {
+                const u32 succ_loop_idx = block_loop_map[succ_idx];
+                if (succ_loop_idx == cur_loop_idx) {
+                    return false;
+                }
+
+                // different loop on the same level
+                if (loops[succ_loop_idx].level == loops[cur_loop_idx].level) {
+                    return true;
+                }
+
+                auto loop_it = cur_loop_idx;
+                while (loop_it != 0u) {
+                    loop_it = loops[loop_it].parent;
+                    if (loop_it == succ_loop_idx) {
+                        return true;
+                    }
+                }
+
+                return false;
+            };
+
+            const auto add_phi_incoming = [&](const u32 succ_idx,
+                                              const IRBlockRef succ_ref) {
+                const u32 exit_penalty =
+                        is_loop_exit_edge(succ_idx) ? LOOP_EXIT_PENALTY : 0u;
+
+                for (const IRValueRef phi: adaptor->block_phis(succ_ref)) {
+                    const auto phi_ref = adaptor->val_as_phi(phi);
+                    const u32 slot_count = phi_ref.incoming_count();
+                    for (u32 i = 0; i < slot_count; ++i) {
+                        if (phi_ref.incoming_block_for_slot(i) != block) {
+                            continue;
+                        }
+                        const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(i);
+                        if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+                            continue;
+                        }
+                        const auto incoming_idx = adaptor->val_local_idx(incoming_val);
+                        const auto dist = block_span_with_phis + exit_penalty;
+
+                        if (!pli.next_uses.contains(incoming_idx)) {
+                            pli.next_uses[incoming_idx].push_back(dist);
+                            continue;
+                        }
+
+
+                        // choose the smallest possible distance from all successors
+                        pli.next_uses[incoming_idx].back() =
+                                std::min(pli.next_uses[incoming_idx].back(), dist);
+                    }
+                }
+            };
+
+            for (auto &[k, entries]: pli.next_uses) {
+                entries.push_back(INF);
+            }
+            // Handle PHI definitions at position 0.
+            // Account for PHI uses on all successor edges, including loop/back
+            // edges.
+            for (const IRBlockRef succ_ref: adaptor->block_succs(block)) {
+                const u32 succ_idx = adaptor->block_info(succ_ref);
+                add_phi_incoming(succ_idx, succ_ref);
+            }
+
+            for (const u32 succ_idx: non_loop_succs[block_idx]) {
+                const u32 exit_penalty =
+                        is_loop_exit_edge(succ_idx) ? LOOP_EXIT_PENALTY : 0u;
+
+                assert(succ_idx < precise_liveness.size());
+
+                const auto &succ_info = precise_liveness[succ_idx];
+                for (const auto &entry: succ_info.next_uses) {
+                    const ValLocalIdx val_idx = entry.first;
+
+                    const auto &succ_vec = entry.second;
+                    if (succ_vec.empty()) {
+                        continue;
+                    }
+
+                    u32 succ_first = succ_vec[0];
+                    if (succ_first == INF) {
+                        continue;
+                    }
+                    if ((succ_first & DEF_BIT) != 0) {
+                        // Definition in successor does not require the incoming value.
+                        continue;
+                    }
+                    const u32 dist = block_span_with_phis + exit_penalty + succ_first;
+                    if (!pli.next_uses.contains(val_idx)) {
+                        pli.next_uses[val_idx].push_back(dist);
                         continue;
                     }
 
 
                     // choose the smallest possible distance from all successors
-                    pli.next_uses[incoming_idx].back() =
-                            std::min(pli.next_uses[incoming_idx].back(), dist);
+                    pli.next_uses[val_idx].back() =
+                            std::min(pli.next_uses[val_idx].back(), dist);
                 }
-            }
-        };
-
-        for (auto &[k, entries]: pli.next_uses) {
-            entries.push_back(INF);
-        }
-        // Handle PHI definitions at position 0.
-        // Account for PHI uses on all successor edges, including loop/back
-        // edges.
-        for (const IRBlockRef succ_ref: adaptor->block_succs(block)) {
-            const u32 succ_idx = adaptor->block_info(succ_ref);
-            add_phi_incoming(succ_idx, succ_ref);
-        }
-
-        for (const u32 succ_idx: non_loop_succs[block_idx]) {
-            const u32 exit_penalty =
-                    is_loop_exit_edge(succ_idx) ? LOOP_EXIT_PENALTY : 0u;
-
-            assert(succ_idx < precise_liveness.size());
-
-            const auto &succ_info = precise_liveness[succ_idx];
-            for (const auto &entry: succ_info.next_uses) {
-                const ValLocalIdx val_idx = entry.first;
-
-                const auto &succ_vec = entry.second;
-                if (succ_vec.empty()) {
-                    continue;
-                }
-
-                u32 succ_first = succ_vec[0];
-                if (succ_first == INF) {
-                    continue;
-                }
-                if ((succ_first & DEF_BIT) != 0) {
-                    // Definition in successor does not require the incoming value.
-                    continue;
-                }
-                const u32 dist = block_span_with_phis + exit_penalty + succ_first;
-                if (!pli.next_uses.contains(val_idx)) {
-                    pli.next_uses[val_idx].push_back(dist);
-                    continue;
-                }
-
-
-                // choose the smallest possible distance from all successors
-                pli.next_uses[val_idx].back() =
-                        std::min(pli.next_uses[val_idx].back(), dist);
-            }
-        }
-    }
-
-    // Propagate loop-carried liveness without fixed-point iteration.
-    {
-        util::SmallVector<util::SmallVector<u32, 8>, 16> loop_children;
-        loop_children.resize(loops.size());
-        for (u32 loop_idx = 1; loop_idx < loops.size(); ++loop_idx) {
-            const auto parent = loops[loop_idx].parent;
-            if (parent < loop_children.size()) {
-                loop_children[parent].push_back(loop_idx);
             }
         }
 
-        util::SmallVector<util::SmallVector<u32, SMALL_BLOCK_NUM>, 16> loop_blocks;
-        loop_blocks.resize(loops.size());
-        for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
-            const u32 loop_idx = block_loop_map[block_idx];
-            loop_blocks[loop_idx].push_back(block_idx);
-        }
-
-        const auto ensure_live_in_out =
-                [&](const u32 block_idx,
-                    const util::SmallVector<ValLocalIdx, 16> &live_vals) {
-            if (live_vals.empty()) {
-                return;
-            }
-
-            auto &pli = precise_liveness[block_idx];
-            // todo(salto): optimize
-            const u32 block_span = std::ranges::distance(adaptor->block_insts(
-                                       block_ref(BlockIndex{block_idx}))) +
-                                   block_has_phis(BlockIndex{block_idx});
-
-            for (const auto val_idx: live_vals) {
-                auto it = pli.next_uses.find(val_idx);
-                if (it == pli.next_uses.end()) {
-                    pli.live_through.emplace_back(val_idx, block_span);
-                    continue;
-                }
-                auto &vec = it->second;
-                // live-in and live-out, but not used in the block
-
-                auto &first = vec[0];
-                if (first == INF) {
-                    first = 0;
-                }
-
-                auto &tail = vec.back();
-                if (tail == INF) {
-                    tail = block_span;
-                } else if ((tail & DEF_BIT) != 0) {
-                    vec.push_back(block_span);
-                } else if (tail < block_span) {
-                    tail = block_span;
-                }
-            }
-        };
-
-        const auto loop_tree_dfs = [&](const auto &self,
-                                       const u32 loop_idx) -> void {
-            const auto header_block_idx = static_cast<u32>(loops[loop_idx].begin);
-
-            util::SmallVector<ValLocalIdx, 16> live_loop;
-
-            const auto &header_pl = precise_liveness[header_block_idx];
-            for (const auto phi_instr:
-                 adaptor->block_phis(block_ref(loops[loop_idx].begin))) {
-                // todo(salto): check ignore liveness?
-                const auto phi_def = adaptor->val_local_idx(phi_instr);
-                const auto it = header_pl.next_uses.find(phi_def);
-                if (it == header_pl.next_uses.end()) {
-                    continue;
-                }
-                const auto &vec = it->second;
-                if (!vec.empty() && vec.back() != INF) {
-                    // live_loop.push_back(phi_def);
+        // Propagate loop-carried liveness without fixed-point iteration.
+        {
+            util::SmallVector<util::SmallVector<u32, 8>, 16> loop_children;
+            loop_children.resize(loops.size());
+            for (u32 loop_idx = 1; loop_idx < loops.size(); ++loop_idx) {
+                const auto parent = loops[loop_idx].parent;
+                if (parent < loop_children.size()) {
+                    loop_children[parent].push_back(loop_idx);
                 }
             }
 
-            for (const auto &entry: header_pl.next_uses) {
-                const auto val_idx = entry.first;
-                if (!is_live_in(header_block_idx, val_idx)) {
-                    continue;
-                }
-                /*if (is_phi_def(header_block_idx, entry.second[0])) {
-        continue;
-        }*/
-                live_loop.push_back(val_idx);
+            util::SmallVector<util::SmallVector<u32, SMALL_BLOCK_NUM>, 16> loop_blocks;
+            loop_blocks.resize(loops.size());
+            for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+                const u32 loop_idx = block_loop_map[block_idx];
+                loop_blocks[loop_idx].push_back(block_idx);
             }
 
-            const IRBlockRef header_block = block_layout[header_block_idx];
-            for (const IRValueRef phi: adaptor->block_phis(header_block)) {
-                const auto phi_ref = adaptor->val_as_phi(phi);
-                const u32 slot_count = phi_ref.incoming_count();
-                for (u32 i = 0; i < slot_count; ++i) {
-                    const IRBlockRef incoming_block = phi_ref.incoming_block_for_slot(i);
-                    const u32 incoming_idx = adaptor->block_info(incoming_block);
-                    if (incoming_idx >= block_loop_map.size() || block_loop_map[incoming_idx] != loop_idx) {
+            const auto ensure_live_in_out =
+                    [&](const u32 block_idx,
+                        const util::SmallVector<ValLocalIdx, 16> &live_vals) {
+                if (live_vals.empty()) {
+                    return;
+                }
+
+                auto &pli = precise_liveness[block_idx];
+                // todo(salto): optimize
+                const u32 block_span = std::ranges::distance(adaptor->block_insts(
+                                           block_ref(BlockIndex{block_idx}))) +
+                                       block_has_phis(BlockIndex{block_idx});
+
+                for (const auto val_idx: live_vals) {
+                    auto it = pli.next_uses.find(val_idx);
+                    if (it == pli.next_uses.end()) {
+                        pli.live_through.emplace_back(val_idx, block_span);
                         continue;
                     }
-                    const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(i);
-                    if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+                    auto &vec = it->second;
+                    // live-in and live-out, but not used in the block
+
+                    auto &first = vec[0];
+                    if (first == INF) {
+                        first = 0;
+                    }
+
+                    auto &tail = vec.back();
+                    if (tail == INF) {
+                        tail = block_span;
+                    } else if ((tail & DEF_BIT) != 0) {
+                        vec.push_back(block_span);
+                    } else if (tail < block_span) {
+                        tail = block_span;
+                    }
+                }
+            };
+
+            const auto loop_tree_dfs = [&](const auto &self,
+                                           const u32 loop_idx) -> void {
+                const auto header_block_idx = static_cast<u32>(loops[loop_idx].begin);
+
+                util::SmallVector<ValLocalIdx, 16> live_loop;
+
+                const auto &header_pl = precise_liveness[header_block_idx];
+                for (const auto phi_instr:
+                     adaptor->block_phis(block_ref(loops[loop_idx].begin))) {
+                    // todo(salto): check ignore liveness?
+                    const auto phi_def = adaptor->val_local_idx(phi_instr);
+                    const auto it = header_pl.next_uses.find(phi_def);
+                    if (it == header_pl.next_uses.end()) {
                         continue;
                     }
-                    const auto val_idx = adaptor->val_local_idx(incoming_val);
+                    const auto &vec = it->second;
+                    if (!vec.empty() && vec.back() != INF) {
+                        // live_loop.push_back(phi_def);
+                    }
+                }
+
+                for (const auto &entry: header_pl.next_uses) {
+                    const auto val_idx = entry.first;
+                    if (!is_live_in(header_block_idx, val_idx)) {
+                        continue;
+                    }
+                    /*if (is_phi_def(header_block_idx, entry.second[0])) {
+            continue;
+            }*/
                     live_loop.push_back(val_idx);
                 }
-            }
 
-
-            // Ensure loop-carried values are live through the header as well.
-            std::sort(live_loop.begin(), live_loop.end());
-            ensure_live_in_out(header_block_idx, live_loop);
-
-            util::SmallVector<ValLocalIdx, 16> live_loop_no_header_phis;
-            for (const auto val_idx: live_loop) {
-                auto it = precise_liveness[header_block_idx].next_uses.find(val_idx);
-                if (it == precise_liveness[header_block_idx].next_uses.end() || it->second[0] != (DEF_BIT | 0)) {
-                    live_loop_no_header_phis.push_back(val_idx);
+                const IRBlockRef header_block = block_layout[header_block_idx];
+                for (const IRValueRef phi: adaptor->block_phis(header_block)) {
+                    const auto phi_ref = adaptor->val_as_phi(phi);
+                    const u32 slot_count = phi_ref.incoming_count();
+                    for (u32 i = 0; i < slot_count; ++i) {
+                        const IRBlockRef incoming_block = phi_ref.incoming_block_for_slot(i);
+                        const u32 incoming_idx = adaptor->block_info(incoming_block);
+                        if (incoming_idx >= block_loop_map.size() || block_loop_map[incoming_idx] != loop_idx) {
+                            continue;
+                        }
+                        const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(i);
+                        if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+                            continue;
+                        }
+                        const auto val_idx = adaptor->val_local_idx(incoming_val);
+                        live_loop.push_back(val_idx);
+                    }
                 }
-            }
 
-            for (const auto child_block: loop_blocks[loop_idx]) {
-                if (child_block == header_block_idx) {
+
+                // Ensure loop-carried values are live through the header as well.
+                std::sort(live_loop.begin(), live_loop.end());
+                ensure_live_in_out(header_block_idx, live_loop);
+
+                util::SmallVector<ValLocalIdx, 16> live_loop_no_header_phis;
+                for (const auto val_idx: live_loop) {
+                    auto it = precise_liveness[header_block_idx].next_uses.find(val_idx);
+                    if (it == precise_liveness[header_block_idx].next_uses.end() || it->second[0] != (DEF_BIT | 0)) {
+                        live_loop_no_header_phis.push_back(val_idx);
+                    }
+                }
+
+                for (const auto child_block: loop_blocks[loop_idx]) {
+                    if (child_block == header_block_idx) {
+                        continue;
+                    }
+                    ensure_live_in_out(child_block, live_loop_no_header_phis);
+                }
+
+                for (const auto child_loop: loop_children[loop_idx]) {
+                    const auto child_header = static_cast<u32>(loops[child_loop].begin);
+                    ensure_live_in_out(child_header, live_loop_no_header_phis);
+                    self(self, child_loop);
+                }
+            };
+
+            for (const auto root_loop: loop_children[0]) {
+                loop_tree_dfs(loop_tree_dfs, root_loop);
+            }
+            for (auto &entry: precise_liveness) {
+                std::stable_sort(entry.live_through.begin(), entry.live_through.end(),
+                                 [](const auto &lhs, const auto &rhs) {
+                                     if (lhs.first == rhs.first) {
+                                         return lhs.second < rhs.second;
+                                     }
+                                     return lhs.first < rhs.first;
+                                 });
+            }
+        }
+
+        // Calculate per-block register pressure using interval overlap
+        block_pressure.resize(num_blocks);
+        for (auto &bp: block_pressure) {
+            bp = BlockPressure{};
+        }
+
+        for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
+            const auto &pli = precise_liveness[block_idx];
+            const IRBlockRef block = block_layout[block_idx];
+            const bool has_phis = block_has_phis(block);
+
+            util::SmallVector<std::pair<ValueInterval, ValLocalIdx>, 64> intervals;
+
+            for (const auto &[val_idx, uses]: pli.next_uses) {
+                if (static_cast<u32>(val_idx) >= value_parts_cache.size()) {
                     continue;
                 }
-                ensure_live_in_out(child_block, live_loop_no_header_phis);
+
+                u32 first = INF;
+                for (const auto use: uses) {
+                    if (use != INF) {
+                        first = use;
+                        break;
+                    }
+                }
+
+                if (first == INF) {
+                    continue;
+                }
+
+                u32 interval_first;
+                if (first & DEF_BIT) {
+                    interval_first = INF;
+                    for (const auto use: uses) {
+                        if (use != INF && (use & DEF_BIT) == 0) {
+                            interval_first = use;
+                            break;
+                        }
+                    }
+                } else {
+                    interval_first = 0;
+                }
+
+                if (interval_first == INF) {
+                    continue;
+                }
+
+                u32 interval_last = 0;
+                for (u32 i = uses.size(); i-- > 0;) {
+                    if (uses[i] != INF) {
+                        interval_last = uses[i];
+                        break;
+                    }
+                }
+
+                intervals.emplace_back(
+                    ValueInterval{.first = interval_first, .last = interval_last},
+                    val_idx);
+            }
+            for (const auto &[val_idx, live_out]: pli.live_through) {
+                intervals.emplace_back(
+                    ValueInterval{.first = 0, .last = live_out},
+                    val_idx);
             }
 
-            for (const auto child_loop: loop_children[loop_idx]) {
-                const auto child_header = static_cast<u32>(loops[child_loop].begin);
-                ensure_live_in_out(child_header, live_loop_no_header_phis);
-                self(self, child_loop);
+            if (intervals.empty()) {
+                continue;
             }
+
+            const u32 block_span =
+                    std::ranges::distance(adaptor->block_insts(block)) + (has_phis ? 1 : 0);
+
+            struct Event {
+                u32 pos;
+                i32 delta;
+                u32 gp_parts;
+                u32 fp_parts;
+            };
+
+            util::SmallVector<Event, 128> events;
+            // todo salto optimzie this bullshit
+            for (const auto &[interval, val_idx]: intervals) {
+                const auto parts = ensure_parts_cached(val_idx);
+                const u32 gp_parts = parts.gp_regs;
+                const u32 fp_parts = parts.fp_regs;
+
+                events.push_back(Event{
+                    .pos = interval.first,
+                    .delta = 1,
+                    .gp_parts = gp_parts,
+                    .fp_parts = fp_parts
+                });
+                events.push_back(Event{
+                    .pos = interval.last + 1,
+                    .delta = -1,
+                    .gp_parts = gp_parts,
+                    .fp_parts = fp_parts
+                });
+            }
+
+            std::sort(events.begin(), events.end(), [](const Event &a, const Event &b) {
+                return a.pos < b.pos;
+            });
+
+            u32 gp_pressure = 0;
+            u32 fp_pressure = 0;
+            u32 max_gp = 0;
+            u32 max_fp = 0;
+
+            u32 event_idx = 0;
+            for (u32 pos = 0; pos <= block_span; ++pos) {
+                while (event_idx < events.size() && events[event_idx].pos == pos) {
+                    gp_pressure += events[event_idx].delta * events[event_idx].gp_parts;
+                    fp_pressure += events[event_idx].delta * events[event_idx].fp_parts;
+                    ++event_idx;
+                }
+
+                if (pos < block_span) {
+                    max_gp = std::max(max_gp, gp_pressure);
+                    max_fp = std::max(max_fp, fp_pressure);
+                }
+            }
+
+            block_pressure[block_idx].gp_pressure = max_gp;
+            block_pressure[block_idx].fp_pressure = max_fp;
+        }
+        /*
+            uint64_t total_values = 0;
+            uint64_t total_values_liveness = 0;
+            for (auto i = 0; i < num_blocks; ++i) {
+                std::printf("[");
+                for (const auto &entry: precise_liveness[i].next_uses) {
+                    std::printf("%d,", entry.second.size() - 1);
+                }
+                std::printf("],\n");
+            }*/
+
+        TPDE_LOG_TRACE("Precise Liveness Analysis completed");
+    }
+
+    template<IRAdaptor Adaptor, typename CompilerType>
+    std::pair<u32, u32> Analyzer<Adaptor, CompilerType>::get_current_and_next_use(
+        const PreciseLivenessInfo &pli, const ValLocalIdx val_idx, const u32 instr_idx) {
+        // calculate current (before idx) and next use (after execution of the
+        // current instruction). operands that die with the instruction would be
+        // [idx, INF].
+        const auto idx = instr_idx + 1; // Phis are the zeroth instruction
+
+        // Find the next_uses vector for this val_idx
+        const auto it = pli.next_uses.find(val_idx);
+        if (it == pli.next_uses.end()) {
+            auto entr = std::lower_bound(pli.live_through.begin(), pli.live_through.end(), val_idx,
+                                         [](const auto &lhs, const auto &rhs) {
+                                             return lhs.first < rhs;
+                                         });
+            if (entr == pli.live_through.end() || entr->first != val_idx) {
+                // Value not found in liveness info, return INF (no uses)
+                return {INF, INF};
+            }
+
+            return {entr->second, entr->second};
+        }
+
+        const auto &vec = it->second;
+
+#ifndef NDEBUG
+        // Verify the vector is sorted (ignoring DEF_BIT) in debug builds
+        for (u32 i = 1; i < vec.size(); ++i) {
+            const u32 prev_val = vec[i - 1] & ~DEF_BIT;
+            const u32 curr_val = vec[i] & ~DEF_BIT;
+            assert((prev_val <= curr_val || curr_val == (INF & ~DEF_BIT)) &&
+                "get_current_and_next_use: vector is not sorted");
+        }
+#endif
+
+        // results can't be spilled before they are defined, so we must avoid
+        // spilling them, therefore return 0.
+        if (vec[0] == (idx | DEF_BIT)) {
+            assert(vec.size() >= 2);
+            return {0u, vec[1]};
+        }
+        if (vec[0] == INF) {
+            return {INF, INF};
+        }
+        if ((!(vec[0] & DEF_BIT) && vec[0] > idx)) {
+            return {vec[0], vec[0]};
+        } else if (!(vec[0] & DEF_BIT) && vec[0] == idx) {
+            assert(vec.size() >= 2);
+            return {vec[0], vec[1]};
+        }
+
+        // Binary search for the first element >= idx (ignoring DEF_BIT)
+        // We start from index 1 since we already checked vec[0] above
+        const auto vec_it = std::lower_bound(
+            vec.begin() + 1, vec.end(), idx, [](const u32 dist, const u32 target) {
+                // Compare distances, masking off the DEF_BIT
+                return (dist & ~DEF_BIT) < target;
+            });
+
+        if (vec_it == vec.end()) {
+            return {INF, INF};
+        }
+
+        const u32 dist = *vec_it;
+        if (dist == INF) {
+            return {INF, INF};
+        }
+        // vec[i+1] must exist for the live-out entry
+        const u32 next_idx = std::distance(vec.begin(), vec_it) + 1;
+        if (next_idx >= vec.size()) {
+            return {dist, INF};
+        }
+        return {dist, dist == idx ? vec[next_idx] : dist};
+    };
+
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
+        // Based on "Register Spilling and Live-Range Splitting for
+        // SSA-Form Programs" by Hack et al. 2008
+        // Simplified since we don't store reload or spill positions.
+        TPDE_LOG_TRACE("Starting Spill Analysis");
+
+        // todo(salto): realistically basically no values will have parts from  2
+        // different banks.
+        //  so optimize for this case.
+
+
+        // Build simple PHI coalescing webs using union-find.
+        // We only merge single-part PHIs with single-part incoming values that are
+        // compatible and non-overlapping.
+
+        util::SmallVector<u8, SMALL_VALUE_NUM> web_rank;
+        util::SmallVector<util::SmallVector<u32, 2>, SMALL_VALUE_NUM> web_phi_blocks;
+
+        util::SmallVector<BlockIndex, SMALL_VALUE_NUM> val_def_blocks;
+        web_parent.resize(liveness_max_value + 1);
+        web_rank.resize(liveness_max_value + 1, 0u);
+        web_phi_blocks.resize(liveness_max_value + 1);
+        web_members.resize(liveness_max_value + 1);
+        val_def_blocks.resize(liveness_max_value + 1, INVALID_BLOCK_IDX);
+
+        for (u32 i = 0; i <= liveness_max_value; ++i) {
+            web_members[i].clear();
+            if (i < liveness.size() && liveness[i].epoch == liveness_epoch) {
+                web_parent[i] = i;
+                web_members[i].push_back(static_cast<ValLocalIdx>(i));
+            } else {
+                web_parent[i] = INVALID_WEB_IDX;
+            }
+        }
+
+        if (!block_layout.empty()) {
+            const BlockIndex entry_block_idx = BlockIndex{0};
+            for (const IRValueRef arg: adaptor->cur_args()) {
+                if (adaptor->val_ignore_in_liveness_analysis(arg)) {
+                    continue;
+                }
+
+                const ValLocalIdx arg_idx = adaptor->val_local_idx(arg);
+                const u32 arg_idx_u32 = static_cast<u32>(arg_idx);
+                if (arg_idx_u32 >= val_def_blocks.size() ||
+                    web_parent[arg_idx_u32] == INVALID_WEB_IDX) {
+                    continue;
+                }
+                val_def_blocks[arg_idx_u32] = entry_block_idx;
+            }
+        }
+
+
+        for (u32 block_idx_u32 = 0; block_idx_u32 < block_layout.size(); ++block_idx_u32) {
+            const IRBlockRef block = block_layout[block_idx_u32];
+            for (const IRValueRef phi: adaptor->block_phis(block)) {
+                if (adaptor->val_ignore_in_liveness_analysis(phi)) {
+                    continue;
+                }
+
+                const u32 phi_idx_u32 = static_cast<u32>(adaptor->val_local_idx(phi));
+                if (phi_idx_u32 >= web_phi_blocks.size() ||
+                    web_parent[phi_idx_u32] == INVALID_WEB_IDX) {
+                    continue;
+                }
+
+                val_def_blocks[phi_idx_u32] = BlockIndex{block_idx_u32};
+                web_phi_blocks[phi_idx_u32].push_back(block_idx_u32);
+            }
+
+            for (const IRInstRef inst: adaptor->block_insts(block)) {
+                for (const IRValueRef result: adaptor->inst_results(inst)) {
+                    if (adaptor->val_ignore_in_liveness_analysis(result)) {
+                        continue;
+                    }
+
+                    const ValLocalIdx result_idx = adaptor->val_local_idx(result);
+                    const u32 result_idx_u32 = static_cast<u32>(result_idx);
+                    if (result_idx_u32 >= val_def_blocks.size() ||
+                        web_parent[result_idx_u32] == INVALID_WEB_IDX) {
+                        continue;
+                    }
+
+                    val_def_blocks[result_idx_u32] = BlockIndex{block_idx_u32};
+                }
+            }
+        }
+
+        const auto roots_share_phi_def_block =
+                [&](const u32 lhs_root, const u32 rhs_root) -> bool {
+            const auto &lhs_blocks = web_phi_blocks[lhs_root];
+            const auto &rhs_blocks = web_phi_blocks[rhs_root];
+            for (const u32 rhs_block_idx: rhs_blocks) {
+                if (std::ranges::find(lhs_blocks, rhs_block_idx) != lhs_blocks.end()) {
+                    return true;
+                }
+            }
+            return false;
         };
 
-        for (const auto root_loop: loop_children[0]) {
-            loop_tree_dfs(loop_tree_dfs, root_loop);
-        }
-        for (auto &entry: precise_liveness) {
-            std::stable_sort(entry.live_through.begin(), entry.live_through.end(),
-                             [](const auto &lhs, const auto &rhs) {
-                                 if (lhs.first == rhs.first) {
-                                     return lhs.second < rhs.second;
-                                 }
-                                 return lhs.first < rhs.first;
-                             });
-        }
-    }
+        const auto merge_phi_blocks = [&](const u32 dst_root, const u32 src_root) {
+            auto &dst_blocks = web_phi_blocks[dst_root];
+            auto &src_blocks = web_phi_blocks[src_root];
+            for (const u32 src_block_idx: src_blocks) {
+                if (std::ranges::find(dst_blocks, src_block_idx) == dst_blocks.end()) {
+                    dst_blocks.push_back(src_block_idx);
+                }
+            }
+            src_blocks.clear();
+        };
 
-    // Calculate per-block register pressure using interval overlap
-    block_pressure.resize(num_blocks);
-    for (auto &bp: block_pressure) {
-        bp = BlockPressure{};
-    }
+        const auto merge_web_members = [&](const u32 dst_root, const u32 src_root) {
+            auto &dst_members = web_members[dst_root];
+            auto &src_members = web_members[src_root];
+            for (const ValLocalIdx src_member: src_members) {
+                if (std::ranges::find(dst_members, src_member) == dst_members.end()) {
+                    dst_members.push_back(src_member);
+                }
+            }
+            src_members.clear();
+        };
 
-    for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
-        const auto &pli = precise_liveness[block_idx];
-        const IRBlockRef block = block_layout[block_idx];
-        const bool has_phis = block_has_phis(block);
+        const auto is_live_in = [&](const u32 block_idx,
+                                    const ValLocalIdx val_idx) noexcept {
+            if (block_idx >= precise_liveness.size()) {
+                return false;
+            }
 
-        util::SmallVector<std::pair<ValueInterval, ValLocalIdx>, 64> intervals;
+            const auto &pli = precise_liveness[block_idx];
+            const auto it = pli.next_uses.find(val_idx);
+            if (it == pli.next_uses.end()) {
+                auto entr = std::lower_bound(pli.live_through.begin(), pli.live_through.end(), val_idx,
+                                             [](const auto &lhs, const auto &rhs) {
+                                                 return lhs.first < rhs;
+                                             });
+                if (entr == pli.live_through.end() || entr->first != val_idx) {
+                    return false;
+                }
+                return true;
+            }
 
-        for (const auto &[val_idx, uses]: pli.next_uses) {
-            if (static_cast<u32>(val_idx) >= value_parts_cache.size()) {
-                continue;
+            const auto &vec = it->second;
+            if (vec.empty()) {
+                return false;
+            }
+
+            for (const u32 entry: vec) {
+                if (entry == INF) {
+                    continue;
+                }
+                return (entry & DEF_BIT) == 0;
+            }
+
+            return false;
+        };
+
+
+        const auto precise_block_interval =
+                [&](const u32 block_idx,
+                    const ValLocalIdx val_idx,
+                    u32 &interval_first,
+                    u32 &interval_last) -> bool {
+            if (block_idx >= precise_liveness.size()) {
+                return false;
+            }
+
+            const auto &pli = precise_liveness[block_idx];
+            const auto it = pli.next_uses.find(val_idx);
+            if (it == pli.next_uses.end()) {
+                return false;
+            }
+
+            const auto &uses = it->second;
+            if (uses.empty()) {
+                return false;
             }
 
             u32 first = INF;
@@ -1600,13 +1973,11 @@ void Analyzer<Adaptor, CompilerType>::compute_precise_liveness() noexcept {
                     break;
                 }
             }
-
             if (first == INF) {
-                continue;
+                return false;
             }
 
-            u32 interval_first;
-            if (first & DEF_BIT) {
+            if ((first & DEF_BIT) != 0) {
                 interval_first = INF;
                 for (const auto use: uses) {
                     if (use != INF && (use & DEF_BIT) == 0) {
@@ -1614,1152 +1985,781 @@ void Analyzer<Adaptor, CompilerType>::compute_precise_liveness() noexcept {
                         break;
                     }
                 }
+                if (interval_first == INF) {
+                    return true;
+                }
             } else {
+                // live-in values occupy the register from block entry
                 interval_first = 0;
             }
 
-            if (interval_first == INF) {
-                continue;
-            }
-
-            u32 interval_last = 0;
+            interval_last = INF;
             for (u32 i = uses.size(); i-- > 0;) {
                 if (uses[i] != INF) {
-                    interval_last = uses[i];
+                    interval_last = uses[i] & ~DEF_BIT;
                     break;
                 }
             }
 
-            intervals.emplace_back(
-                ValueInterval{.first = interval_first, .last = interval_last},
-                val_idx);
-        }
-        for (const auto &[val_idx, live_out]: pli.live_through) {
-            intervals.emplace_back(
-                ValueInterval{.first = 0, .last = live_out},
-                val_idx);
-        }
-
-        if (intervals.empty()) {
-            continue;
-        }
-
-        const u32 block_span =
-                std::ranges::distance(adaptor->block_insts(block)) + (has_phis ? 1 : 0);
-
-        struct Event {
-            u32 pos;
-            i32 delta;
-            u32 gp_parts;
-            u32 fp_parts;
+            return interval_last != INF;
         };
 
-        util::SmallVector<Event, 128> events;
-        // todo salto optimzie this bullshit
-        for (const auto &[interval, val_idx]: intervals) {
-            const auto parts = ensure_parts_cached(val_idx);
-            const u32 gp_parts = parts.gp_regs;
-            const u32 fp_parts = parts.fp_regs;
-
-            events.push_back(Event{
-                .pos = interval.first,
-                .delta = 1,
-                .gp_parts = gp_parts,
-                .fp_parts = fp_parts
-            });
-            events.push_back(Event{
-                .pos = interval.last + 1,
-                .delta = -1,
-                .gp_parts = gp_parts,
-                .fp_parts = fp_parts
-            });
-        }
-
-        std::sort(events.begin(), events.end(), [](const Event &a, const Event &b) {
-            return a.pos < b.pos;
-        });
-
-        u32 gp_pressure = 0;
-        u32 fp_pressure = 0;
-        u32 max_gp = 0;
-        u32 max_fp = 0;
-
-        u32 event_idx = 0;
-        for (u32 pos = 0; pos <= block_span; ++pos) {
-            while (event_idx < events.size() && events[event_idx].pos == pos) {
-                gp_pressure += events[event_idx].delta * events[event_idx].gp_parts;
-                fp_pressure += events[event_idx].delta * events[event_idx].fp_parts;
-                ++event_idx;
+        const auto live_ranges_overlap =
+                [&](const ValLocalIdx lhs_idx, const ValLocalIdx rhs_idx) -> bool {
+            const u32 lhs = static_cast<u32>(lhs_idx);
+            const u32 rhs = static_cast<u32>(rhs_idx);
+            if (lhs >= liveness.size() || rhs >= liveness.size()) {
+                return true;
             }
 
-            if (pos < block_span) {
-                max_gp = std::max(max_gp, gp_pressure);
-                max_fp = std::max(max_fp, fp_pressure);
-            }
-        }
-
-        block_pressure[block_idx].gp_pressure = max_gp;
-        block_pressure[block_idx].fp_pressure = max_fp;
-    }
-    /*
-        uint64_t total_values = 0;
-        uint64_t total_values_liveness = 0;
-        for (auto i = 0; i < num_blocks; ++i) {
-            std::printf("[");
-            for (const auto &entry: precise_liveness[i].next_uses) {
-                std::printf("%d,", entry.second.size() - 1);
-            }
-            std::printf("],\n");
-        }*/
-
-    TPDE_LOG_TRACE("Precise Liveness Analysis completed");
-}
-
-template<IRAdaptor Adaptor, typename CompilerType>
-std::pair<u32, u32> Analyzer<Adaptor, CompilerType>::get_current_and_next_use(
-    const PreciseLivenessInfo &pli, const ValLocalIdx val_idx, const u32 instr_idx) {
-    // calculate current (before idx) and next use (after execution of the
-    // current instruction). operands that die with the instruction would be
-    // [idx, INF].
-    const auto idx = instr_idx + 1; // Phis are the zeroth instruction
-
-    // Find the next_uses vector for this val_idx
-    const auto it = pli.next_uses.find(val_idx);
-    if (it == pli.next_uses.end()) {
-        auto entr = std::lower_bound(pli.live_through.begin(), pli.live_through.end(), val_idx,
-                                     [](const auto &lhs, const auto &rhs) {
-                                         return lhs.first < rhs;
-                                     });
-        if (entr == pli.live_through.end() || entr->first != val_idx) {
-            // Value not found in liveness info, return INF (no uses)
-            return {INF, INF};
-        }
-
-        return {entr->second, entr->second};
-    }
-
-    const auto &vec = it->second;
-
-#ifndef NDEBUG
-  // Verify the vector is sorted (ignoring DEF_BIT) in debug builds
-  for (u32 i = 1; i < vec.size(); ++i) {
-      const u32 prev_val = vec[i - 1] & ~DEF_BIT;
-      const u32 curr_val = vec[i] & ~DEF_BIT;
-      assert((prev_val <= curr_val || curr_val == (INF & ~DEF_BIT)) &&
-          "get_current_and_next_use: vector is not sorted");
-  }
-#endif
-
-  // results can't be spilled before they are defined, so we must avoid
-  // spilling them, therefore return 0.
-  if (vec[0] == (idx | DEF_BIT)) {
-      assert(vec.size() >= 2);
-      return {0u, vec[1]};
-  }
-  if (vec[0] == INF) {
-      return {INF, INF};
-  }
-  if ((!(vec[0] & DEF_BIT) && vec[0] > idx)) {
-    return {vec[0], vec[0]};
-  } else if (!(vec[0] & DEF_BIT) && vec[0] == idx) {
-    assert(vec.size() >= 2);
-    return {vec[0], vec[1]};
-  }
-
-  // Binary search for the first element >= idx (ignoring DEF_BIT)
-  // We start from index 1 since we already checked vec[0] above
-  const auto vec_it = std::lower_bound(
-      vec.begin() + 1, vec.end(), idx, [](const u32 dist, const u32 target) {
-        // Compare distances, masking off the DEF_BIT
-        return (dist & ~DEF_BIT) < target;
-      });
-
-  if (vec_it == vec.end()) {
-    return {INF, INF};
-  }
-
-  const u32 dist = *vec_it;
-  if (dist == INF) {
-    return {INF, INF};
-  }
-  // vec[i+1] must exist for the live-out entry
-  const u32 next_idx = std::distance(vec.begin(), vec_it) + 1;
-  if (next_idx >= vec.size()) {
-    return {dist, INF};
-  }
-  return {dist, dist == idx ? vec[next_idx] : dist};
-};
-
-template <IRAdaptor Adaptor, typename CompilerType>
-void Analyzer<Adaptor, CompilerType>::compute_spills() noexcept {
-    // Based on "Register Spilling and Live-Range Splitting for
-    // SSA-Form Programs" by Hack et al. 2008
-    // Simplified since we don't store reload or spill positions.
-    TPDE_LOG_TRACE("Starting Spill Analysis");
-
-    // todo(salto): realistically basically no values will have parts from  2
-    // different banks.
-    //  so optimize for this case.
-
-
-    // Build simple PHI coalescing webs using union-find.
-    // We only merge single-part PHIs with single-part incoming values that are
-    // compatible and non-overlapping.
-
-    util::SmallVector<u8, SMALL_VALUE_NUM> web_rank;
-    util::SmallVector<util::SmallVector<u32, 2>, SMALL_VALUE_NUM> web_phi_blocks;
-
-    util::SmallVector<BlockIndex, SMALL_VALUE_NUM> val_def_blocks;
-    web_parent.resize(liveness_max_value + 1);
-    web_rank.resize(liveness_max_value + 1, 0u);
-    web_phi_blocks.resize(liveness_max_value + 1);
-    web_members.resize(liveness_max_value + 1);
-    val_def_blocks.resize(liveness_max_value + 1, INVALID_BLOCK_IDX);
-
-    for (u32 i = 0; i <= liveness_max_value; ++i) {
-        web_members[i].clear();
-        if (i < liveness.size() && liveness[i].epoch == liveness_epoch) {
-            web_parent[i] = i;
-            web_members[i].push_back(static_cast<ValLocalIdx>(i));
-        } else {
-            web_parent[i] = INVALID_WEB_IDX;
-        }
-    }
-
-    if (!block_layout.empty()) {
-        const BlockIndex entry_block_idx = BlockIndex{0};
-        for (const IRValueRef arg: adaptor->cur_args()) {
-            if (adaptor->val_ignore_in_liveness_analysis(arg)) {
-                continue;
+            const auto &lhs_liveness = liveness[lhs];
+            const auto &rhs_liveness = liveness[rhs];
+            if (lhs_liveness.epoch != liveness_epoch ||
+                rhs_liveness.epoch != liveness_epoch) {
+                return true;
             }
 
-            const ValLocalIdx arg_idx = adaptor->val_local_idx(arg);
-            const u32 arg_idx_u32 = static_cast<u32>(arg_idx);
-            if (arg_idx_u32 >= val_def_blocks.size() ||
-                web_parent[arg_idx_u32] == INVALID_WEB_IDX) {
-                continue;
-            }
-            val_def_blocks[arg_idx_u32] = entry_block_idx;
-        }
-    }
-
-
-    for (u32 block_idx_u32 = 0; block_idx_u32 < block_layout.size(); ++block_idx_u32) {
-        const IRBlockRef block = block_layout[block_idx_u32];
-        for (const IRValueRef phi: adaptor->block_phis(block)) {
-            if (adaptor->val_ignore_in_liveness_analysis(phi)) {
-                continue;
-            }
-
-          const u32 phi_idx_u32 = static_cast<u32>(adaptor->val_local_idx(phi));
-          if (phi_idx_u32 >= web_phi_blocks.size() ||
-              web_parent[phi_idx_u32] == INVALID_WEB_IDX) {
-              continue;
-            }
-
-            val_def_blocks[phi_idx_u32] = BlockIndex{block_idx_u32};
-            web_phi_blocks[phi_idx_u32].push_back(block_idx_u32);
-        }
-
-        for (const IRInstRef inst: adaptor->block_insts(block)) {
-            for (const IRValueRef result: adaptor->inst_results(inst)) {
-                if (adaptor->val_ignore_in_liveness_analysis(result)) {
-                    continue;
-                }
-
-                const ValLocalIdx result_idx = adaptor->val_local_idx(result);
-                const u32 result_idx_u32 = static_cast<u32>(result_idx);
-                if (result_idx_u32 >= val_def_blocks.size() ||
-                    web_parent[result_idx_u32] == INVALID_WEB_IDX) {
-                    continue;
-                }
-
-                val_def_blocks[result_idx_u32] = BlockIndex{block_idx_u32};
-            }
-        }
-    }
-
-    const auto roots_share_phi_def_block =
-          [&](const u32 lhs_root, const u32 rhs_root) -> bool {
-      const auto &lhs_blocks = web_phi_blocks[lhs_root];
-      const auto &rhs_blocks = web_phi_blocks[rhs_root];
-      for (const u32 rhs_block_idx: rhs_blocks) {
-          if (std::ranges::find(lhs_blocks, rhs_block_idx) != lhs_blocks.end()) {
-              return true;
-          }
-      }
-      return false;
-  };
-
-  const auto merge_phi_blocks = [&](const u32 dst_root, const u32 src_root) {
-      auto &dst_blocks = web_phi_blocks[dst_root];
-      auto &src_blocks = web_phi_blocks[src_root];
-      for (const u32 src_block_idx: src_blocks) {
-          if (std::ranges::find(dst_blocks, src_block_idx) == dst_blocks.end()) {
-              dst_blocks.push_back(src_block_idx);
-          }
-      }
-      src_blocks.clear();
-    };
-
-    const auto merge_web_members = [&](const u32 dst_root, const u32 src_root) {
-        auto &dst_members = web_members[dst_root];
-        auto &src_members = web_members[src_root];
-        for (const ValLocalIdx src_member: src_members) {
-            if (std::ranges::find(dst_members, src_member) == dst_members.end()) {
-                dst_members.push_back(src_member);
-            }
-        }
-        src_members.clear();
-    };
-
-    const auto is_live_in = [&](const u32 block_idx,
-                                const ValLocalIdx val_idx) noexcept {
-        if (block_idx >= precise_liveness.size()) {
-            return false;
-        }
-
-        const auto &pli = precise_liveness[block_idx];
-        const auto it = pli.next_uses.find(val_idx);
-        if (it == pli.next_uses.end()) {
-            auto entr = std::lower_bound(pli.live_through.begin(), pli.live_through.end(), val_idx,
-                                         [](const auto &lhs, const auto &rhs) {
-                                             return lhs.first < rhs;
-                                         });
-            if (entr == pli.live_through.end() || entr->first != val_idx) {
+            // Fast coarse disjointness check on block intervals.
+            if (lhs_liveness.last < rhs_liveness.first ||
+                rhs_liveness.last < lhs_liveness.first) {
                 return false;
             }
-            return true;
-        }
 
-        const auto &vec = it->second;
-        if (vec.empty()) {
-            return false;
-        }
+            const u32 block_begin = std::min(static_cast<u32>(lhs_liveness.first),
+                                             static_cast<u32>(rhs_liveness.first));
+            const u32 block_end = std::max(static_cast<u32>(lhs_liveness.last),
+                                           static_cast<u32>(rhs_liveness.last));
 
-        for (const u32 entry: vec) {
-            if (entry == INF) {
-                continue;
-            }
-            return (entry & DEF_BIT) == 0;
-        }
-
-        return false;
-    };
-
-
-    const auto precise_block_interval =
-            [&](const u32 block_idx,
-                const ValLocalIdx val_idx,
-                u32 &interval_first,
-                u32 &interval_last) -> bool {
-      if (block_idx >= precise_liveness.size()) {
-          return false;
-      }
-
-      const auto &pli = precise_liveness[block_idx];
-      const auto it = pli.next_uses.find(val_idx);
-      if (it == pli.next_uses.end()) {
-          return false;
-      }
-
-      const auto &uses = it->second;
-      if (uses.empty()) {
-          return false;
-      }
-
-      u32 first = INF;
-      for (const auto use: uses) {
-          if (use != INF) {
-              first = use;
-              break;
-          }
-      }
-      if (first == INF) {
-          return false;
-      }
-
-      if ((first & DEF_BIT) != 0) {
-          interval_first = INF;
-          for (const auto use: uses) {
-              if (use != INF && (use & DEF_BIT) == 0) {
-                  interval_first = use;
-                  break;
-              }
-          }
-          if (interval_first == INF) {
-              return true;
-          }
-      } else {
-          // live-in values occupy the register from block entry
-          interval_first = 0;
-      }
-
-      interval_last = INF;
-      for (u32 i = uses.size(); i-- > 0;) {
-          if (uses[i] != INF) {
-              interval_last = uses[i] & ~DEF_BIT;
-              break;
-          }
-      }
-
-      return interval_last != INF;
-  };
-
-  const auto live_ranges_overlap =
-          [&](const ValLocalIdx lhs_idx, const ValLocalIdx rhs_idx) -> bool {
-      const u32 lhs = static_cast<u32>(lhs_idx);
-      const u32 rhs = static_cast<u32>(rhs_idx);
-      if (lhs >= liveness.size() || rhs >= liveness.size()) {
-          return true;
-      }
-
-      const auto &lhs_liveness = liveness[lhs];
-      const auto &rhs_liveness = liveness[rhs];
-      if (lhs_liveness.epoch != liveness_epoch ||
-          rhs_liveness.epoch != liveness_epoch) {
-          return true;
-      }
-
-      // Fast coarse disjointness check on block intervals.
-      if (lhs_liveness.last < rhs_liveness.first ||
-          rhs_liveness.last < lhs_liveness.first) {
-          return false;
-      }
-
-      const u32 block_begin = std::min(static_cast<u32>(lhs_liveness.first),
-                                       static_cast<u32>(rhs_liveness.first));
-      const u32 block_end = std::max(static_cast<u32>(lhs_liveness.last),
-                                     static_cast<u32>(rhs_liveness.last));
-
-      for (u32 block_idx = block_begin; block_idx <= block_end; ++block_idx) {
-          u32 lhs_first = 0;
-          u32 lhs_last = 0;
-          u32 rhs_first = 0;
-          u32 rhs_last = 0;
-          if (!precise_block_interval(block_idx, lhs_idx, lhs_first, lhs_last)) {
-              continue;
-          }
-          if (!precise_block_interval(block_idx, rhs_idx, rhs_first, rhs_last)) {
-              continue;
-          }
-          return true;
-      }
-
-      return false;
-    };
-    const auto web_union = [&](const u32 lhs, const u32 rhs) {
-        if (lhs == rhs || lhs == INVALID_WEB_IDX || rhs == INVALID_WEB_IDX) {
-            return;
-        }
-
-        u32 lhs_root = find_web_idx(lhs);
-        u32 rhs_root = find_web_idx(rhs);
-        if (lhs_root == rhs_root) {
-            return;
-        }
-
-        if (roots_share_phi_def_block(lhs_root, rhs_root)) {
-            return;
-        }
-
-        const auto &lhs_members = web_members[lhs_root];
-        const auto &rhs_members = web_members[rhs_root];
-        // todo(salto): can be done in linear time see boissout
-        for (const ValLocalIdx lhs_member: lhs_members) {
-            const u32 lhs_member_u32 = static_cast<u32>(lhs_member);
-            const BlockIndex lhs_def_block =
-                    lhs_member_u32 < val_def_blocks.size()
-                        ? val_def_blocks[lhs_member_u32]
-                        : INVALID_BLOCK_IDX;
-            for (const ValLocalIdx rhs_member: rhs_members) {
-                const u32 rhs_member_u32 = static_cast<u32>(rhs_member);
-                const BlockIndex rhs_def_block =
-                        rhs_member_u32 < val_def_blocks.size()
-                            ? val_def_blocks[rhs_member_u32]
-                            : INVALID_BLOCK_IDX;
-                if (lhs_def_block != INVALID_BLOCK_IDX &&
-                    is_live_in(static_cast<u32>(lhs_def_block), rhs_member)) {
-                    return;
-                }
-                if (rhs_def_block != INVALID_BLOCK_IDX &&
-                    is_live_in(static_cast<u32>(rhs_def_block), lhs_member)) {
-                    return;
-                }
-            }
-        }
-
-        if (web_rank[lhs_root] < web_rank[rhs_root]) {
-            std::swap(lhs_root, rhs_root);
-        }
-        web_parent[rhs_root] = lhs_root;
-        merge_phi_blocks(lhs_root, rhs_root);
-        merge_web_members(lhs_root, rhs_root);
-      if (web_rank[lhs_root] == web_rank[rhs_root]) {
-          ++web_rank[lhs_root];
-      }
-  };
-
-  for (const IRBlockRef block: block_layout) {
-      for (const IRValueRef phi: adaptor->block_phis(block)) {
-          if (adaptor->val_ignore_in_liveness_analysis(phi)) {
-              continue;
-          }
-
-          const auto phi_parts = adaptor->val_parts(phi);
-          if (phi_parts.count() != 1) {
-              // ignore multipart phis
-              continue;
-          }
-
-          const ValLocalIdx phi_idx = adaptor->val_local_idx(phi);
-          const u32 phi_idx_u32 = static_cast<u32>(phi_idx);
-          if (phi_idx_u32 >= web_parent.size() ||
-              web_parent[phi_idx_u32] == INVALID_WEB_IDX) {
-              continue;
-          }
-
-          const u8 phi_bank_id = phi_parts.reg_bank(0).id();
-          const u32 phi_part_size = phi_parts.size_bytes(0);
-
-          const auto phi_ref = adaptor->val_as_phi(phi);
-          const u32 slot_count = phi_ref.incoming_count();
-          for (u32 slot = 0; slot < slot_count; ++slot) {
-              const IRBlockRef incoming_block = phi_ref.incoming_block_for_slot(slot);
-
-              const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(slot);
-              if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
-                  continue;
-              }
-
-              const auto incoming_parts = adaptor->val_parts(incoming_val);
-              if (incoming_parts.count() != 1) {
-                  continue;
-              }
-              if (incoming_parts.reg_bank(0).id() != phi_bank_id) {
-                  continue;
-              }
-              if (incoming_parts.size_bytes(0) != phi_part_size) {
-                  continue;
-              }
-
-              const ValLocalIdx incoming_idx = adaptor->val_local_idx(incoming_val);
-              const u32 incoming_idx_u32 = static_cast<u32>(incoming_idx);
-              if (incoming_idx_u32 >= web_parent.size() ||
-                  web_parent[incoming_idx_u32] == INVALID_WEB_IDX) {
-                  continue;
-              }
-
-
-              web_union(phi_idx_u32, incoming_idx_u32);
-          }
-      }
-    }
-
-
-    // #ifdef TPDE_LOGGING
-    //     TPDE_LOG_ERR("PHI webs after build:");
-    //     std::ostringstream phi_web_dump;
-    //     print_phi_webs(phi_web_dump);
-    //     std::istringstream phi_web_lines(phi_web_dump.str());
-    //     for (std::string line; std::getline(phi_web_lines, line);) {
-    //         TPDE_LOG_ERR("{}", line);
-    //     }
-    // #endif
-
-
-    // todo(salto): multi-part values?
-    // todo(salto): ordered set for W
-    constexpr u32 NUM_GP_REGS = CompilerType::ConfigType::SPILL_NUM_GP_REGS;
-    constexpr u32 NUM_FP_REGS = CompilerType::ConfigType::SPILL_NUM_FP_REGS;
-    constexpr u32 NUM_CALLER_SAVED_GP =
-            CompilerType::ConfigType::CALLER_SAVED_GP_REGS;
-    constexpr u32 NUM_CALLER_SAVED_FP =
-            CompilerType::ConfigType::CALLER_SAVED_FP_REGS;
-
-    // The set of values in registers at the end of a block
-    // compared to the original algorithm, we can avoid the set S (spilled
-    // values), since all spills are after definition
-    std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx> > W_exits;
-
-    // todo(salto): arguments on the stack don't need to be added to W in
-    // entry, but register arguments need to be in W at the start.
-
-
-    // todo(salto): values with multiple regbanks
-    // todo(salto): ignore liveness?
-
-    // todo(salto): constants?
-    // todo(salto): instruction fused? How to handle?
-    // todo(salto): irregular control flow
-    // todo(salto): handle values with >5 parts seperately?
-
-
-    // todo(salto): register arguments
-    WorkingSetTracker working_set(this);
-
-    // block -> val_idx -> # of predecessor that have val_idx in W at their
-    // end. todo(salto): better datastructure!
-    util::SmallVector<std::unordered_map<ValLocalIdx, u32>, SMALL_BLOCK_NUM>
-            W_entry_freq;
-    W_entry_freq.resize(block_layout.size());
-    util::SmallVector<u32, 16> W_max_entry_freq;
-    W_max_entry_freq.resize(block_layout.size(), 0u);
-    initial_working_set_by_block.clear();
-    util::SmallBitSet<SMALL_BLOCK_NUM> loop_header_blocks;
-    loop_header_blocks.resize(static_cast<u32>(block_layout.size()));
-    loop_header_blocks.zero();
-    for (u32 loop_idx = 1; loop_idx < loops.size(); ++loop_idx) {
-        const auto header_idx = static_cast<u32>(loops[loop_idx].begin);
-        if (header_idx < block_layout.size()) {
-            loop_header_blocks.mark_set(header_idx);
-        }
-    }
-
-    for (u32 i = 0; i < this->block_layout.size(); ++i) {
-        // TODO(salto): Handle register arguments in entry block
-        // For the entry block (i == 0), we should initialize W with arguments
-        // that are passed in registers. This requires determining which
-        // arguments get register assignments based on the calling convention.
-        // Currently, argument assignments are determined later during prologue
-        // generation, so we can't easily determine this here without
-        // duplicating the CCAssigner logic.
-        const auto block = this->block_layout[i];
-        const BlockIndex block_idx_cur = block_idx(block);
-        const u32 block_idx_u32 = static_cast<u32>(block_idx_cur);
-        const bool is_loop_header_block = loop_header_blocks.is_set(block_idx_u32);
-        if (Adaptor::TPDE_LIVENESS_VISIT_ARGS && i == 0) {
-            assert(block_layout[0] == compiler->adaptor->cur_entry_block());
-            // TODO: Query cc_assigner to determine which args are in registers
-            // and add them to W with appropriate used_regs tracking
-            auto *cc_assiger = compiler->cur_cc_assigner();
-            const auto &cc_info = cc_assiger->get_ccinfo();
-            const u64 arg_regs = cc_info.arg_regs;
-            u64 free_regs = std::popcount(arg_regs);
-            for (const IRValueRef arg: adaptor->cur_args()) {
-                // todo(salto): is this correct
-                auto local_idx = adaptor->val_local_idx(arg);
-                const RegParts parts = ensure_parts_cached(local_idx);
-                if (free_regs < parts.gp_regs + parts.fp_regs) {
-                    // rest of args must be on stack
-                    break;
-                }
-                // fixme(salto): multi-part, ignore_liveness?
-                working_set.insert(local_idx);
-                free_regs -= parts.gp_regs + parts.fp_regs;
-            }
-        } else {
-            // We need to choose which values to keep in W across the multiple
-            // incoming edges. prefer values that are used in many predecessors.
-            util::SmallVector<ValLocalIdx, 16> incoming_from_all;
-            const u32 max_seen_freq = W_max_entry_freq[block_idx_u32];
-            for (const auto [val_idx, freq]: W_entry_freq[block_idx_u32]) {
-                if (freq != max_seen_freq) {
+            for (u32 block_idx = block_begin; block_idx <= block_end; ++block_idx) {
+                u32 lhs_first = 0;
+                u32 lhs_last = 0;
+                u32 rhs_first = 0;
+                u32 rhs_last = 0;
+                if (!precise_block_interval(block_idx, lhs_idx, lhs_first, lhs_last)) {
                     continue;
                 }
-                incoming_from_all.push_back(val_idx);
+                if (!precise_block_interval(block_idx, rhs_idx, rhs_first, rhs_last)) {
+                    continue;
+                }
+                return true;
             }
 
-            if (is_loop_header_block) {
-                util::SmallVector<ValLocalIdx, 16> loop_local_values;
-                std::unordered_set<ValLocalIdx> selected_values;
-                u32 loop_local_gp_regs = 0;
-                u32 loop_local_fp_regs = 0;
+            return false;
+        };
+        const auto web_union = [&](const u32 lhs, const u32 rhs) {
+            if (lhs == rhs || lhs == INVALID_WEB_IDX || rhs == INVALID_WEB_IDX) {
+                return;
+            }
 
+            u32 lhs_root = find_web_idx(lhs);
+            u32 rhs_root = find_web_idx(rhs);
+            if (lhs_root == rhs_root) {
+                return;
+            }
 
-                const u32 half_gp_regs = NUM_GP_REGS / 2;
-                const u32 half_fp_regs = NUM_FP_REGS / 2;
-                std::array<u8, 2> phi_parts = {0u, 0u};
-                std::unordered_set<ValLocalIdx> header_phi_defs;
-                for (const auto phi: adaptor->block_phis(block)) {
-                    if (adaptor->val_ignore_in_liveness_analysis(phi)) {
-                        continue;
+            if (roots_share_phi_def_block(lhs_root, rhs_root)) {
+                return;
+            }
+
+            const auto &lhs_members = web_members[lhs_root];
+            const auto &rhs_members = web_members[rhs_root];
+            // todo(salto): can be done in linear time see boissout
+            for (const ValLocalIdx lhs_member: lhs_members) {
+                const u32 lhs_member_u32 = static_cast<u32>(lhs_member);
+                const BlockIndex lhs_def_block =
+                        lhs_member_u32 < val_def_blocks.size()
+                            ? val_def_blocks[lhs_member_u32]
+                            : INVALID_BLOCK_IDX;
+                for (const ValLocalIdx rhs_member: rhs_members) {
+                    const u32 rhs_member_u32 = static_cast<u32>(rhs_member);
+                    const BlockIndex rhs_def_block =
+                            rhs_member_u32 < val_def_blocks.size()
+                                ? val_def_blocks[rhs_member_u32]
+                                : INVALID_BLOCK_IDX;
+                    if (lhs_def_block != INVALID_BLOCK_IDX &&
+                        is_live_in(static_cast<u32>(lhs_def_block), rhs_member)) {
+                        return;
                     }
-                    header_phi_defs.insert(adaptor->val_local_idx(phi));
-                    const RegParts parts = ensure_parts_cached(adaptor->val_local_idx(phi));
-                    phi_parts[0] += parts.gp_regs;
-                    phi_parts[1] += parts.fp_regs;
+                    if (rhs_def_block != INVALID_BLOCK_IDX &&
+                        is_live_in(static_cast<u32>(rhs_def_block), lhs_member)) {
+                        return;
+                    }
                 }
-                if (phi_parts[0] > NUM_GP_REGS - 4) {
-                    phi_parts[0] = half_gp_regs;
-                }
+            }
 
-                std::unordered_set<ValLocalIdx> header_local_defs;
-                for (const auto inst: adaptor->block_insts(block)) {
-                    for (const auto result: adaptor->inst_results(inst)) {
-                        if (adaptor->val_ignore_in_liveness_analysis(result)) {
-                            continue;
-                        }
-                        header_local_defs.insert(adaptor->val_local_idx(result));
-                    }
-                }
+            if (web_rank[lhs_root] < web_rank[rhs_root]) {
+                std::swap(lhs_root, rhs_root);
+            }
+            web_parent[rhs_root] = lhs_root;
+            merge_phi_blocks(lhs_root, rhs_root);
+            merge_web_members(lhs_root, rhs_root);
+            if (web_rank[lhs_root] == web_rank[rhs_root]) {
+                ++web_rank[lhs_root];
+            }
+        };
 
-                struct HeaderCandidate {
-                    ValLocalIdx val_idx;
-                    u32 entry_next_use;
-                    u32 num_parts;
-                };
-
-                util::SmallVector<HeaderCandidate, 16> header_candidates;
-                const auto &header_pli = precise_liveness[block_idx_u32];
-                for (const auto &entry: header_pli.next_uses) {
-                    const auto val_idx = entry.first;
-                    if (selected_values.contains(val_idx) ||
-                        header_phi_defs.contains(val_idx) ||
-                        header_local_defs.contains(val_idx)) {
-                        continue;
-                    }
-
-                    const u32 entry_next_use =
-                            get_current_and_next_use(header_pli, val_idx, 0).first;
-                    if (entry_next_use >= LOOP_EXIT_PENALTY || entry_next_use == INF) {
-                        continue;
-                    }
-                    if (entry_next_use & DEF_BIT) {
-                        continue;
-                    }
-                    if (entry_next_use > std::ranges::distance(adaptor->block_insts(
-                            block_ref(BlockIndex{block_idx_u32})))) {
-                        continue;
-                    }
-                    // todo should be infavid validx
-                    if (static_cast<u32>(val_idx) >= value_parts_cache.size()) {
-                        continue;
-                    }
-                    const RegParts parts = ensure_parts_cached(val_idx);
-
-                    // todo(salt): num_parts why?
-                    header_candidates.push_back(
-                        HeaderCandidate{
-                            .val_idx = val_idx, .entry_next_use = entry_next_use,
-                            .num_parts = u32(parts.gp_regs + parts.fp_regs)
-                        });
-                }
-                for (const auto &entry: header_pli.live_through) {
-                    const auto val_idx = entry.first;
-                    if (selected_values.contains(val_idx) ||
-                        header_phi_defs.contains(val_idx) ||
-                        header_local_defs.contains(val_idx)) {
-                        continue;
-                    }
-                    header_candidates.push_back(
-                        HeaderCandidate{
-                            .val_idx = val_idx, .entry_next_use = entry.second,
-                            .num_parts = u32(
-                                ensure_parts_cached(val_idx).gp_regs + ensure_parts_cached(val_idx).fp_regs)
-                        });
+        for (const IRBlockRef block: block_layout) {
+            for (const IRValueRef phi: adaptor->block_phis(block)) {
+                if (adaptor->val_ignore_in_liveness_analysis(phi)) {
+                    continue;
                 }
 
-                std::sort(header_candidates.begin(),
-                          header_candidates.end(),
-                          [](const auto &a, const auto &b) {
-                              if (a.entry_next_use == b.entry_next_use) {
-                                  if (a.num_parts == b.num_parts) {
-                                      return a.val_idx < b.val_idx;
-                                  }
-                                  return a.num_parts < b.num_parts;
-                              }
-                              return a.entry_next_use < b.entry_next_use;
-                          });
-                const auto gp_threshold = NUM_GP_REGS - block_pressure[block_idx_u32].gp_pressure - 1;
-                const auto fp_threshold = NUM_FP_REGS - block_pressure[block_idx_u32].fp_pressure - 1;
-                for (const auto &candidate: header_candidates) {
-                    if (loop_local_gp_regs > gp_threshold ||
-                        loop_local_fp_regs > fp_threshold) {
+                const auto phi_parts = adaptor->val_parts(phi);
+                if (phi_parts.count() != 1) {
+                    // ignore multipart phis
+                    continue;
+                }
+
+                const ValLocalIdx phi_idx = adaptor->val_local_idx(phi);
+                const u32 phi_idx_u32 = static_cast<u32>(phi_idx);
+                if (phi_idx_u32 >= web_parent.size() ||
+                    web_parent[phi_idx_u32] == INVALID_WEB_IDX) {
+                    continue;
+                }
+
+                const u8 phi_bank_id = phi_parts.reg_bank(0).id();
+                const u32 phi_part_size = phi_parts.size_bytes(0);
+
+                const auto phi_ref = adaptor->val_as_phi(phi);
+                const u32 slot_count = phi_ref.incoming_count();
+                for (u32 slot = 0; slot < slot_count; ++slot) {
+                    const IRBlockRef incoming_block = phi_ref.incoming_block_for_slot(slot);
+
+                    const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(slot);
+                    if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
+                        continue;
+                    }
+
+                    const auto incoming_parts = adaptor->val_parts(incoming_val);
+                    if (incoming_parts.count() != 1) {
+                        continue;
+                    }
+                    if (incoming_parts.reg_bank(0).id() != phi_bank_id) {
+                        continue;
+                    }
+                    if (incoming_parts.size_bytes(0) != phi_part_size) {
+                        continue;
+                    }
+
+                    const ValLocalIdx incoming_idx = adaptor->val_local_idx(incoming_val);
+                    const u32 incoming_idx_u32 = static_cast<u32>(incoming_idx);
+                    if (incoming_idx_u32 >= web_parent.size() ||
+                        web_parent[incoming_idx_u32] == INVALID_WEB_IDX) {
+                        continue;
+                    }
+
+
+                    web_union(phi_idx_u32, incoming_idx_u32);
+                }
+            }
+        }
+
+
+        // #ifdef TPDE_LOGGING
+        //     TPDE_LOG_ERR("PHI webs after build:");
+        //     std::ostringstream phi_web_dump;
+        //     print_phi_webs(phi_web_dump);
+        //     std::istringstream phi_web_lines(phi_web_dump.str());
+        //     for (std::string line; std::getline(phi_web_lines, line);) {
+        //         TPDE_LOG_ERR("{}", line);
+        //     }
+        // #endif
+
+
+        // todo(salto): multi-part values?
+        // todo(salto): ordered set for W
+        constexpr u32 NUM_GP_REGS = CompilerType::ConfigType::SPILL_NUM_GP_REGS;
+        constexpr u32 NUM_FP_REGS = CompilerType::ConfigType::SPILL_NUM_FP_REGS;
+        constexpr u32 NUM_CALLER_SAVED_GP =
+                CompilerType::ConfigType::CALLER_SAVED_GP_REGS;
+        constexpr u32 NUM_CALLER_SAVED_FP =
+                CompilerType::ConfigType::CALLER_SAVED_FP_REGS;
+
+        // The set of values in registers at the end of a block
+        // compared to the original algorithm, we can avoid the set S (spilled
+        // values), since all spills are after definition
+        std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx> > W_exits;
+
+        // todo(salto): arguments on the stack don't need to be added to W in
+        // entry, but register arguments need to be in W at the start.
+
+
+        // todo(salto): values with multiple regbanks
+        // todo(salto): ignore liveness?
+
+        // todo(salto): constants?
+        // todo(salto): instruction fused? How to handle?
+        // todo(salto): irregular control flow
+        // todo(salto): handle values with >5 parts seperately?
+
+
+        // todo(salto): register arguments
+        WorkingSetTracker working_set(this);
+
+        // block -> val_idx -> # of predecessor that have val_idx in W at their
+        // end. todo(salto): better datastructure!
+        util::SmallVector<std::unordered_map<ValLocalIdx, u32>, SMALL_BLOCK_NUM>
+                W_entry_freq;
+        W_entry_freq.resize(block_layout.size());
+        util::SmallVector<u32, 16> W_max_entry_freq;
+        W_max_entry_freq.resize(block_layout.size(), 0u);
+        initial_working_set_by_block.clear();
+        util::SmallBitSet<SMALL_BLOCK_NUM> loop_header_blocks;
+        loop_header_blocks.resize(static_cast<u32>(block_layout.size()));
+        loop_header_blocks.zero();
+        for (u32 loop_idx = 1; loop_idx < loops.size(); ++loop_idx) {
+            const auto header_idx = static_cast<u32>(loops[loop_idx].begin);
+            if (header_idx < block_layout.size()) {
+                loop_header_blocks.mark_set(header_idx);
+            }
+        }
+
+        for (u32 i = 0; i < this->block_layout.size(); ++i) {
+            // TODO(salto): Handle register arguments in entry block
+            // For the entry block (i == 0), we should initialize W with arguments
+            // that are passed in registers. This requires determining which
+            // arguments get register assignments based on the calling convention.
+            // Currently, argument assignments are determined later during prologue
+            // generation, so we can't easily determine this here without
+            // duplicating the CCAssigner logic.
+            const auto block = this->block_layout[i];
+            const BlockIndex block_idx_cur = block_idx(block);
+            const u32 block_idx_u32 = static_cast<u32>(block_idx_cur);
+            const bool is_loop_header_block = loop_header_blocks.is_set(block_idx_u32);
+            if (Adaptor::TPDE_LIVENESS_VISIT_ARGS && i == 0) {
+                assert(block_layout[0] == compiler->adaptor->cur_entry_block());
+                // TODO: Query cc_assigner to determine which args are in registers
+                // and add them to W with appropriate used_regs tracking
+                auto *cc_assiger = compiler->cur_cc_assigner();
+                const auto &cc_info = cc_assiger->get_ccinfo();
+                const u64 arg_regs = cc_info.arg_regs;
+                u64 free_regs = std::popcount(arg_regs);
+                for (const IRValueRef arg: adaptor->cur_args()) {
+                    // todo(salto): is this correct
+                    auto local_idx = adaptor->val_local_idx(arg);
+                    const RegParts parts = ensure_parts_cached(local_idx);
+                    if (free_regs < parts.gp_regs + parts.fp_regs) {
+                        // rest of args must be on stack
                         break;
                     }
-                    const auto parts = ensure_parts_cached(candidate.val_idx);
-                    const bool gp_has_budget = loop_local_gp_regs < gp_threshold;
-                    const bool fp_has_budget = loop_local_fp_regs < fp_threshold;
-                    if ((!gp_has_budget && parts.gp_regs > 0) ||
-                        (!fp_has_budget && parts.fp_regs > 0)) {
+                    // fixme(salto): multi-part, ignore_liveness?
+                    working_set.insert(local_idx);
+                    free_regs -= parts.gp_regs + parts.fp_regs;
+                }
+            } else {
+                // We need to choose which values to keep in W across the multiple
+                // incoming edges. prefer values that are used in many predecessors.
+                util::SmallVector<ValLocalIdx, 16> incoming_from_all;
+                const u32 max_seen_freq = W_max_entry_freq[block_idx_u32];
+                for (const auto [val_idx, freq]: W_entry_freq[block_idx_u32]) {
+                    if (freq != max_seen_freq) {
                         continue;
                     }
-
-                    loop_local_values.push_back(candidate.val_idx);
-                    selected_values.insert(candidate.val_idx);
-                    loop_local_gp_regs += parts.gp_regs;
-                    loop_local_fp_regs += parts.fp_regs;
+                    incoming_from_all.push_back(val_idx);
                 }
-                if (false && loop_local_gp_regs < gp_threshold / 2 && loop_local_fp_regs < fp_threshold / 2) {
-                    std::sort(incoming_from_all.begin(), incoming_from_all.end(), [&](const auto &a, const auto &b) {
-                        return get_current_and_next_use(
-                                   precise_liveness[block_idx_u32],
-                                   a,
-                                   0)
-                               .first <
-                               get_current_and_next_use(
-                                   precise_liveness[block_idx_u32],
-                                   b,
-                                   0)
-                               .first;
-                    });
-                    for (const auto val_idx: incoming_from_all) {
-                        if (selected_values.contains(val_idx))
-                            continue;
-                        const bool gp_has_budget = loop_local_gp_regs < gp_threshold / 2;
-                        const bool fp_has_budget = loop_local_fp_regs < fp_threshold / 2;
-                        if ((!gp_has_budget) ||
-                            (!fp_has_budget)) {
-                            break;
-                  }
 
-                  const auto entry_next_use =
-                          get_current_and_next_use(precise_liveness[block_idx_u32], val_idx, 0).first;
-                  loop_local_values.push_back(val_idx);
-                  selected_values.insert(val_idx);
-                        const auto parts = ensure_parts_cached(val_idx);
+                if (is_loop_header_block) {
+                    util::SmallVector<ValLocalIdx, 16> loop_local_values;
+                    std::unordered_set<ValLocalIdx> selected_values;
+                    u32 loop_local_gp_regs = 0;
+                    u32 loop_local_fp_regs = 0;
+
+
+                    const u32 half_gp_regs = NUM_GP_REGS / 2;
+                    const u32 half_fp_regs = NUM_FP_REGS / 2;
+                    std::array<u8, 2> phi_parts = {0u, 0u};
+                    std::unordered_set<ValLocalIdx> header_phi_defs;
+                    for (const auto phi: adaptor->block_phis(block)) {
+                        if (adaptor->val_ignore_in_liveness_analysis(phi)) {
+                            continue;
+                        }
+                        header_phi_defs.insert(adaptor->val_local_idx(phi));
+                        const RegParts parts = ensure_parts_cached(adaptor->val_local_idx(phi));
+                        phi_parts[0] += parts.gp_regs;
+                        phi_parts[1] += parts.fp_regs;
+                    }
+                    if (phi_parts[0] > NUM_GP_REGS - 4) {
+                        phi_parts[0] = half_gp_regs;
+                    }
+
+                    std::unordered_set<ValLocalIdx> header_local_defs;
+                    for (const auto inst: adaptor->block_insts(block)) {
+                        for (const auto result: adaptor->inst_results(inst)) {
+                            if (adaptor->val_ignore_in_liveness_analysis(result)) {
+                                continue;
+                            }
+                            header_local_defs.insert(adaptor->val_local_idx(result));
+                        }
+                    }
+
+                    struct HeaderCandidate {
+                        ValLocalIdx val_idx;
+                        u32 entry_next_use;
+                        u32 num_parts;
+                    };
+
+                    util::SmallVector<HeaderCandidate, 16> header_candidates;
+                    const auto &header_pli = precise_liveness[block_idx_u32];
+                    for (const auto &entry: header_pli.next_uses) {
+                        const auto val_idx = entry.first;
+                        if (selected_values.contains(val_idx) ||
+                            header_phi_defs.contains(val_idx) ||
+                            header_local_defs.contains(val_idx)) {
+                            continue;
+                        }
+
+                        const u32 entry_next_use =
+                                get_current_and_next_use(header_pli, val_idx, 0).first;
+                        if (entry_next_use >= LOOP_EXIT_PENALTY || entry_next_use == INF) {
+                            continue;
+                        }
+                        if (entry_next_use & DEF_BIT) {
+                            continue;
+                        }
+                        if (entry_next_use > std::ranges::distance(adaptor->block_insts(
+                                block_ref(BlockIndex{block_idx_u32})))) {
+                            continue;
+                        }
+                        // todo should be infavid validx
+                        if (static_cast<u32>(val_idx) >= value_parts_cache.size()) {
+                            continue;
+                        }
+                        const RegParts parts = ensure_parts_cached(val_idx);
+
+                        // todo(salt): num_parts why?
+                        header_candidates.push_back(
+                            HeaderCandidate{
+                                .val_idx = val_idx, .entry_next_use = entry_next_use,
+                                .num_parts = u32(parts.gp_regs + parts.fp_regs)
+                            });
+                    }
+                    for (const auto &entry: header_pli.live_through) {
+                        const auto val_idx = entry.first;
+                        if (selected_values.contains(val_idx) ||
+                            header_phi_defs.contains(val_idx) ||
+                            header_local_defs.contains(val_idx)) {
+                            continue;
+                        }
+                        header_candidates.push_back(
+                            HeaderCandidate{
+                                .val_idx = val_idx, .entry_next_use = entry.second,
+                                .num_parts = u32(
+                                    ensure_parts_cached(val_idx).gp_regs + ensure_parts_cached(val_idx).fp_regs)
+                            });
+                    }
+
+                    std::sort(header_candidates.begin(),
+                              header_candidates.end(),
+                              [](const auto &a, const auto &b) {
+                                  if (a.entry_next_use == b.entry_next_use) {
+                                      if (a.num_parts == b.num_parts) {
+                                          return a.val_idx < b.val_idx;
+                                      }
+                                      return a.num_parts < b.num_parts;
+                                  }
+                                  return a.entry_next_use < b.entry_next_use;
+                              });
+                    const auto gp_threshold = NUM_GP_REGS - block_pressure[block_idx_u32].gp_pressure - 1;
+                    const auto fp_threshold = NUM_FP_REGS - block_pressure[block_idx_u32].fp_pressure - 1;
+                    for (const auto &candidate: header_candidates) {
+                        if (loop_local_gp_regs > gp_threshold ||
+                            loop_local_fp_regs > fp_threshold) {
+                            break;
+                        }
+                        const auto parts = ensure_parts_cached(candidate.val_idx);
+                        const bool gp_has_budget = loop_local_gp_regs < gp_threshold;
+                        const bool fp_has_budget = loop_local_fp_regs < fp_threshold;
+                        if ((!gp_has_budget && parts.gp_regs > 0) ||
+                            (!fp_has_budget && parts.fp_regs > 0)) {
+                            continue;
+                        }
+
+                        loop_local_values.push_back(candidate.val_idx);
+                        selected_values.insert(candidate.val_idx);
                         loop_local_gp_regs += parts.gp_regs;
                         loop_local_fp_regs += parts.fp_regs;
                     }
+                    if (false && loop_local_gp_regs < gp_threshold / 2 && loop_local_fp_regs < fp_threshold / 2) {
+                        std::sort(incoming_from_all.begin(), incoming_from_all.end(),
+                                  [&](const auto &a, const auto &b) {
+                                      return get_current_and_next_use(
+                                                 precise_liveness[block_idx_u32],
+                                                 a,
+                                                 0)
+                                             .first <
+                                             get_current_and_next_use(
+                                                 precise_liveness[block_idx_u32],
+                                                 b,
+                                                 0)
+                                             .first;
+                                  });
+                        for (const auto val_idx: incoming_from_all) {
+                            if (selected_values.contains(val_idx))
+                                continue;
+                            const bool gp_has_budget = loop_local_gp_regs < gp_threshold / 2;
+                            const bool fp_has_budget = loop_local_fp_regs < fp_threshold / 2;
+                            if ((!gp_has_budget) ||
+                                (!fp_has_budget)) {
+                                break;
+                            }
+
+                            const auto entry_next_use =
+                                    get_current_and_next_use(precise_liveness[block_idx_u32], val_idx, 0).first;
+                            loop_local_values.push_back(val_idx);
+                            selected_values.insert(val_idx);
+                            const auto parts = ensure_parts_cached(val_idx);
+                            loop_local_gp_regs += parts.gp_regs;
+                            loop_local_fp_regs += parts.fp_regs;
+                        }
+                    }
+
+
+                    incoming_from_all.clear();
+                    incoming_from_all.append(loop_local_values.begin(), loop_local_values.end());
+                }
+                std::array<u8, 2> from_all_registers = {0u, 0u};
+                for (const auto val_idx: incoming_from_all) {
+                    const auto parts = ensure_parts_cached(val_idx);
+                    from_all_registers[0] += parts.gp_regs;
+                    from_all_registers[1] += parts.fp_regs;
                 }
 
-
-                incoming_from_all.clear();
-                incoming_from_all.append(loop_local_values.begin(), loop_local_values.end());
+                if (from_all_registers[0] > NUM_GP_REGS ||
+                    from_all_registers[1] > NUM_FP_REGS) [[unlikely]] {
+                    // prefer values that are used soon.
+                    std::sort(
+                        incoming_from_all.begin(),
+                        incoming_from_all.end(),
+                        [&](const auto &a, const auto &b) {
+                            return get_current_and_next_use(
+                                       precise_liveness[block_idx_u32],
+                                       a,
+                                       0)
+                                   .first <
+                                   get_current_and_next_use(
+                                       precise_liveness[block_idx_u32],
+                                       b,
+                                       0)
+                                   .first;
+                        });
+                    working_set.clear();
+                    for (const auto val_idx: incoming_from_all) {
+                        if (!working_set.can_fit(val_idx, NUM_GP_REGS, NUM_FP_REGS)) {
+                            break;
+                        }
+                        working_set.insert(val_idx);
+                    }
+                } else {
+                    working_set.replace_with(incoming_from_all);
+                }
             }
-            std::array<u8, 2> from_all_registers = {0u, 0u};
-            for (const auto val_idx: incoming_from_all) {
-                const auto parts = ensure_parts_cached(val_idx);
-                from_all_registers[0] += parts.gp_regs;
-                from_all_registers[1] += parts.fp_regs;
-      }
-
-      if (from_all_registers[0] > NUM_GP_REGS ||
-          from_all_registers[1] > NUM_FP_REGS) [[unlikely]] {
-        // prefer values that are used soon.
-        std::sort(
-            incoming_from_all.begin(),
-            incoming_from_all.end(),
-            [&](const auto &a, const auto &b) {
-              return get_current_and_next_use(
-                         precise_liveness[block_idx_u32],
-                         a,
-                         0)
-                         .first <
-                     get_current_and_next_use(
-                         precise_liveness[block_idx_u32],
-                         b,
-                         0)
-                         .first;
-            });
-        working_set.clear();
-        for (const auto val_idx: incoming_from_all) {
-            if (!working_set.can_fit(val_idx, NUM_GP_REGS, NUM_FP_REGS)) {
-                break;
+            if (is_loop_header_block) {
+                auto loop_idx = block_loop_idx(block_idx_cur);
+                auto loop = loop_from_idx(loop_idx);
+                //todo(salto): tune
+                if (loop.level < 300) {
+                    auto &initial_working_set = initial_working_set_by_block[block_idx_cur];
+                    initial_working_set.clear();
+                    initial_working_set.insert(working_set.begin(), working_set.end());
+                }
             }
-            working_set.insert(val_idx);
-        }
-      } else {
-          working_set.replace_with(incoming_from_all);
-      }
-    }
-    if (is_loop_header_block) {
-        auto loop_idx = block_loop_idx(block_idx_cur);
-        auto loop = loop_from_idx(loop_idx);
-        //todo(salto): tune
-        if (loop.level < 300) {
-            auto &initial_working_set = initial_working_set_by_block[block_idx_cur];
-            initial_working_set.clear();
-            initial_working_set.insert(working_set.begin(), working_set.end());
-        }
-        }
 
-        // W is the working set. The values in registers
-        // keep used registers seperately, since one value can use multiple
-        // registers.
-        for (const auto phi: adaptor->block_phis(block)) {
-            // todo(salto): should we be able to spill phis?
-            const auto val_idx = adaptor->val_local_idx(phi);
-            working_set.insert(val_idx);
-        }
+            // W is the working set. The values in registers
+            // keep used registers seperately, since one value can use multiple
+            // registers.
+            for (const auto phi: adaptor->block_phis(block)) {
+                // todo(salto): should we be able to spill phis?
+                const auto val_idx = adaptor->val_local_idx(phi);
+                working_set.insert(val_idx);
+            }
 
-        u32 idx = 0;
-        for (const auto inst: adaptor->block_insts(block)) {
-            for (const auto operand: adaptor->inst_operands(inst)) {
-                if (adaptor->val_ignore_in_liveness_analysis(operand)) {
-                    // what can we do here?
+            u32 idx = 0;
+            for (const auto inst: adaptor->block_insts(block)) {
+                for (const auto operand: adaptor->inst_operands(inst)) {
+                    if (adaptor->val_ignore_in_liveness_analysis(operand)) {
+                        // what can we do here?
+                        continue;
+                    }
+                    const auto val_idx = adaptor->val_local_idx(operand);
+                    working_set.insert(val_idx);
+                }
+
+                // we process results and operands at once whenever possible. The
+                // original algorithm seperates them, as it effects the optimal spill
+                // position. since we don't need to know the spill position, we can
+                // process operands
+                // + results together. we still need to ensure that there are free
+                // registers for the results. instead of limit(W, NUM_*_REGS) and then
+                // limit(W+results, NUM_*_REGS-NUM_RESULT_REGs), we can avoid one of
+                // the limits in most cases.
+                std::array<u32, 2> num_result_regs = {0u, 0u};
+                for (const auto result: adaptor->inst_results(inst)) {
+                    if (adaptor->val_ignore_in_liveness_analysis(result)) {
+                        // what can we do here?
+                        continue;
+                    }
+                    // the original algorithm doesn't add results to W until after both
+                    // limits. Iterating through results could be expensive, so we wan't
+                    // to avoid iterating it twice. Results have a current_use of 0 so
+                    // they will not be spilled.
+                    auto val_idx = adaptor->val_local_idx(result);
+                    working_set.insert_as_result(val_idx);
+
+                    const auto parts = ensure_parts_cached(val_idx);
+                    num_result_regs[0] += parts.gp_regs;
+                    num_result_regs[1] += parts.fp_regs;
+                }
+                // todo(salto): check wether if with [[unlikely]] has better
+                // performance
+                const bool has_call = adaptor->inst_has_call(inst);
+                // capacity after is lower for calls due to caller-saved registers.
+                // But the call results are already in the registers automatically.
+                //todo(salto): fix potential underflow
+                const u32 capacity_after_instr_gp =
+                        NUM_GP_REGS - static_cast<u32>(has_call) *
+                        (NUM_CALLER_SAVED_GP - num_result_regs[0]);
+                const u32 capacity_after_instr_fp =
+                        NUM_FP_REGS - static_cast<u32>(has_call) *
+                        (NUM_CALLER_SAVED_FP - num_result_regs[1]);
+                // we still have enough registers for both results and operands at the
+                // same time, no spills needed
+                if (working_set.fits_into(
+                    capacity_after_instr_gp, capacity_after_instr_fp, true)) {
+                    working_set.commit_result_regs();
+                    ++idx;
                     continue;
                 }
-                const auto val_idx = adaptor->val_local_idx(operand);
-                working_set.insert(val_idx);
-      }
+                // todo(salto): we could store dead after instr during the initial
+                // loop, then maybe we can avoid some sorts We spill the furthest
+                // next-use value. (val_idx, ,current_use,next_use, parts)
+                util::SmallVector<SpillCandidate, 16> W_next_uses;
+                util::SmallVector<ValLocalIdx, 16> dead_values;
+                for (const auto val_idx: working_set) {
+                    const auto [current_use, next_use] = get_current_and_next_use(
+                        precise_liveness[static_cast<u32>(block_idx(block))], val_idx, idx);
+                    assert(current_use != INF ||
+                        "Value is used, but its liveness was not computed.");
+                    // we can evict all dead values by default.
+                    if (current_use == INF) {
+                        dead_values.push_back(val_idx);
+                        // todo(salto): maybe break if we already have enough registers?
+                        continue;
+                    }
+                    W_next_uses.emplace_back(
+                        val_idx, current_use, next_use, ensure_parts_cached(val_idx));
+                }
+                // Remove dead values
+                for (const auto val_idx: dead_values) {
+                    working_set.erase(val_idx);
+                }
+                // Evicting dead values was enough to free up registers, avoid more
+                // expensive spill calculation.
+                if (working_set.fits_into(
+                    capacity_after_instr_gp, capacity_after_instr_fp, true)) {
+                    working_set.commit_result_regs();
+                    ++idx;
+                    continue;
+                }
+                if (!working_set.fits_into(
+                    capacity_after_instr_gp, capacity_after_instr_fp, false)) {
+                    // sort by current use since we need space for operands
+                    std::sort(W_next_uses.begin(),
+                              W_next_uses.end(),
+                              [](const auto &a, const auto &b) {
+                                  // todo(salto): maybe prefer spilling values with
+                                  // more parts? todo(salto): evaluate if more
+                                  // expensive sort is worth it
 
-      // we process results and operands at once whenever possible. The
-      // original algorithm seperates them, as it effects the optimal spill
-      // position. since we don't need to know the spill position, we can
-      // process operands
-      // + results together. we still need to ensure that there are free
-      // registers for the results. instead of limit(W, NUM_*_REGS) and then
-      // limit(W+results, NUM_*_REGS-NUM_RESULT_REGs), we can avoid one of
-      // the limits in most cases.
-      std::array<u32, 2> num_result_regs = {0u, 0u};
-      for (const auto result : adaptor->inst_results(inst)) {
-        if (adaptor->val_ignore_in_liveness_analysis(result)) {
-          // what can we do here?
-          continue;
+                                  return (a.current_use == b.current_use)
+                                             ? (a.next_use > b.next_use)
+                                             : a.current_use > b.current_use;
+                              });
+                    limit(W_next_uses,
+                          capacity_after_instr_gp + num_result_regs[0],
+                          capacity_after_instr_fp + num_result_regs[1],
+                          idx,
+                          working_set,
+                          false);
+                }
+
+                // we are limited by the results.
+                if (!working_set.fits_into(
+                    capacity_after_instr_gp, capacity_after_instr_fp, true)) {
+                    // sort by next use instead of current use since we have
+                    // enough space for all the operands and we might be able to
+                    // evict a operand for a result. we try to avoid 2 sorts as
+                    // much as possible.
+                    std::sort(W_next_uses.begin(),
+                              W_next_uses.end(),
+                              [](const auto &a, const auto &b) {
+                                  // todo(salto): maybe prefer spilling values with
+                                  // more parts?
+                                  return a.next_use > b.next_use;
+                              });
+                    limit(W_next_uses,
+                          capacity_after_instr_gp,
+                          capacity_after_instr_fp,
+                          idx,
+                          working_set,
+                          true);
+                }
+                working_set.commit_result_regs();
+                ++idx;
+            }
+            for (const auto val_idx: working_set) {
+                for (const auto succ: adaptor->block_succs(block)) {
+                    const auto succ_idx = block_idx(succ);
+                    const auto &pli = precise_liveness[static_cast<u32>(succ_idx)];
+                    const auto it = pli.next_uses.find(val_idx);
+                    if (it == pli.next_uses.end()) {
+                        continue;
+                    }
+                    const auto &vec = it->second;
+                    if (vec.empty()) {
+                        continue;
+                    }
+                    const u32 updated_freq = ++W_entry_freq[static_cast<u32>(succ_idx)][val_idx];
+                    if (updated_freq > W_max_entry_freq[static_cast<u32>(succ_idx)]) {
+                        W_max_entry_freq[static_cast<u32>(succ_idx)] = updated_freq;
+                    }
+                }
+            }
         }
-        // the original algorithm doesn't add results to W until after both
-        // limits. Iterating through results could be expensive, so we wan't
-        // to avoid iterating it twice. Results have a current_use of 0 so
-        // they will not be spilled.
-        auto val_idx = adaptor->val_local_idx(result);
-        working_set.insert_as_result(val_idx);
-
-        const auto parts = ensure_parts_cached(val_idx);
-        num_result_regs[0] += parts.gp_regs;
-        num_result_regs[1] += parts.fp_regs;
-      }
-      // todo(salto): check wether if with [[unlikely]] has better
-      // performance
-      const bool has_call = adaptor->inst_has_call(inst);
-      // capacity after is lower for calls due to caller-saved registers.
-      // But the call results are already in the registers automatically.
-      //todo(salto): fix potential underflow
-      const u32 capacity_after_instr_gp =
-          NUM_GP_REGS - static_cast<u32>(has_call) *
-                            (NUM_CALLER_SAVED_GP - num_result_regs[0]);
-      const u32 capacity_after_instr_fp =
-          NUM_FP_REGS - static_cast<u32>(has_call) *
-                            (NUM_CALLER_SAVED_FP - num_result_regs[1]);
-      // we still have enough registers for both results and operands at the
-      // same time, no spills needed
-      if (working_set.fits_into(
-              capacity_after_instr_gp, capacity_after_instr_fp, true)) {
-        working_set.commit_result_regs();
-        ++idx;
-        continue;
-      }
-      // todo(salto): we could store dead after instr during the initial
-      // loop, then maybe we can avoid some sorts We spill the furthest
-      // next-use value. (val_idx, ,current_use,next_use, parts)
-      util::SmallVector<SpillCandidate, 16> W_next_uses;
-      util::SmallVector<ValLocalIdx, 16> dead_values;
-      for (const auto val_idx : working_set) {
-        const auto [current_use, next_use] = get_current_and_next_use(
-            precise_liveness[static_cast<u32>(block_idx(block))], val_idx, idx);
-        assert(current_use != INF ||
-               "Value is used, but its liveness was not computed.");
-        // we can evict all dead values by default.
-        if (current_use == INF) {
-          dead_values.push_back(val_idx);
-          // todo(salto): maybe break if we already have enough registers?
-          continue;
-        }
-        W_next_uses.emplace_back(
-            val_idx, current_use, next_use, ensure_parts_cached(val_idx));
-      }
-      // Remove dead values
-      for (const auto val_idx : dead_values) {
-        working_set.erase(val_idx);
-      }
-      // Evicting dead values was enough to free up registers, avoid more
-      // expensive spill calculation.
-      if (working_set.fits_into(
-              capacity_after_instr_gp, capacity_after_instr_fp, true)) {
-        working_set.commit_result_regs();
-        ++idx;
-        continue;
-      }
-      if (!working_set.fits_into(
-              capacity_after_instr_gp, capacity_after_instr_fp, false)) {
-        // sort by current use since we need space for operands
-        std::sort(W_next_uses.begin(),
-                  W_next_uses.end(),
-                  [](const auto &a, const auto &b) {
-                    // todo(salto): maybe prefer spilling values with
-                    // more parts? todo(salto): evaluate if more
-                    // expensive sort is worth it
-
-                    return (a.current_use == b.current_use)
-                               ? (a.next_use > b.next_use)
-                               : a.current_use > b.current_use;
-                  });
-        limit(W_next_uses,
-              capacity_after_instr_gp + num_result_regs[0],
-              capacity_after_instr_fp + num_result_regs[1],
-              idx,
-              working_set,
-              false);
-      }
-
-      // we are limited by the results.
-      if (!working_set.fits_into(
-              capacity_after_instr_gp, capacity_after_instr_fp, true)) {
-        // sort by next use instead of current use since we have
-        // enough space for all the operands and we might be able to
-        // evict a operand for a result. we try to avoid 2 sorts as
-        // much as possible.
-        std::sort(W_next_uses.begin(),
-                  W_next_uses.end(),
-                  [](const auto &a, const auto &b) {
-                    // todo(salto): maybe prefer spilling values with
-                    // more parts?
-                    return a.next_use > b.next_use;
-                  });
-        limit(W_next_uses,
-              capacity_after_instr_gp,
-              capacity_after_instr_fp,
-              idx,
-              working_set,
-              true);
-      }
-      working_set.commit_result_regs();
-      ++idx;
-    }
-    for (const auto val_idx : working_set) {
-      for (const auto succ : adaptor->block_succs(block)) {
-        const auto succ_idx = block_idx(succ);
-        const auto &pli = precise_liveness[static_cast<u32>(succ_idx)];
-        const auto it = pli.next_uses.find(val_idx);
-        if (it == pli.next_uses.end()) {
-          continue;
-        }
-        const auto &vec = it->second;
-        if (vec.empty()) {
-          continue;
-        }
-        const u32 updated_freq = ++W_entry_freq[static_cast<u32>(succ_idx)][val_idx];
-        if (updated_freq > W_max_entry_freq[static_cast<u32>(succ_idx)]) {
-          W_max_entry_freq[static_cast<u32>(succ_idx)] = updated_freq;
-        }
-      }
-    }
-  }
-  TPDE_LOG_TRACE("Spill Analysis completed");
-}
-
-template <IRAdaptor Adaptor, typename CompilerType>
-void Analyzer<Adaptor, CompilerType>::limit(
-    util::SmallVector<SpillCandidate, 16> &W_next_uses,
-    const u32 NUM_GP_REGS,
-    const u32 NUM_FP_REGS,
-    u32 &idx,
-    WorkingSetTracker &working_set,
-    bool after_instr) {
-  // Calculate how many registers need to be freed
-  const u32 used_gp_regs = working_set.used_gp_regs(true);
-  const u32 used_fp_regs = working_set.used_fp_regs(true);
-  u32 gp_to_free =
-      used_gp_regs > NUM_GP_REGS ? (used_gp_regs - NUM_GP_REGS) : 0;
-  u32 fp_to_free =
-      used_fp_regs > NUM_FP_REGS ? (used_fp_regs - NUM_FP_REGS) : 0;
-
-  if (gp_to_free == 0 && fp_to_free == 0) {
-    return; // Already within capacity
-  }
-
-  const bool gp_limited = gp_to_free > 0 && fp_to_free == 0;
-  const bool fp_limited = fp_to_free > 0 && gp_to_free == 0;
-
-  // Phase 1: Collect candidate values that could be spilled
-  // These are selected in priority order (respecting the caller's sort)
-  util::SmallVector<SpillCandidate, 16> candidates;
-  u32 total_gp_in_candidates = 0;
-  u32 total_fp_in_candidates = 0;
-
-  for (const auto &entry : W_next_uses) {
-    // we should have already evicted all dead values.
-    assert(entry.current_use != INF);
-
-    candidates.push_back(entry);
-    total_gp_in_candidates += entry.parts.gp_regs;
-    total_fp_in_candidates += entry.parts.fp_regs;
-
-    const bool enough_gp = total_gp_in_candidates >= gp_to_free;
-    const bool enough_fp = total_fp_in_candidates >= fp_to_free;
-    if ((gp_limited && enough_gp) || (fp_limited && enough_fp) ||
-        (enough_gp && enough_fp)) {
-      break;
-    }
-  }
-
-  // Phase 2: Optimize selection if we have excess capacity
-  // mainly happens with large vectors, since we can only spill whole vector
-  // atm.
-  const u32 excess_gp = total_gp_in_candidates > gp_to_free
-                            ? total_gp_in_candidates - gp_to_free
-                            : 0;
-  const u32 excess_fp = total_fp_in_candidates > fp_to_free
-                            ? total_fp_in_candidates - fp_to_free
-                            : 0;
-
-  // If we have excess and multiple candidates, reorder by size
-  // This can reduce the number of values spilled
-  if ((excess_gp > 0 || excess_fp > 0) && candidates.size() > 1) [[unlikely]] {
-    std::sort(candidates.begin(),
-              candidates.end(),
-              [&](const auto &a, const auto &b) {
-                  const u32 total_a = a.parts.gp_regs + a.parts.fp_regs;
-                  const u32 total_b = b.parts.gp_regs + b.parts.fp_regs;
-                  // Sort by num_parts (descending) - prefer spilling larger
-                  // values
-                  return total_a > total_b;
-              });
-  }
-
-  auto spill_pass = [&](u32 &gp_needed, u32 &fp_needed, bool single_bank) {
-    u32 gp_freed = 0;
-    u32 fp_freed = 0;
-    for (const auto &entry : candidates) {
-      if (gp_freed >= gp_needed && fp_freed >= fp_needed) {
-        break; // Freed enough registers
-      }
-      if (single_bank) {
-        if (gp_needed > 0 && gp_freed >= gp_needed) {
-          break;
-        }
-        if (fp_needed > 0 && fp_freed >= fp_needed) {
-            break;
-        }
-      }
-      // Skip value if it is not in the needed bank
-      if ((gp_needed <= gp_freed && entry.parts.fp_regs == 0) || (fp_needed <= fp_freed && entry.parts.gp_regs == 0)) {
-          continue;
-      }
-
-
-      // don't spill if the value is dead after the instruction
-      if (!(after_instr && (entry.next_use == INF))) {
-        TPDE_LOG_TRACE("Spilling value {} with current use {} and {} parts at "
-                       "instruction idx {}",
-                       static_cast<u32>(entry.val_idx),
-                       entry.current_use,
-                       static_cast<u32>(entry.parts.gp_regs + entry.parts.fp_regs),
-                       idx);
-        // todo(salto): check if already set?
-        spilled_values.mark_set(static_cast<u32>(entry.val_idx));
-      }
-
-      working_set.erase(entry.val_idx);
-      gp_freed += entry.parts.gp_regs;
-      fp_freed += entry.parts.fp_regs;
+        TPDE_LOG_TRACE("Spill Analysis completed");
     }
 
-    gp_needed = gp_freed >= gp_needed ? 0 : gp_needed - gp_freed;
-    fp_needed = fp_freed >= fp_needed ? 0 : fp_needed - fp_freed;
-  };
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::limit(
+        util::SmallVector<SpillCandidate, 16> &W_next_uses,
+        const u32 NUM_GP_REGS,
+        const u32 NUM_FP_REGS,
+        u32 &idx,
+        WorkingSetTracker &working_set,
+        bool after_instr) {
+        // Calculate how many registers need to be freed
+        const u32 used_gp_regs = working_set.used_gp_regs(true);
+        const u32 used_fp_regs = working_set.used_fp_regs(true);
+        u32 gp_to_free =
+                used_gp_regs > NUM_GP_REGS ? (used_gp_regs - NUM_GP_REGS) : 0;
+        u32 fp_to_free =
+                used_fp_regs > NUM_FP_REGS ? (used_fp_regs - NUM_FP_REGS) : 0;
 
-  if (gp_limited || fp_limited) {
-    spill_pass(gp_to_free, fp_to_free, true);
-    if ((gp_to_free > 0 || fp_to_free > 0) &&
-        (working_set.used_gp_regs(true) > NUM_GP_REGS ||
-         working_set.used_fp_regs(true) > NUM_FP_REGS)) [[unlikely]] {
-      spill_pass(gp_to_free, fp_to_free, false);
+        if (gp_to_free == 0 && fp_to_free == 0) {
+            return; // Already within capacity
+        }
+
+        const bool gp_limited = gp_to_free > 0 && fp_to_free == 0;
+        const bool fp_limited = fp_to_free > 0 && gp_to_free == 0;
+
+        // Phase 1: Collect candidate values that could be spilled
+        // These are selected in priority order (respecting the caller's sort)
+        util::SmallVector<SpillCandidate, 16> candidates;
+        u32 total_gp_in_candidates = 0;
+        u32 total_fp_in_candidates = 0;
+
+        for (const auto &entry: W_next_uses) {
+            // we should have already evicted all dead values.
+            assert(entry.current_use != INF);
+
+            candidates.push_back(entry);
+            total_gp_in_candidates += entry.parts.gp_regs;
+            total_fp_in_candidates += entry.parts.fp_regs;
+
+            const bool enough_gp = total_gp_in_candidates >= gp_to_free;
+            const bool enough_fp = total_fp_in_candidates >= fp_to_free;
+            if ((gp_limited && enough_gp) || (fp_limited && enough_fp) ||
+                (enough_gp && enough_fp)) {
+                break;
+            }
+        }
+
+        // Phase 2: Optimize selection if we have excess capacity
+        // mainly happens with large vectors, since we can only spill whole vector
+        // atm.
+        const u32 excess_gp = total_gp_in_candidates > gp_to_free
+                                  ? total_gp_in_candidates - gp_to_free
+                                  : 0;
+        const u32 excess_fp = total_fp_in_candidates > fp_to_free
+                                  ? total_fp_in_candidates - fp_to_free
+                                  : 0;
+
+        // If we have excess and multiple candidates, reorder by size
+        // This can reduce the number of values spilled
+        if ((excess_gp > 0 || excess_fp > 0) && candidates.size() > 1) [[unlikely]] {
+            std::sort(candidates.begin(),
+                      candidates.end(),
+                      [&](const auto &a, const auto &b) {
+                          const u32 total_a = a.parts.gp_regs + a.parts.fp_regs;
+                          const u32 total_b = b.parts.gp_regs + b.parts.fp_regs;
+                          // Sort by num_parts (descending) - prefer spilling larger
+                          // values
+                          return total_a > total_b;
+                      });
+        }
+
+        auto spill_pass = [&](u32 &gp_needed, u32 &fp_needed, bool single_bank) {
+            u32 gp_freed = 0;
+            u32 fp_freed = 0;
+            for (const auto &entry: candidates) {
+                if (gp_freed >= gp_needed && fp_freed >= fp_needed) {
+                    break; // Freed enough registers
+                }
+                if (single_bank) {
+                    if (gp_needed > 0 && gp_freed >= gp_needed) {
+                        break;
+                    }
+                    if (fp_needed > 0 && fp_freed >= fp_needed) {
+                        break;
+                    }
+                }
+                // Skip value if it is not in the needed bank
+                if ((gp_needed <= gp_freed && entry.parts.fp_regs == 0) || (
+                        fp_needed <= fp_freed && entry.parts.gp_regs == 0)) {
+                    continue;
+                }
+
+
+                // don't spill if the value is dead after the instruction
+                if (!(after_instr && (entry.next_use == INF))) {
+                    TPDE_LOG_TRACE("Spilling value {} with current use {} and {} parts at "
+                                   "instruction idx {}",
+                                   static_cast<u32>(entry.val_idx),
+                                   entry.current_use,
+                                   static_cast<u32>(entry.parts.gp_regs + entry.parts.fp_regs),
+                                   idx);
+                    // todo(salto): check if already set?
+                    spilled_values.mark_set(static_cast<u32>(entry.val_idx));
+                }
+
+                working_set.erase(entry.val_idx);
+                gp_freed += entry.parts.gp_regs;
+                fp_freed += entry.parts.fp_regs;
+            }
+
+            gp_needed = gp_freed >= gp_needed ? 0 : gp_needed - gp_freed;
+            fp_needed = fp_freed >= fp_needed ? 0 : fp_needed - fp_freed;
+        };
+
+        if (gp_limited || fp_limited) {
+            spill_pass(gp_to_free, fp_to_free, true);
+            if ((gp_to_free > 0 || fp_to_free > 0) &&
+                (working_set.used_gp_regs(true) > NUM_GP_REGS ||
+                 working_set.used_fp_regs(true) > NUM_FP_REGS)) [[unlikely]] {
+                spill_pass(gp_to_free, fp_to_free, false);
+            }
+            return;
+        }
+
+        spill_pass(gp_to_free, fp_to_free, false);
     }
-    return;
-  }
-
-  spill_pass(gp_to_free, fp_to_free, false);
-}
 
 
-template <IRAdaptor Adaptor, typename CompilerType>
-void Analyzer<Adaptor, CompilerType>::compute_liveness() noexcept {
-  // implement the liveness algorithm described in
-  // http://databasearchitects.blogspot.com/2020/04/linear-time-liveness-analysis.html
-  // and Kohn et al.: Adaptive Execution of Compiled Queries
-  // TODO(ts): also expose the two-pass liveness algo as an option
+    template<IRAdaptor Adaptor, typename CompilerType>
+    void Analyzer<Adaptor, CompilerType>::compute_liveness() noexcept {
+        // implement the liveness algorithm described in
+        // http://databasearchitects.blogspot.com/2020/04/linear-time-liveness-analysis.html
+        // and Kohn et al.: Adaptive Execution of Compiled Queries
+        // TODO(ts): also expose the two-pass liveness algo as an option
 
         TPDE_LOG_TRACE("Starting Liveness Analysis");
 
@@ -2871,7 +2871,7 @@ void Analyzer<Adaptor, CompilerType>::compute_liveness() noexcept {
                 static_cast<u32>(block_loop.begin) <
                 static_cast<u32>(liveness_loop.end)) {
                 assert(static_cast<u32>(block_loop.end) <=
-                       static_cast<u32>(liveness_loop.end));
+                    static_cast<u32>(liveness_loop.end));
 
                 TPDE_LOG_TRACE("    block_loop {} is nested inside lcl", block_loop_idx);
                 // The current use is nested inside the loop of the liveness
@@ -2939,9 +2939,9 @@ void Analyzer<Adaptor, CompilerType>::compute_liveness() noexcept {
             }
 
             assert(static_cast<u32>(loops[lhs_idx].begin) <=
-                   static_cast<u32>(liveness_loop.begin));
+                static_cast<u32>(liveness_loop.begin));
             assert(static_cast<u32>(loops[lhs_idx].end) >=
-                   static_cast<u32>(liveness_loop.end));
+                static_cast<u32>(liveness_loop.end));
             TPDE_LOG_TRACE("    new lcl is {}", lhs_idx);
 
             liveness.lowest_common_loop = lhs_idx;
@@ -2950,9 +2950,9 @@ void Analyzer<Adaptor, CompilerType>::compute_liveness() noexcept {
             // directly in lcl
             assert(loops[prev_lhs].parent == lhs_idx);
             assert(static_cast<u32>(loops[prev_lhs].begin) <=
-                   static_cast<u32>(liveness_loop.begin));
+                static_cast<u32>(liveness_loop.begin));
             assert(static_cast<u32>(loops[prev_lhs].end) >=
-                   static_cast<u32>(liveness_loop.end));
+                static_cast<u32>(liveness_loop.end));
             update_for_loop(loops[prev_lhs], false);
 
             // extend by block if the block_loop is the lcl
@@ -3038,12 +3038,12 @@ void Analyzer<Adaptor, CompilerType>::compute_liveness() noexcept {
         }
 
 #ifdef TPDE_ASSERTS
-  // reset the incorrect ref_counts in the liveness infos
-  for (auto &entry : liveness) {
-    if (entry.ref_count == ~0u) {
-      entry.ref_count = 0;
-    }
-  }
+        // reset the incorrect ref_counts in the liveness infos
+        for (auto &entry: liveness) {
+            if (entry.ref_count == ~0u) {
+                entry.ref_count = 0;
+            }
+        }
 #endif
 
         TPDE_LOG_TRACE("Finished Liveness Analysis");

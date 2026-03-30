@@ -388,15 +388,23 @@ struct CompilerBase {
     }*/
   }
 
-  Reg global_reg_for(ValLocalIdx) const {
-    /*for (auto reg_id : global_register_file.used_regs()) {
-      if (global_register_file.reg_local_idx(Reg{reg_id}) == idx) {
-        return Reg{reg_id};
-      }
+  Reg global_reg_for(ValLocalIdx idx) const {
+    if (idx == INVALID_VAL_LOCAL_IDX || u32(idx) >= analyzer.liveness_max_value) {
+      return Reg::make_invalid();
     }
-    */
-    return Reg::make_invalid();
+    auto &entry = global_regs[u32(idx)];
+    if (entry.epoch != analyzer.liveness_epoch % 256) {
+      return Reg::make_invalid();
+    }
+    return Reg{entry.reg_id};
   }
+
+  struct RegEpoch {
+    u8 epoch = 255;
+    u8 reg_id = 255;
+  };
+
+  util::SmallVector<RegEpoch, 1024> global_regs;
 #ifndef NDEBUG
   /// Whether we are currently in the middle of generating branch-related code
   /// and therefore must not change any value-related state.
@@ -955,9 +963,6 @@ public:
           if (local_idx == INVALID_VAL_LOCAL_IDX) {
             register_file.unmark_used(scratch);
           } else {
-            if (global_reg_for(local_idx).valid()) {
-              global_unassign(local_idx);
-            }
             evict_reg(scratch);
           }
         }
@@ -1427,6 +1432,26 @@ public:
       }
     } else {
       auto &target_state = block_regs[target];
+      typename RegisterFile::RegBitSet target_state_regs =
+          phi_regs | unallocatable_regs;
+      const auto can_use_target_reg =
+          [&](Reg reg, ValLocalIdx local_idx, u32 part_idx) -> bool {
+        if (reg.invalid()) {
+          return false;
+        }
+        const auto reg_mask = (1ull << reg.id());
+        if (target_state_regs & reg_mask) {
+          return false;
+        }
+        if (!register_file.is_fixed(reg)) {
+          return true;
+        }
+        if (!register_file.is_used(reg)) {
+          return false;
+        }
+        return register_file.reg_local_idx(reg) == local_idx &&
+               register_file.reg_part(reg) == part_idx;
+      };
       // todo(salto): how to represent stack vars here?
       if (has_initial_working_set) {
         util::SmallVector<ValLocalIdx, 16> working_set_values;
@@ -1441,26 +1466,7 @@ public:
                   [](ValLocalIdx a, ValLocalIdx b) {
                     return static_cast<u32>(a) < static_cast<u32>(b);
                   });
-        typename RegisterFile::RegBitSet target_state_regs =
-            phi_regs | unallocatable_regs;
-        const auto can_use_target_reg =
-            [&](Reg reg, ValLocalIdx local_idx, u32 part_idx) -> bool {
-          if (reg.invalid()) {
-            return false;
-          }
-          const auto reg_mask = (1ull << reg.id());
-          if (target_state_regs & reg_mask) {
-            return false;
-          }
-          if (!register_file.is_fixed(reg)) {
-            return true;
-          }
-          if (!register_file.is_used(reg)) {
-            return false;
-          }
-          return register_file.reg_local_idx(reg) == local_idx &&
-                 register_file.reg_part(reg) == part_idx;
-        };
+
         typename RegisterFile::RegBitSet freed_regs = pre_freed_regs;
         for (auto reg: register_file.used_regs()) {
           const auto reg_mask = (1ull << reg);
@@ -1541,7 +1547,7 @@ public:
               target_reg = ap.get_reg();
             }
 
-            if (!target_reg.valid()) {
+            if (!target_reg.valid() && i == 0) {
               Reg global_reg = global_reg_for(local_idx);
               if (global_reg.valid() &&
                   can_use_target_reg(global_reg, local_idx, i)) {
@@ -1600,6 +1606,7 @@ public:
         }
       } else {
         std::unordered_set<ValLocalIdx> seen;
+        typename RegisterFile::RegBitSet seen_regs = 0;
 
         for (auto reg: register_file.used_regs()) {
           const auto local_idx = register_file.reg_local_idx(Reg{reg});
@@ -1651,12 +1658,24 @@ public:
             }
 
             Reg target_reg = ap.get_reg();
+            if ((1ull << target_reg.id()) & seen_regs) {
+              spill_assignment_if_needed(local_idx, i, ap, true);
+              continue;
+            }
             Reg global_reg = global_reg_for(local_idx);
-            if (global_reg.valid() && global_reg != ap.get_reg()) {
+            if (false && i == 0 && global_reg.valid() && global_reg != ap.get_reg() && !register_file.is_used(
+                  global_reg) &&
+                can_use_target_reg(
+                  global_reg, local_idx, i) && !(
+                  (seen_regs | phi_regs | unallocatable_regs) & (1ull << global_reg.id())) && register_file.
+                reg_bank(global_reg) == ap.
+                bank() && register_file.allocatable & (1ull << global_reg.id())) {
               moves.emplace_back(
                 global_reg, ap.get_reg(), ap.part_size(), local_idx, i);
+              unallocatable_regs |= (1ull << global_reg.id());
               target_reg = global_reg;
             }
+            seen_regs |= (1ull << target_reg.id());
             saved_state.push_back(target_reg, i);
           }
         }
@@ -2767,9 +2786,6 @@ void CompilerBase<Adaptor, Derived, Config>::free_assignment(
       register_file.dec_lock_count_must_zero(reg); // release lock for fixed reg
       register_file.unmark_used(reg);
     } else if (ap.register_valid()) {
-      if (global_reg_for(local_idx).valid()) {
-        global_unassign(local_idx);
-      }
       const auto reg = ap.get_reg();
       assert(!register_file.is_fixed(reg));
       register_file.unmark_used(reg);
@@ -2815,9 +2831,6 @@ template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
     CompilerBase<Adaptor, Derived, Config>::release_assignment(
         ValLocalIdx local_idx, ValueAssignment *assignment) {
   if (!assignment->delay_free) {
-    if (global_reg_for(local_idx).valid()) {
-      global_unassign(local_idx);
-    }
     free_assignment(local_idx, assignment);
     return;
   }
@@ -3222,9 +3235,6 @@ Reg CompilerBase<Adaptor, Derived, Config>::select_reg_evict(
     TPDE_FATAL("ran out of registers for scratch registers");
   }
   TPDE_LOG_DBG("  selected r{}", candidate.id());
-  if (global_reg_for(register_file.reg_local_idx(candidate)).valid()) {
-    global_unassign(register_file.reg_local_idx(candidate));
-  }
   evict_reg(candidate);
   return candidate;
 }
@@ -3836,14 +3846,9 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
     // immediately.
     // TODO: more precise condition?
     BlockIndex target = this->analyzer.block_idx(cases[i].second);
-    if (analyzer.block_has_phis(target) || block_regs.contains(target) || analyzer.initial_working_set_by_block.
-        contains(target)) {
-      case_labels.push_back(this->text_writer.label_create());
-      case_blocks.emplace_back(case_labels.back(), cases[i].second);
-    } else {
-      move_values_to_match(target);
-      case_labels.push_back(this->block_labels[u32(target)]);
-    }
+
+    case_labels.push_back(this->text_writer.label_create());
+    case_blocks.emplace_back(case_labels.back(), cases[i].second);
   }
 
   const auto default_label = this->text_writer.label_create();
@@ -4694,6 +4699,11 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
   derived()->analysis_start();
   analyzer.switch_func(func);
   derived()->analysis_end();
+
+  if (analyzer.liveness_epoch % 256 == 255) {
+    global_regs.clear();
+  }
+  global_regs.resize(analyzer.liveness_max_value + 1);
 
   if constexpr (WithAsserts) {
     stack.frame_size = ~0u;

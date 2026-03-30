@@ -446,8 +446,17 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_reg_impl(
   } else {
     bank = state.c.bank;
   }
-
-  auto reg = compiler->select_reg(bank, 0);
+  Reg reg = Reg::make_invalid();
+  if (state.v.part == 0 && state.v.local_idx != INVALID_VAL_LOCAL_IDX) {
+    auto pref = compiler->global_reg_for(state.v.local_idx);
+    if (pref.valid() && !compiler->register_file.is_used(pref) && compiler->register_file.reg_bank(pref) == bank &&
+        compiler->register_file.allocatable & (1ull << pref.id())) {
+      reg = pref;
+    }
+  }
+  if (!reg.valid()) {
+    reg = compiler->select_reg(bank, 0);
+  }
   /*if (!is_const() && has_assignment()) {
     if (!global_reg.valid()) {
       compiler->global_assign(local_idx(), reg);
@@ -467,6 +476,9 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_reg_impl(
     auto ap = assignment();
     ap.set_reg(reg);
     ap.set_register_valid(true);
+    if (state.v.part == 0 && !compiler->global_reg_for(state.v.local_idx).valid()) {
+      compiler->global_regs[u32(state.v.local_idx)] = {u8(compiler->analyzer.liveness_epoch), reg.id()};
+    }
 
     if constexpr (Reload) {
       compiler->derived()->reload_to_reg(reg, ap);
@@ -612,6 +624,9 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
 
     ap.set_reg(reg);
     ap.set_register_valid(true);
+    if (state.v.part == 0 && !compiler->global_reg_for(state.v.local_idx).valid()) {
+      compiler->global_regs[u32(state.v.local_idx)] = {u8(compiler->analyzer.liveness_epoch), reg.id()};
+    }
 
     // We must lock the value here, otherwise, load_from_stack could evict the
     // register again.
@@ -965,9 +980,6 @@ typename CompilerBase<Adaptor, Derived, Config>::AsmReg
     --compiler->assignments.cur_fixed_assignment_count[ap.bank().id()];
   }
 
-  if (compiler->global_reg_for(local_idx()).valid()) {
-    compiler->global_unassign(local_idx());
-  }
 
   ap.set_register_valid(false);
   ap.set_fixed_assignment(false);
