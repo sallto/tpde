@@ -2047,6 +2047,7 @@ namespace tpde {
             return false;
         };
         const auto web_union = [&](const u32 lhs, const u32 rhs) {
+            return;
             if (lhs == rhs || lhs == INVALID_WEB_IDX || rhs == INVALID_WEB_IDX) {
                 return;
             }
@@ -2278,9 +2279,9 @@ namespace tpde {
                         phi_parts[0] += parts.gp_regs;
                         phi_parts[1] += parts.fp_regs;
                     }
-                    if (phi_parts[0] > NUM_GP_REGS - 4) {
-                        phi_parts[0] = half_gp_regs;
-                    }
+                    //if (phi_parts[0] > NUM_GP_REGS - 4) {
+                    //    phi_parts[0] = half_gp_regs;
+                    //}
 
                     std::unordered_set<ValLocalIdx> header_local_defs;
                     for (const auto inst: adaptor->block_insts(block)) {

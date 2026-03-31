@@ -1658,24 +1658,6 @@ public:
             }
 
             Reg target_reg = ap.get_reg();
-            if ((1ull << target_reg.id()) & seen_regs) {
-              spill_assignment_if_needed(local_idx, i, ap, true);
-              continue;
-            }
-            Reg global_reg = global_reg_for(local_idx);
-            if (false && i == 0 && global_reg.valid() && global_reg != ap.get_reg() && !register_file.is_used(
-                  global_reg) &&
-                can_use_target_reg(
-                  global_reg, local_idx, i) && !(
-                  (seen_regs | phi_regs | unallocatable_regs) & (1ull << global_reg.id())) && register_file.
-                reg_bank(global_reg) == ap.
-                bank() && register_file.allocatable & (1ull << global_reg.id())) {
-              moves.emplace_back(
-                global_reg, ap.get_reg(), ap.part_size(), local_idx, i);
-              unallocatable_regs |= (1ull << global_reg.id());
-              target_reg = global_reg;
-            }
-            seen_regs |= (1ull << target_reg.id());
             saved_state.push_back(target_reg, i);
           }
         }
@@ -3328,7 +3310,7 @@ void CompilerBase<Adaptor, Derived, Config>::allocate_spill_slot(
       const u32 root_idx =
           analyzer.find_web_idx(static_cast<u32>(local_idx));
       auto &web_members = analyzer.web_members[root_idx];
-      if (web_members.size() >= 2)[[unlikely]] {
+      if (web_members.size() >= 2) {
         for (const auto member: web_members) {
           ValueAssignment *candidate = val_assignment(member);
           if (!candidate || candidate->variable_ref) {
