@@ -4777,17 +4777,6 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
     // Init assignment for all arguments. This can be substituted for more
     // complex mappings of arguments to value parts.
     derived()->prologue_assign_arg(cc_assigner, arg_idx++, arg);
-    auto arg_val_idx = adaptor->val_local_idx(arg);
-    if (arg_val_idx != INVALID_VAL_LOCAL_IDX) {
-      if (!analyzer.spilled_values.is_set(static_cast<u32>(arg_val_idx))) {
-        continue;
-      }
-      for (u32 part_idx = 0; part_idx < adaptor->val_parts(arg).count();
-           ++part_idx) {
-        AssignmentPartRef ap{val_assignment(arg_val_idx), part_idx};
-        spill(ap);
-      }
-    }
   }
 #ifndef NDEBUG
   // After gen_func_prolog_and_args, explicitly capture all function arguments
@@ -4855,6 +4844,24 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
   for (auto &[alloca, size, align] : dyn_allocas) {
     auto [_, vr] = this->result_ref_single(alloca);
     derived()->alloca_fixed(size, align, vr);
+  }
+
+  for (const auto &arg: adaptor->cur_args()) {
+    auto arg_val_idx = adaptor->val_local_idx(arg);
+    if (arg_val_idx != INVALID_VAL_LOCAL_IDX) {
+      auto arg_val = val_assignment(arg_val_idx);
+      if (!arg_val) {
+        continue;
+      }
+      if (!analyzer.spilled_values.is_set(static_cast<u32>(arg_val_idx))) {
+        continue;
+      }
+      for (u32 part_idx = 0; part_idx < adaptor->val_parts(arg).count();
+           ++part_idx) {
+        AssignmentPartRef ap{val_assignment(arg_val_idx), part_idx};
+        spill(ap);
+      }
+    }
   }
 
   for (u32 i = 0; i < analyzer.block_layout.size(); ++i) {
