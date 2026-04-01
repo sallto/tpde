@@ -347,8 +347,9 @@ struct CompilerA64 : BaseTy<Adaptor, Derived, Config> {
   // not handed out as fixed assignments.
   // R1 is also prevented from fixed assignments to avoid issues with exception
   // handling.
+  // keep 2 registers per bank. 1 for cbz 1 for phi movement.
   static constexpr u64 phi_nonallocatable_mask_value =
-      create_bitmask({AsmReg::R1, AsmReg::V0, AsmReg::R1, AsmReg::V1});
+      create_bitmask({AsmReg::R1, AsmReg::V0, AsmReg::R0, AsmReg::V1});
   u64 fixed_assignment_nonallocatable_mask =
       create_bitmask({AsmReg::R0, AsmReg::R1, AsmReg::V0, AsmReg::R16});
   u32 func_start_off = 0u, func_prologue_alloc = 0u;
