@@ -391,15 +391,12 @@ bool LLVMCompilerArm64::compile_icmp(const llvm::Instruction *inst,
         // register. This will only happen if the target already has a PHI allocation for target_idx, 
         // (otherwise the resolution routine will find a free register)
         // If lhs_reg is used somewhere as a phi, we move it to the permananet scratch which will not be used for phis.
-          ScratchReg res_scratch{this};
-        if (this->used_phi_regs_global & (1ULL << lhs_reg.id()) || this->phi_nonallocatable_mask() & (
-              1ULL << lhs_reg.id())) {
-          res_scratch.alloc_specific(permanent_scratch_reg);
-          this->mov(permanent_scratch_reg, lhs_reg, int_width <= 32 ? 4 : 8);
-          lhs_reg = permanent_scratch_reg;
-        } else if (!lhs_op.can_salvage()) {
+        ScratchReg res_scratch{this};
+        if (!lhs_op.can_salvage()|| ((1ull << lhs_reg.id()) & (this->used_phi_regs_global | this->phi_nonallocatable_mask()))) {
           AsmReg src_reg = lhs_reg;
-          lhs_reg = res_scratch.alloc_specific(permanent_scratch_reg);
+          AsmReg reg= this->select_reg(register_file.reg_bank(lhs_reg),this->used_phi_regs_global | this->phi_nonallocatable_mask() );
+          res_scratch.alloc_specific(reg);
+          lhs_reg = reg;
           this->mov(lhs_reg, src_reg, int_width <= 32 ? 4 : 8);
         } else {
           res_scratch.alloc_specific(lhs_op.salvage());
@@ -566,7 +563,11 @@ bool LLVMCompilerArm64::handle_intrin(const llvm::IntrinsicInst *inst) {
     auto [_, res_vr] = this->result_ref_single(inst);
     auto op = llvm::cast<llvm::ConstantInt>(inst->getOperand(0));
     if (op->isZero()) {
+      if (!register_file.is_clobbered(tpde::Reg{AsmReg::R29})) {
+      ASM(MOVx, res_vr.alloc_reg(),DA_GP(30));
+      }else{
       ASM(LDRxu, res_vr.alloc_reg(), DA_GP(29), 8);
+      }
     } else {
       ASM(MOVZx, res_vr.alloc_reg(), 0);
     }
