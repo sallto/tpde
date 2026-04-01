@@ -384,7 +384,7 @@ bool LLVMCompilerArm64::compile_icmp(const llvm::Instruction *inst,
     if (rhs_op.is_const()) {
       u64 imm = rhs_op.const_data()[0];
       if (imm == 0 && single_use && fuse_br &&
-          (jump == Jump::Jeq || jump == Jump::Jne)&&!(((1ull << lhs_reg.id()) & (this->used_phi_regs_global | this->phi_nonallocatable_mask())))) {
+          (jump == Jump::Jeq || jump == Jump::Jne)) {
         // Generate CBZ/CBNZ if possible. However, lhs_reg might be the register
         // corresponding to a PHI node, which gets modified before the branch.
         // We have to detect this case and generate a copy into a separate
@@ -394,7 +394,7 @@ bool LLVMCompilerArm64::compile_icmp(const llvm::Instruction *inst,
         ScratchReg res_scratch{this};
         if (!lhs_op.can_salvage()|| ((1ull << lhs_reg.id()) & (this->used_phi_regs_global | this->phi_nonallocatable_mask()))) {
           AsmReg src_reg = lhs_reg;
-          AsmReg reg = this->select_reg(register_file.reg_bank(lhs_reg), this->phi_nonallocatable_mask());
+          AsmReg reg = this->select_reg(register_file.reg_bank(lhs_reg), this->used_phi_regs_global);
           res_scratch.alloc_specific(reg);
           lhs_reg = reg;
           this->mov(lhs_reg, src_reg, int_width <= 32 ? 4 : 8);
