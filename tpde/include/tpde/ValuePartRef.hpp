@@ -455,7 +455,13 @@ void CompilerBase<Adaptor, Derived, Config>::ValuePart::alloc_reg_impl(
     }
   }
   if (!reg.valid()) {
-    reg = compiler->select_reg(bank, 0);
+    auto it = std::lower_bound(compiler->analyzer.callee_saved_values.begin(),
+                               compiler->analyzer.callee_saved_values.end(), state.v.local_idx);
+    if (it != compiler->analyzer.callee_saved_values.end() && *it == state.v.local_idx) [[unlikely]] {
+      reg = compiler->select_reg(bank, 0, true);
+    } else {
+      reg = compiler->select_reg(bank, 0);
+    }
   }
   /*if (!is_const() && has_assignment()) {
     if (!global_reg.valid()) {

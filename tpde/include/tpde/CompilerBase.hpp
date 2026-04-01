@@ -835,9 +835,9 @@ public:
 
   /// Select an available register, evicting loaded values if needed.
   /// Return local, global register
-  Reg select_reg(RegBank bank, u64 exclusion_mask) {
+  Reg select_reg(RegBank bank, u64 exclusion_mask, bool prefer_nonvolatile = false) {
     // todo(salto): fix lookups to global reg file ex. add_i128_no_salvage_reg
-    Reg res = register_file.find_first_free_excluding(bank, exclusion_mask);
+    Reg res = register_file.find_first_free_excluding(bank, exclusion_mask, prefer_nonvolatile);
     if (res.valid()) [[likely]] {
       return res;
     }
@@ -1354,7 +1354,7 @@ public:
                                  deferred_phi_reg_materializations,
                                  deferred_phi_stack_materializations,
                                  deferred_phi_reg_spills,
-                                 pre_freed_regs);
+                                 0);
       phi_regs = phi_regs_;
       unallocatable_regs = unallocatable_regs_;
     }

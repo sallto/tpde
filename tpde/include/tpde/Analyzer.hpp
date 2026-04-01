@@ -123,6 +123,8 @@ namespace tpde {
         // If a value is spilled at any point, it is marked here. During codegen we
         // spill immediately after definition to avoid storing the spill location.
         util::SmallBitSet<SMALL_VALUE_NUM> spilled_values;
+        // values that are alive after a call
+        util::SmallVector<ValLocalIdx, SMALL_VALUE_NUM> callee_saved_values;
         /// Mapping from ValLocalIdx to simple PHI web index.
         /// Values with INVALID_WEB_IDX were not assigned to any web.
         static constexpr u32 INVALID_WEB_IDX = ~0u;
@@ -1813,6 +1815,7 @@ namespace tpde {
         web_phi_blocks.resize(liveness_max_value + 1);
         web_members.resize(liveness_max_value + 1);
         val_def_blocks.resize(liveness_max_value + 1, INVALID_BLOCK_IDX);
+        callee_saved_values.clear();
 
         for (u32 i = 0; i <= liveness_max_value; ++i) {
             web_members[i].clear();
@@ -2475,7 +2478,17 @@ namespace tpde {
             }
 
             u32 idx = 0;
+            bool last_was_call = false;
             for (const auto inst: adaptor->block_insts(block)) {
+                if (last_was_call) {
+                    for (const auto val_idx: working_set) {
+                        const auto parts = ensure_parts_cached(val_idx);
+                        const auto &uses = get_current_and_next_use(precise_liveness[block_idx_u32], val_idx, idx);
+                        if (parts.gp_regs + parts.fp_regs == 1 && uses.first != INF && uses.second < idx + 10) {
+                            callee_saved_values.push_back(val_idx);
+                        }
+                    }
+                }
                 for (const auto operand: adaptor->inst_operands(inst)) {
                     if (adaptor->val_ignore_in_liveness_analysis(operand)) {
                         // what can we do here?
@@ -2513,6 +2526,7 @@ namespace tpde {
                 // todo(salto): check wether if with [[unlikely]] has better
                 // performance
                 const bool has_call = adaptor->inst_has_call(inst);
+                last_was_call = has_call;
                 // capacity after is lower for calls due to caller-saved registers.
                 // But the call results are already in the registers automatically.
                 //todo(salto): fix potential underflow
@@ -2629,6 +2643,7 @@ namespace tpde {
             }
         }
         TPDE_LOG_TRACE("Spill Analysis completed");
+        std::sort(callee_saved_values.begin(), callee_saved_values.end());
     }
 
     template<IRAdaptor Adaptor, typename CompilerType>

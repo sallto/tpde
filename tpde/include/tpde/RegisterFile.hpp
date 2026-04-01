@@ -191,30 +191,40 @@ public:
     return util::BitSetIterator<>{used};
   }
 
-  [[nodiscard]] Reg
-      find_first_free_excluding(const RegBank bank,
-                                const u64 exclusion_mask) noexcept {
-        // TODO(ts): implement preferred registers
-        const RegBitSet free_bank = allocatable & ~used & bank_regs(bank);
-        const RegBitSet selectable = free_bank & ~exclusion_mask;
-        if (selectable == 0) {
-          return Reg::make_invalid();
-        }
 
-        const u8 bank_id = bank.id();
-        const u8 start = last_used_reg[bank_id] + 1;
-        // Prefer volatile registers (NOT callee-saved)
-        const RegBitSet caller_saved_sel = selectable & ~callee_saved;
-        const RegBitSet total_search_set = caller_saved_sel != 0 ? caller_saved_sel : selectable;
-        RegBitSet search_set = total_search_set & ~((1ull << start) - 1);
-        if (search_set == 0) {
-          search_set = total_search_set;
-        }
-        const u8 found = static_cast<u8>(util::cnt_tz(search_set));
+  [[nodiscard]]
+  Reg
+  find_first_free_excluding(const RegBank bank,
+                            const u64 exclusion_mask,
+                            const bool prefer_nonvolatile = false) noexcept {
+    // TODO(ts): implement preferred registers
+    const RegBitSet free_bank = allocatable & ~used & bank_regs(bank);
+    const RegBitSet selectable = free_bank & ~exclusion_mask;
+    if (selectable == 0) {
+      return Reg::make_invalid();
+    }
+
+    const u8 bank_id = bank.id();
+    const u8 start = last_used_reg[bank_id] + 1;
+    // Prefer category from template
+    RegBitSet preferred = selectable;
+    if (!prefer_nonvolatile) {
+      preferred = selectable & ~callee_saved;
+    } else {
+      preferred = selectable & callee_saved;
+    }
 
 
-        last_used_reg[bank_id] = found;
-        return Reg{found};
+    const RegBitSet total_search_set = preferred != 0 ? preferred : selectable;
+    RegBitSet search_set = total_search_set & ~((1ull << start) - 1);
+    if (search_set == 0) {
+      search_set = total_search_set;
+    }
+    const u8 found = static_cast<u8>(util::cnt_tz(search_set));
+
+
+    last_used_reg[bank_id] = found;
+    return Reg{found};
   }
 
   [[nodiscard]] Reg
