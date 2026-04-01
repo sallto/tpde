@@ -394,7 +394,7 @@ bool LLVMCompilerArm64::compile_icmp(const llvm::Instruction *inst,
         ScratchReg res_scratch{this};
         if (!lhs_op.can_salvage()|| ((1ull << lhs_reg.id()) & (this->used_phi_regs_global | this->phi_nonallocatable_mask()))) {
           AsmReg src_reg = lhs_reg;
-          AsmReg reg= this->select_reg(register_file.reg_bank(lhs_reg),this->used_phi_regs_global | this->phi_nonallocatable_mask() );
+          AsmReg reg = this->select_reg(register_file.reg_bank(lhs_reg), this->phi_nonallocatable_mask());
           res_scratch.alloc_specific(reg);
           lhs_reg = reg;
           this->mov(lhs_reg, src_reg, int_width <= 32 ? 4 : 8);
