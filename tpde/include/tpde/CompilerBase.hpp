@@ -2475,6 +2475,7 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<CBDerived>::call(
   // assert((compiler.register_file.allocatable & arg_regs) == 0);
   compiler.register_file.allocatable |= arg_regs;
   compiler.register_file.allocatable |= source_regs;
+  compiler.register_file.allocatable &= compiler.cur_cc_assigner()->get_ccinfo().allocatable_regs;
   pending_stack_local_idxs.clear();
   pending_args.clear();
   source_regs = 0;

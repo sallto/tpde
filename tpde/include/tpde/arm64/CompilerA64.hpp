@@ -348,7 +348,7 @@ struct CompilerA64 : BaseTy<Adaptor, Derived, Config> {
   // R1 is also prevented from fixed assignments to avoid issues with exception
   // handling.
   static constexpr u64 phi_nonallocatable_mask_value =
-      create_bitmask({AsmReg::R1, AsmReg::V0,AsmReg::R16});
+      create_bitmask({AsmReg::R1, AsmReg::V0});
   u64 fixed_assignment_nonallocatable_mask =
       create_bitmask({AsmReg::R0, AsmReg::R1, AsmReg::V0, AsmReg::R16});
   u32 func_start_off = 0u, func_prologue_alloc = 0u;
