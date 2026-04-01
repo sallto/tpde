@@ -183,8 +183,8 @@ namespace tpde {
                 if (it != values_.end()) {
                     const RegParts parts = analyzer_->ensure_parts_cached(val_idx);
 
-                    used_gp_regs_ += parts.gp_regs;
-                    used_fp_regs_ += parts.fp_regs;
+                    used_gp_regs_ -= parts.gp_regs;
+                    used_fp_regs_ -= parts.fp_regs;
                     values_.erase(it);
                     return true;
                 }
@@ -2516,9 +2516,11 @@ namespace tpde {
                 // capacity after is lower for calls due to caller-saved registers.
                 // But the call results are already in the registers automatically.
                 //todo(salto): fix potential underflow
+                const u32 capacity_before_instr_gp = NUM_GP_REGS;
                 const u32 capacity_after_instr_gp =
                         NUM_GP_REGS - static_cast<u32>(has_call) *
                         (NUM_CALLER_SAVED_GP - num_result_regs[0]);
+                const u32 capacity_before_instr_fp = NUM_FP_REGS;
                 const u32 capacity_after_instr_fp =
                         NUM_FP_REGS - static_cast<u32>(has_call) *
                         (NUM_CALLER_SAVED_FP - num_result_regs[1]);
@@ -2562,7 +2564,7 @@ namespace tpde {
                     continue;
                 }
                 if (!working_set.fits_into(
-                    capacity_after_instr_gp, capacity_after_instr_fp, false)) {
+                    capacity_before_instr_gp, capacity_before_instr_fp, false)) {
                     // sort by current use since we need space for operands
                     std::sort(W_next_uses.begin(),
                               W_next_uses.end(),
@@ -2576,8 +2578,8 @@ namespace tpde {
                                              : a.current_use > b.current_use;
                               });
                     limit(W_next_uses,
-                          capacity_after_instr_gp + num_result_regs[0],
-                          capacity_after_instr_fp + num_result_regs[1],
+                          capacity_before_instr_gp + num_result_regs[0],
+                          capacity_before_instr_fp + num_result_regs[1],
                           idx,
                           working_set,
                           false);
