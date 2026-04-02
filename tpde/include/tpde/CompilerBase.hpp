@@ -1230,7 +1230,7 @@ public:
                                                  AssignmentPartRef ap,
                                                  bool allow_uninitialized =
                                                      false) -> bool {
-      if (ap.register_valid()) {
+      if (ap.register_valid() && branch_scratch_reg(register_file.reg_bank(ap.get_reg())) != dst) {
         if (ap.get_reg() != dst) {
           derived()->mov(dst, ap.get_reg(), ap.part_size());
           return true;
@@ -1239,7 +1239,7 @@ public:
       }
 
       if (!ap.variable_ref()) {
-        if (!ap.stack_valid()) {
+        if (!ap.stack_valid() && ap.assignment()->frame_off == 0) {
           if (allow_uninitialized) {
             return false;
           }
@@ -1383,6 +1383,15 @@ public:
           }
 
           if (ap.register_valid()) {
+            if (target_reg == branch_scratch_reg(register_file.reg_bank(ap.get_reg()))) {
+              spill_assignment_if_needed(state.val_local_idx, i, ap, true);
+              deferred_loads.emplace_back(DeferredEdgeLoad{
+                .dst = target_reg,
+                .local_idx = state.val_local_idx,
+                .part_idx = i,
+              });
+              continue;
+            }
             moves.emplace_back(target_reg,
                                ap.get_reg(),
                                ap.part_size(),
