@@ -5090,7 +5090,7 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
             idom_stack_valid_single_part_values &&
             idom_stack_valid_single_part_values->contains(
               state.val_local_idx)) {
-          mark_modified = false;
+          //mark_modified = false;
           //TPDE_LOG_ERR("Skipping modification for {}",
           //             static_cast<u32>(state.val_local_idx));
         }
