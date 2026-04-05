@@ -110,16 +110,19 @@ namespace tpde {
         struct PreciseLivenessInfo {
             // val_local_idx -> list of next-use distances from the start of each block.
             // first entry is the epoch
-
-            std::unordered_map<ValLocalIdx, util::SmallVector<u32, 16> > next_uses;
+            llvm::DenseMap<ValLocalIdx, util::SmallVector<u32, 16> > next_uses;
             util::SmallVector<std::pair<ValLocalIdx, u32>, 64> live_through;
         };
 
         // pro block liveness info
         util::SmallVector<PreciseLivenessInfo, 32> precise_liveness;
         /// Initial working set selected at block entry for loop headers.
-        std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx> >
-        initial_working_set_by_block = {};
+        struct InitalWorkingSet {
+            util::SmallVector<ValLocalIdx, 64> values;
+            BlockIndex block_idx;
+        };
+
+        util::SmallVector<InitalWorkingSet, 32> initial_working_set_by_block;
         // If a value is spilled at any point, it is marked here. During codegen we
         // spill immediately after definition to avoid storing the spill location.
         util::SmallBitSet<SMALL_VALUE_NUM> spilled_values;
@@ -152,7 +155,7 @@ namespace tpde {
         class WorkingSetTracker {
         private:
             using IRValueRef = typename Adaptor::IRValueRef;
-            std::unordered_set<ValLocalIdx> values_;
+            llvm::SmallDenseSet<ValLocalIdx, 64> values_;
             u32 used_gp_regs_ = 0;
             u32 used_fp_regs_ = 0;
             u32 result_gp_regs_ = 0;
@@ -207,11 +210,6 @@ namespace tpde {
                 result_fp_regs_ = 0;
             }
 
-            /// Replace the working set with a new set of values.
-            void replace_with(const std::unordered_set<ValLocalIdx> &new_values) {
-                values_ = new_values;
-                recalculate_used_regs();
-            }
 
             /// Replace the working set with values from a vector.
             void replace_with(const util::SmallVector<ValLocalIdx, 16> &new_values) {
@@ -452,7 +450,7 @@ namespace tpde {
         RegParts ensure_parts_cached(ValLocalIdx val_idx) {
             const u32 val_idx_u32 = static_cast<u32>(val_idx);
             assert(val_idx_u32 < value_parts_cache.size());
-            if (value_parts_cache[val_idx_u32].epoch != liveness_epoch) {
+            if (value_parts_cache[val_idx_u32].epoch != liveness_epoch) [[unlikely]]{
                 value_parts_cache[val_idx_u32].epoch = liveness_epoch;
                 const auto value_parts = adaptor->val_parts(val_idx);
                 std::array<u8, 2> parts = {0u, 0u};
@@ -730,7 +728,7 @@ namespace tpde {
         loop_heads.mark_set(0);
 
         build_loop_tree_and_block_layout(block_rpo, loop_parent, loop_heads);
-        dominator_tree.compute(adaptor, block_layout);
+        //dominator_tree.compute(adaptor, block_layout);
         //dominator_tree.print(std::cerr, adaptor, block_layout);
         assert(loop_parent.size() == block_rpo.size());
     }
@@ -1247,12 +1245,6 @@ namespace tpde {
         dfs(dfs, 0);
 
 
-        const auto is_phi_def = [this](u32 block_index, u32 firstUse) {
-            // all phis are considered the only 0th instruction so firstUse ==
-            // DEF_BIT + 0 means it's a phi def.
-            return this->block_has_phis(static_cast<BlockIndex>(block_index)) &&
-                   firstUse == DEF_BIT;
-        };
 
         const auto is_live_in = [&](const u32 block_idx,
                                     const ValLocalIdx val_idx) noexcept {
@@ -1583,10 +1575,10 @@ namespace tpde {
 
         for (u32 block_idx = 0; block_idx < num_blocks; ++block_idx) {
             const auto &pli = precise_liveness[block_idx];
-            const IRBlockRef block = block_layout[block_idx];
-            const bool has_phis = block_has_phis(block);
 
-            util::SmallVector<std::pair<ValueInterval, ValLocalIdx>, 64> intervals;
+            // start, gp_parts, fp_parts
+            util::SmallVector<std::tuple<u32, u8, u8>, 64> starts;
+            util::SmallVector<std::tuple<u32, u8, u8>, 64> ends;
 
             for (const auto &[val_idx, uses]: pli.next_uses) {
                 if (static_cast<u32>(val_idx) >= value_parts_cache.size()) {
@@ -1630,73 +1622,47 @@ namespace tpde {
                     }
                 }
 
-                intervals.emplace_back(
-                    ValueInterval{.first = interval_first, .last = interval_last},
-                    val_idx);
+                starts.emplace_back(interval_first, ensure_parts_cached(val_idx).gp_regs,
+                                    ensure_parts_cached(val_idx).fp_regs);
+                ends.emplace_back(interval_last, ensure_parts_cached(val_idx).gp_regs,
+                                  ensure_parts_cached(val_idx).fp_regs);
             }
             for (const auto &[val_idx, live_out]: pli.live_through) {
-                intervals.emplace_back(
-                    ValueInterval{.first = 0, .last = live_out},
-                    val_idx);
+                starts.emplace_back(0, ensure_parts_cached(val_idx).gp_regs,
+                                    ensure_parts_cached(val_idx).fp_regs);
+                ends.emplace_back(live_out, ensure_parts_cached(val_idx).gp_regs,
+                                  ensure_parts_cached(val_idx).fp_regs);
             }
 
-            if (intervals.empty()) {
-                continue;
-            }
 
-            const u32 block_span =
-                    std::ranges::distance(adaptor->block_insts(block)) + (has_phis ? 1 : 0);
-
-            struct Event {
-                u32 pos;
-                i32 delta;
-                u32 gp_parts;
-                u32 fp_parts;
-            };
-
-            util::SmallVector<Event, 128> events;
-            // todo salto optimzie this bullshit
-            for (const auto &[interval, val_idx]: intervals) {
-                const auto parts = ensure_parts_cached(val_idx);
-                const u32 gp_parts = parts.gp_regs;
-                const u32 fp_parts = parts.fp_regs;
-
-                events.push_back(Event{
-                    .pos = interval.first,
-                    .delta = 1,
-                    .gp_parts = gp_parts,
-                    .fp_parts = fp_parts
-                });
-                events.push_back(Event{
-                    .pos = interval.last + 1,
-                    .delta = -1,
-                    .gp_parts = gp_parts,
-                    .fp_parts = fp_parts
-                });
-            }
-
-            std::sort(events.begin(), events.end(), [](const Event &a, const Event &b) {
-                return a.pos < b.pos;
-            });
-
-            u32 gp_pressure = 0;
-            u32 fp_pressure = 0;
+            u32 s = 0;
+            u32 e = 0;
             u32 max_gp = 0;
             u32 max_fp = 0;
-
-            u32 event_idx = 0;
-            for (u32 pos = 0; pos <= block_span; ++pos) {
-                while (event_idx < events.size() && events[event_idx].pos == pos) {
-                    gp_pressure += events[event_idx].delta * events[event_idx].gp_parts;
-                    fp_pressure += events[event_idx].delta * events[event_idx].fp_parts;
-                    ++event_idx;
+            u32 cur_gp = 0;
+            u32 cur_fp = 0;
+            std::sort(starts.begin(), starts.end(), [](const auto &lhs, const auto &rhs) {
+                return std::get<0>(lhs) < std::get<0>(rhs);
+            });
+            std::sort(ends.begin(), ends.end(), [](const auto &lhs, const auto &rhs) {
+                return std::get<0>(lhs) < std::get<0>(rhs);
+            });
+            while (s < starts.size()) {
+                const auto &[start, gp, fp] = starts[s];
+                const auto &[end, gp_end, fp_end] = ends[e];
+                if (start <= end) {
+                    cur_gp += gp;
+                    cur_fp += fp;
+                    ++s;
+                } else {
+                    cur_gp -= gp_end;
+                    cur_fp -= fp_end;
+                    ++e;
                 }
-
-                if (pos < block_span) {
-                    max_gp = std::max(max_gp, gp_pressure);
-                    max_fp = std::max(max_fp, fp_pressure);
-                }
+                max_gp = std::max(max_gp, cur_gp);
+                max_fp = std::max(max_fp, cur_fp);
             }
+
 
             block_pressure[block_idx].gp_pressure = max_gp;
             block_pressure[block_idx].fp_pressure = max_fp;
@@ -1801,374 +1767,7 @@ namespace tpde {
         // different banks.
         //  so optimize for this case.
 
-
-        // Build simple PHI coalescing webs using union-find.
-        // We only merge single-part PHIs with single-part incoming values that are
-        // compatible and non-overlapping.
-
-        util::SmallVector<u8, SMALL_VALUE_NUM> web_rank;
-        util::SmallVector<util::SmallVector<u32, 2>, SMALL_VALUE_NUM> web_phi_blocks;
-
-        util::SmallVector<BlockIndex, SMALL_VALUE_NUM> val_def_blocks;
-        web_parent.resize(liveness_max_value + 1);
-        web_rank.resize(liveness_max_value + 1, 0u);
-        web_phi_blocks.resize(liveness_max_value + 1);
-        web_members.resize(liveness_max_value + 1);
-        val_def_blocks.resize(liveness_max_value + 1, INVALID_BLOCK_IDX);
         callee_saved_values.clear();
-
-        for (u32 i = 0; i <= liveness_max_value; ++i) {
-            web_members[i].clear();
-            if (i < liveness.size() && liveness[i].epoch == liveness_epoch) {
-                web_parent[i] = i;
-                web_members[i].push_back(static_cast<ValLocalIdx>(i));
-            } else {
-                web_parent[i] = INVALID_WEB_IDX;
-            }
-        }
-
-        if (!block_layout.empty()) {
-            const BlockIndex entry_block_idx = BlockIndex{0};
-            for (const IRValueRef arg: adaptor->cur_args()) {
-                if (adaptor->val_ignore_in_liveness_analysis(arg)) {
-                    continue;
-                }
-
-                const ValLocalIdx arg_idx = adaptor->val_local_idx(arg);
-                const u32 arg_idx_u32 = static_cast<u32>(arg_idx);
-                if (arg_idx_u32 >= val_def_blocks.size() ||
-                    web_parent[arg_idx_u32] == INVALID_WEB_IDX) {
-                    continue;
-                }
-                val_def_blocks[arg_idx_u32] = entry_block_idx;
-            }
-        }
-
-
-        for (u32 block_idx_u32 = 0; block_idx_u32 < block_layout.size(); ++block_idx_u32) {
-            const IRBlockRef block = block_layout[block_idx_u32];
-            for (const IRValueRef phi: adaptor->block_phis(block)) {
-                if (adaptor->val_ignore_in_liveness_analysis(phi)) {
-                    continue;
-                }
-
-                const u32 phi_idx_u32 = static_cast<u32>(adaptor->val_local_idx(phi));
-                if (phi_idx_u32 >= web_phi_blocks.size() ||
-                    web_parent[phi_idx_u32] == INVALID_WEB_IDX) {
-                    continue;
-                }
-
-                val_def_blocks[phi_idx_u32] = BlockIndex{block_idx_u32};
-                web_phi_blocks[phi_idx_u32].push_back(block_idx_u32);
-            }
-
-            for (const IRInstRef inst: adaptor->block_insts(block)) {
-                for (const IRValueRef result: adaptor->inst_results(inst)) {
-                    if (adaptor->val_ignore_in_liveness_analysis(result)) {
-                        continue;
-                    }
-
-                    const ValLocalIdx result_idx = adaptor->val_local_idx(result);
-                    const u32 result_idx_u32 = static_cast<u32>(result_idx);
-                    if (result_idx_u32 >= val_def_blocks.size() ||
-                        web_parent[result_idx_u32] == INVALID_WEB_IDX) {
-                        continue;
-                    }
-
-                    val_def_blocks[result_idx_u32] = BlockIndex{block_idx_u32};
-                }
-            }
-        }
-
-        const auto roots_share_phi_def_block =
-                [&](const u32 lhs_root, const u32 rhs_root) -> bool {
-            const auto &lhs_blocks = web_phi_blocks[lhs_root];
-            const auto &rhs_blocks = web_phi_blocks[rhs_root];
-            for (const u32 rhs_block_idx: rhs_blocks) {
-                if (std::ranges::find(lhs_blocks, rhs_block_idx) != lhs_blocks.end()) {
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        const auto merge_phi_blocks = [&](const u32 dst_root, const u32 src_root) {
-            auto &dst_blocks = web_phi_blocks[dst_root];
-            auto &src_blocks = web_phi_blocks[src_root];
-            for (const u32 src_block_idx: src_blocks) {
-                if (std::ranges::find(dst_blocks, src_block_idx) == dst_blocks.end()) {
-                    dst_blocks.push_back(src_block_idx);
-                }
-            }
-            src_blocks.clear();
-        };
-
-        const auto merge_web_members = [&](const u32 dst_root, const u32 src_root) {
-            auto &dst_members = web_members[dst_root];
-            auto &src_members = web_members[src_root];
-            for (const ValLocalIdx src_member: src_members) {
-                if (std::ranges::find(dst_members, src_member) == dst_members.end()) {
-                    dst_members.push_back(src_member);
-                }
-            }
-            src_members.clear();
-        };
-
-        const auto is_live_in = [&](const u32 block_idx,
-                                    const ValLocalIdx val_idx) noexcept {
-            if (block_idx >= precise_liveness.size()) {
-                return false;
-            }
-
-            const auto &pli = precise_liveness[block_idx];
-            const auto it = pli.next_uses.find(val_idx);
-            if (it == pli.next_uses.end()) {
-                auto entr = std::lower_bound(pli.live_through.begin(), pli.live_through.end(), val_idx,
-                                             [](const auto &lhs, const auto &rhs) {
-                                                 return lhs.first < rhs;
-                                             });
-                if (entr == pli.live_through.end() || entr->first != val_idx) {
-                    return false;
-                }
-                return true;
-            }
-
-            const auto &vec = it->second;
-            if (vec.empty()) {
-                return false;
-            }
-
-            for (const u32 entry: vec) {
-                if (entry == INF) {
-                    continue;
-                }
-                return (entry & DEF_BIT) == 0;
-            }
-
-            return false;
-        };
-
-
-        const auto precise_block_interval =
-                [&](const u32 block_idx,
-                    const ValLocalIdx val_idx,
-                    u32 &interval_first,
-                    u32 &interval_last) -> bool {
-            if (block_idx >= precise_liveness.size()) {
-                return false;
-            }
-
-            const auto &pli = precise_liveness[block_idx];
-            const auto it = pli.next_uses.find(val_idx);
-            if (it == pli.next_uses.end()) {
-                return false;
-            }
-
-            const auto &uses = it->second;
-            if (uses.empty()) {
-                return false;
-            }
-
-            u32 first = INF;
-            for (const auto use: uses) {
-                if (use != INF) {
-                    first = use;
-                    break;
-                }
-            }
-            if (first == INF) {
-                return false;
-            }
-
-            if ((first & DEF_BIT) != 0) {
-                interval_first = INF;
-                for (const auto use: uses) {
-                    if (use != INF && (use & DEF_BIT) == 0) {
-                        interval_first = use;
-                        break;
-                    }
-                }
-                if (interval_first == INF) {
-                    return true;
-                }
-            } else {
-                // live-in values occupy the register from block entry
-                interval_first = 0;
-            }
-
-            interval_last = INF;
-            for (u32 i = uses.size(); i-- > 0;) {
-                if (uses[i] != INF) {
-                    interval_last = uses[i] & ~DEF_BIT;
-                    break;
-                }
-            }
-
-            return interval_last != INF;
-        };
-
-        const auto live_ranges_overlap =
-                [&](const ValLocalIdx lhs_idx, const ValLocalIdx rhs_idx) -> bool {
-            const u32 lhs = static_cast<u32>(lhs_idx);
-            const u32 rhs = static_cast<u32>(rhs_idx);
-            if (lhs >= liveness.size() || rhs >= liveness.size()) {
-                return true;
-            }
-
-            const auto &lhs_liveness = liveness[lhs];
-            const auto &rhs_liveness = liveness[rhs];
-            if (lhs_liveness.epoch != liveness_epoch ||
-                rhs_liveness.epoch != liveness_epoch) {
-                return true;
-            }
-
-            // Fast coarse disjointness check on block intervals.
-            if (lhs_liveness.last < rhs_liveness.first ||
-                rhs_liveness.last < lhs_liveness.first) {
-                return false;
-            }
-
-            const u32 block_begin = std::min(static_cast<u32>(lhs_liveness.first),
-                                             static_cast<u32>(rhs_liveness.first));
-            const u32 block_end = std::max(static_cast<u32>(lhs_liveness.last),
-                                           static_cast<u32>(rhs_liveness.last));
-
-            for (u32 block_idx = block_begin; block_idx <= block_end; ++block_idx) {
-                u32 lhs_first = 0;
-                u32 lhs_last = 0;
-                u32 rhs_first = 0;
-                u32 rhs_last = 0;
-                if (!precise_block_interval(block_idx, lhs_idx, lhs_first, lhs_last)) {
-                    continue;
-                }
-                if (!precise_block_interval(block_idx, rhs_idx, rhs_first, rhs_last)) {
-                    continue;
-                }
-                return true;
-            }
-
-            return false;
-        };
-        const auto web_union = [&](const u32 lhs, const u32 rhs) {
-            return;
-            if (lhs == rhs || lhs == INVALID_WEB_IDX || rhs == INVALID_WEB_IDX) {
-                return;
-            }
-
-            u32 lhs_root = find_web_idx(lhs);
-            u32 rhs_root = find_web_idx(rhs);
-            if (lhs_root == rhs_root) {
-                return;
-            }
-
-            if (roots_share_phi_def_block(lhs_root, rhs_root)) {
-                return;
-            }
-
-            const auto &lhs_members = web_members[lhs_root];
-            const auto &rhs_members = web_members[rhs_root];
-            // todo(salto): can be done in linear time see boissout
-            for (const ValLocalIdx lhs_member: lhs_members) {
-                const u32 lhs_member_u32 = static_cast<u32>(lhs_member);
-                const BlockIndex lhs_def_block =
-                        lhs_member_u32 < val_def_blocks.size()
-                            ? val_def_blocks[lhs_member_u32]
-                            : INVALID_BLOCK_IDX;
-                for (const ValLocalIdx rhs_member: rhs_members) {
-                    const u32 rhs_member_u32 = static_cast<u32>(rhs_member);
-                    const BlockIndex rhs_def_block =
-                            rhs_member_u32 < val_def_blocks.size()
-                                ? val_def_blocks[rhs_member_u32]
-                                : INVALID_BLOCK_IDX;
-                    if (lhs_def_block != INVALID_BLOCK_IDX &&
-                        is_live_in(static_cast<u32>(lhs_def_block), rhs_member)) {
-                        return;
-                    }
-                    if (rhs_def_block != INVALID_BLOCK_IDX &&
-                        is_live_in(static_cast<u32>(rhs_def_block), lhs_member)) {
-                        return;
-                    }
-                }
-            }
-
-            if (web_rank[lhs_root] < web_rank[rhs_root]) {
-                std::swap(lhs_root, rhs_root);
-            }
-            web_parent[rhs_root] = lhs_root;
-            merge_phi_blocks(lhs_root, rhs_root);
-            merge_web_members(lhs_root, rhs_root);
-            if (web_rank[lhs_root] == web_rank[rhs_root]) {
-                ++web_rank[lhs_root];
-            }
-        };
-
-        for (const IRBlockRef block: block_layout) {
-            for (const IRValueRef phi: adaptor->block_phis(block)) {
-                if (adaptor->val_ignore_in_liveness_analysis(phi)) {
-                    continue;
-                }
-
-                const auto phi_parts = adaptor->val_parts(phi);
-                if (phi_parts.count() != 1) {
-                    // ignore multipart phis
-                    continue;
-                }
-
-                const ValLocalIdx phi_idx = adaptor->val_local_idx(phi);
-                const u32 phi_idx_u32 = static_cast<u32>(phi_idx);
-                if (phi_idx_u32 >= web_parent.size() ||
-                    web_parent[phi_idx_u32] == INVALID_WEB_IDX) {
-                    continue;
-                }
-
-                const u8 phi_bank_id = phi_parts.reg_bank(0).id();
-                const u32 phi_part_size = phi_parts.size_bytes(0);
-
-                const auto phi_ref = adaptor->val_as_phi(phi);
-                const u32 slot_count = phi_ref.incoming_count();
-                for (u32 slot = 0; slot < slot_count; ++slot) {
-                    const IRBlockRef incoming_block = phi_ref.incoming_block_for_slot(slot);
-
-                    const IRValueRef incoming_val = phi_ref.incoming_val_for_slot(slot);
-                    if (adaptor->val_ignore_in_liveness_analysis(incoming_val)) {
-                        continue;
-                    }
-
-                    const auto incoming_parts = adaptor->val_parts(incoming_val);
-                    if (incoming_parts.count() != 1) {
-                        continue;
-                    }
-                    if (incoming_parts.reg_bank(0).id() != phi_bank_id) {
-                        continue;
-                    }
-                    if (incoming_parts.size_bytes(0) != phi_part_size) {
-                        continue;
-                    }
-
-                    const ValLocalIdx incoming_idx = adaptor->val_local_idx(incoming_val);
-                    const u32 incoming_idx_u32 = static_cast<u32>(incoming_idx);
-                    if (incoming_idx_u32 >= web_parent.size() ||
-                        web_parent[incoming_idx_u32] == INVALID_WEB_IDX) {
-                        continue;
-                    }
-
-
-                    web_union(phi_idx_u32, incoming_idx_u32);
-                }
-            }
-        }
-
-
-        // #ifdef TPDE_LOGGING
-        //     TPDE_LOG_ERR("PHI webs after build:");
-        //     std::ostringstream phi_web_dump;
-        //     print_phi_webs(phi_web_dump);
-        //     std::istringstream phi_web_lines(phi_web_dump.str());
-        //     for (std::string line; std::getline(phi_web_lines, line);) {
-        //         TPDE_LOG_ERR("{}", line);
-        //     }
-        // #endif
-
 
         // todo(salto): multi-part values?
         // todo(salto): ordered set for W
@@ -2182,7 +1781,6 @@ namespace tpde {
         // The set of values in registers at the end of a block
         // compared to the original algorithm, we can avoid the set S (spilled
         // values), since all spills are after definition
-        std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx> > W_exits;
 
         // todo(salto): arguments on the stack don't need to be added to W in
         // entry, but register arguments need to be in W at the start.
@@ -2202,7 +1800,7 @@ namespace tpde {
 
         // block -> val_idx -> # of predecessor that have val_idx in W at their
         // end. todo(salto): better datastructure!
-        util::SmallVector<std::unordered_map<ValLocalIdx, u32>, SMALL_BLOCK_NUM>
+        util::SmallVector<llvm::SmallDenseMap<ValLocalIdx, u32, 128>, SMALL_BLOCK_NUM>
                 W_entry_freq;
         W_entry_freq.resize(block_layout.size());
         util::SmallVector<u32, 16> W_max_entry_freq;
@@ -2264,15 +1862,12 @@ namespace tpde {
 
                 if (is_loop_header_block) {
                     util::SmallVector<ValLocalIdx, 16> loop_local_values;
-                    std::unordered_set<ValLocalIdx> selected_values;
+                    llvm::SmallDenseSet<ValLocalIdx, 64> selected_values;
                     u32 loop_local_gp_regs = 0;
                     u32 loop_local_fp_regs = 0;
 
-
-                    const u32 half_gp_regs = NUM_GP_REGS / 2;
-                    const u32 half_fp_regs = NUM_FP_REGS / 2;
                     std::array<u8, 2> phi_parts = {0u, 0u};
-                    std::unordered_set<ValLocalIdx> header_phi_defs;
+                    llvm::SmallDenseSet<ValLocalIdx, 32> header_phi_defs;
                     for (const auto phi: adaptor->block_phis(block)) {
                         if (adaptor->val_ignore_in_liveness_analysis(phi)) {
                             continue;
@@ -2286,7 +1881,7 @@ namespace tpde {
                     //    phi_parts[0] = half_gp_regs;
                     //}
 
-                    std::unordered_set<ValLocalIdx> header_local_defs;
+                    llvm::SmallDenseSet<ValLocalIdx, 64> header_local_defs;
                     for (const auto inst: adaptor->block_insts(block)) {
                         for (const auto result: adaptor->inst_results(inst)) {
                             if (adaptor->val_ignore_in_liveness_analysis(result)) {
@@ -2407,8 +2002,7 @@ namespace tpde {
                                 break;
                             }
 
-                            const auto entry_next_use =
-                                    get_current_and_next_use(precise_liveness[block_idx_u32], val_idx, 0).first;
+
                             loop_local_values.push_back(val_idx);
                             selected_values.insert(val_idx);
                             const auto parts = ensure_parts_cached(val_idx);
@@ -2420,6 +2014,18 @@ namespace tpde {
 
                     incoming_from_all.clear();
                     incoming_from_all.append(loop_local_values.begin(), loop_local_values.end());
+
+                    auto loop_idx = block_loop_idx(block_idx_cur);
+                    auto loop = loop_from_idx(loop_idx);
+                    //todo(salto): tune
+                    std::sort(loop_local_values.begin(), loop_local_values.end());
+                    if (loop.level < 300) {
+                        initial_working_set_by_block.push_back(InitalWorkingSet{
+                                .values = std::move(loop_local_values),
+                                .block_idx = BlockIndex{block_idx_cur}
+                            }
+                        );
+                    }
                 }
                 std::array<u8, 2> from_all_registers = {0u, 0u};
                 for (const auto val_idx: incoming_from_all) {
@@ -2457,16 +2063,7 @@ namespace tpde {
                     working_set.replace_with(incoming_from_all);
                 }
             }
-            if (is_loop_header_block) {
-                auto loop_idx = block_loop_idx(block_idx_cur);
-                auto loop = loop_from_idx(loop_idx);
-                //todo(salto): tune
-                if (loop.level < 300) {
-                    auto &initial_working_set = initial_working_set_by_block[block_idx_cur];
-                    initial_working_set.clear();
-                    initial_working_set.insert(working_set.begin(), working_set.end());
-                }
-            }
+
 
             // W is the working set. The values in registers
             // keep used registers seperately, since one value can use multiple
@@ -2644,6 +2241,10 @@ namespace tpde {
         }
         TPDE_LOG_TRACE("Spill Analysis completed");
         std::sort(callee_saved_values.begin(), callee_saved_values.end());
+        std::sort(initial_working_set_by_block.begin(), initial_working_set_by_block.end(),
+                  [](const auto &a, const auto &b) {
+                      return a.block_idx<b.block_idx;
+                  });
     }
 
     template<IRAdaptor Adaptor, typename CompilerType>

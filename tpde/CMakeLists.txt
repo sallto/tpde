@@ -18,6 +18,19 @@ set_target_properties(tpde PROPERTIES
     VERSION 0.1.0
     LINKER_LANGUAGE CXX
 )
+target_include_directories(tpde SYSTEM PUBLIC ${LLVM_INCLUDE_DIRS})
+target_compile_definitions(tpde PUBLIC ${LLVM_DEFINITIONS})
+if (NOT LLVM_ENABLE_RTTI)
+    target_compile_options(tpde PUBLIC -fno-rtti)
+endif ()
+if (TPDE_LINK_LLVM_STATIC)
+    llvm_map_components_to_libnames(TPDE_LLVM_LIBS
+            analysis core irreader irprinter jitlink orcjit passes support bitreader bitstreamreader targetparser
+    )
+    target_link_libraries(tpde PUBLIC ${TPDE_LLVM_LIBS})
+else ()
+    target_link_libraries(tpde PUBLIC LLVM)
+endif ()
 
 # spdlog
 if (((TPDE_LOGGING STREQUAL "DebugOnly") AND (CMAKE_BUILD_TYPE STREQUAL "Debug")) OR (TPDE_LOGGING STREQUAL "ON"))

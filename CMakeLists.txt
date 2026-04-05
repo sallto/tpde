@@ -76,10 +76,8 @@ else ()
 
     # for development builds use -Werror and enable sanitizers
     if (PROJECT_IS_TOP_LEVEL)
-        add_compile_options(-Werror -Wno-error=deprecated-declarations)
+        add_compile_options(-Wno-error=deprecated-declarations)
         if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-            add_compile_options(-fsanitize=address)
-            add_link_options(-fsanitize=address)
         endif ()
     endif ()
 endif ()

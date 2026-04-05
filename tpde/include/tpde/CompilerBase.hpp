@@ -173,9 +173,6 @@ struct CompilerBase {
     // TODO(ts): think about which data structure we want here
     std::unordered_map<u32, std::vector<i32>> dynamic_free_lists{};
     /// Reference counts for spill slots that are shared between assignments.
-    std::unordered_map<i32, u32> spill_slot_ref_counts{};
-    /// Size of managed spill slots, keyed by frame offset.
-    std::unordered_map<i32, u32> spill_slot_sizes{};
   } stack = {};
 
   BlockIndex cur_block_idx;
@@ -437,14 +434,12 @@ struct CompilerBase {
 
     void push_back(Reg reg, u32 part) { registers[part] = reg; }
   };
-  std::unordered_map<BlockIndex, util::SmallVector<ValueState>> block_regs;
+
+  llvm::DenseMap<BlockIndex, util::SmallVector<ValueState> > block_regs;
   using PhiRegList = util::SmallVector<Reg>;
-  using PhiRegMap = std::unordered_map<ValLocalIdx, PhiRegList>;
-  std::unordered_map<BlockIndex, PhiRegMap> phi_regs;
-  std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx> >
-  block_spilled_values;
-  std::unordered_map<BlockIndex, std::unordered_set<ValLocalIdx> >
-  block_stack_valid_single_part_values;
+  using PhiRegMap = llvm::DenseMap<ValLocalIdx, PhiRegList>;
+  llvm::DenseMap<BlockIndex, PhiRegMap> phi_regs;
+  llvm::DenseMap<BlockIndex, llvm::DenseSet<ValLocalIdx> > block_spilled_values;
 
 #ifndef NDEBUG
   VIR<Adaptor> verification_ir;
@@ -518,7 +513,7 @@ public:
     // Pending arguments for lazy execution
     PendingArgList pending_args{};
     // Values that currently have pending STACK_TO_REG arguments.
-    std::unordered_set<ValLocalIdx> pending_stack_local_idxs{};
+    llvm::SmallDenseSet<ValLocalIdx, 8> pending_stack_local_idxs{};
     // Track source registers to detect eviction
     RegisterFile::RegBitSet source_regs{};
     // Number of high-level call arguments added for this call.
@@ -1209,22 +1204,33 @@ public:
 
     auto block_state_it = block_regs.find(target);
     const auto initial_working_set_it =
-        analyzer.initial_working_set_by_block.find(target);
+        std::lower_bound(analyzer.initial_working_set_by_block.begin(),
+                         analyzer.initial_working_set_by_block.end(),
+                         target,
+                         [](const auto &a, const auto &b) {
+                           return a.block_idx < b;
+                         });
     const bool has_initial_working_set =
-        initial_working_set_it != analyzer.initial_working_set_by_block.end();
+        initial_working_set_it != analyzer.initial_working_set_by_block.end() && initial_working_set_it->block_idx ==
+        target;
     const auto value_in_initial_working_set =
         [&](ValLocalIdx local_idx) -> bool {
       if (!has_initial_working_set) {
         return true;
       }
-      return initial_working_set_it->second.contains(local_idx);
+      auto it = std::lower_bound(initial_working_set_it->values.begin(),
+                                 initial_working_set_it->values.end(),
+                                 local_idx,
+                                 [](const auto &a, const auto &b) {
+                                   return a < b;
+                                 });
+      return it != initial_working_set_it->values.end() && *it == local_idx;
     };
 
 
     typename RegisterFile::RegBitSet phi_regs = 0;
     typename RegisterFile::RegBitSet unallocatable_regs = 0;
     typename RegisterFile::RegBitSet pre_freed_regs = 0;
-    typename RegisterFile::RegBitSet reusable_freed_regs = 0;
 
     const auto emit_assignment_part_to_reg = [&](Reg dst,
                                                  AssignmentPartRef ap,
@@ -1277,32 +1283,6 @@ public:
       if (this->phi_regs[target].contains(local_idx)) {
         return;
       }
-      if (ap.is_phi() && ap.assignment()->frame_off != 0) {
-        auto it = stack.spill_slot_ref_counts.find(ap.assignment()->frame_off);
-
-        if (it != stack.spill_slot_ref_counts.end() && it->second > 1) {
-          auto root_idx = analyzer.find_web_idx(static_cast<u32>(local_idx));
-          auto &web_members = analyzer.web_members[static_cast<u32>(root_idx)];
-          for (const auto member: web_members) {
-            if (member == local_idx) {
-              continue;
-            }
-            ValueAssignment *assignment = val_assignment(member);
-            if (!assignment) {
-              continue;
-            }
-            for (u32 i = 0; i < assignment->part_count; i++) {
-              AssignmentPartRef web_ap{assignment, i};
-              if (!web_ap.stack_valid()) {
-                continue;
-              }
-              //derived()->mov(ap.get_reg(), ap.get_reg(), ap.part_size()); // todo remove
-              return;
-            }
-          }
-        }
-      }
-
 
       allocate_spill_slot(ap);
       derived()->spill_reg(spill_reg, ap.frame_off(), ap.part_size());
@@ -1360,7 +1340,7 @@ public:
     }
 
     if (block_state_it != block_regs.end()) {
-      std::unordered_set<ValLocalIdx> seen_local_idxs;
+      llvm::SmallDenseSet<ValLocalIdx, 64> seen_local_idxs;
       seen_local_idxs.reserve(block_state_it->second.size());
       for (ValueState &state : block_state_it->second) {
         if (state.val_local_idx == INVALID_VAL_LOCAL_IDX) {
@@ -1464,7 +1444,7 @@ public:
       // todo(salto): how to represent stack vars here?
       if (has_initial_working_set) {
         util::SmallVector<ValLocalIdx, 16> working_set_values;
-        for (const auto local_idx: initial_working_set_it->second) {
+        for (const auto local_idx: initial_working_set_it->values) {
           if (local_idx == INVALID_VAL_LOCAL_IDX) {
             continue;
           }
@@ -1560,7 +1540,7 @@ public:
               Reg global_reg = global_reg_for(local_idx);
               if (global_reg.valid() &&
                   can_use_target_reg(global_reg, local_idx, i)) {
-                target_reg = global_reg;
+                //target_reg = global_reg;
               }
             }
 
@@ -1601,7 +1581,7 @@ public:
           }
         }
         if constexpr (WithAsserts) {
-          std::unordered_set<u32> regs;
+          llvm::SmallDenseSet<u32, 64> regs;
           util::SmallVector<ValueState> &saved_states = block_regs[target];
           for (auto &saved: saved_states) {
             for (Reg &reg: saved.registers) {
@@ -1614,8 +1594,7 @@ public:
           }
         }
       } else {
-        std::unordered_set<ValLocalIdx> seen;
-        typename RegisterFile::RegBitSet seen_regs = 0;
+        llvm::SmallDenseSet<ValLocalIdx, 64> seen;
 
         for (auto reg: register_file.used_regs()) {
           const auto local_idx = register_file.reg_local_idx(Reg{reg});
@@ -1797,7 +1776,7 @@ public:
       return false;
     };
 
-    std::map<std::pair<i32, u32>, i32> staged_stack_slots;
+    llvm::SmallDenseMap<std::pair<i32, u32>, i32, 16> staged_stack_slots;
     util::SmallVector<std::pair<i32, u32>, 8> staged_stack_slot_allocations;
 
     const auto stage_hazardous_phi_stack_read = [&](auto &deferred,
@@ -1826,7 +1805,7 @@ public:
       derived()->spill_reg(temp_reg, staged_stack_off, read_range.size);
       register_file.mark_clobbered(temp_reg);
 
-      staged_stack_slots.emplace(source_key, staged_stack_off);
+      staged_stack_slots.insert({source_key, staged_stack_off});
       staged_stack_slot_allocations.emplace_back(staged_stack_off,
                                                  read_range.size);
       deferred.staged_stack_off = staged_stack_off;
@@ -1971,7 +1950,7 @@ protected:
 
   bool compile_func(IRFuncRef func, u32 func_idx);
 
-  std::unordered_set<ValLocalIdx>
+  llvm::SmallDenseSet<ValLocalIdx, 16>
   initialize_block_register_state(IRBlockRef block);
 
   bool compile_block(IRBlockRef block, u32 block_idx);
@@ -2033,8 +2012,6 @@ void CompilerBase<Adaptor, Derived, Config>::CallBuilderBase<
     bool needs_ext = cca.int_ext != 0;
     bool ext_sign = cca.int_ext >> 7;
     unsigned ext_bits = cca.int_ext & 0x3f;
-    const auto abi_arg_regs = assigner.get_ccinfo().arg_regs;
-    auto blocked_arg_regs = compiler.register_file.allocatable & abi_arg_regs;
     // compiler.register_file.allocatable &= ~abi_arg_regs;
     if (!vp.cur_reg_unlocked().valid()) {
       auto reg = compiler.register_file.find_first_free_excluding(vp.bank(),
@@ -2650,8 +2627,6 @@ void CompilerBase<Adaptor, Derived, Config>::reset() {
     e.clear();
   }
   stack.dynamic_free_lists.clear();
-  stack.spill_slot_ref_counts.clear();
-  stack.spill_slot_sizes.clear();
 
   assembler.reset();
   func_syms.clear();
@@ -2797,22 +2772,8 @@ void CompilerBase<Adaptor, Derived, Config>::free_assignment(
   if (!is_var_ref && has_stack) {
     const i32 frame_off = assignment->frame_off;
     const u32 size = assignment->size();
-    if (auto ref_it = stack.spill_slot_ref_counts.find(frame_off);
-      ref_it != stack.spill_slot_ref_counts.end()) {
-      if (auto size_it = stack.spill_slot_sizes.find(frame_off);
-        size_it != stack.spill_slot_sizes.end()) {
-        assert(size_it->second == size && "managed spill slot size mismatch");
-      }
 
-      assert(ref_it->second > 0 && "managed spill slot underflow");
-      if (--ref_it->second == 0) {
-        stack.spill_slot_ref_counts.erase(ref_it);
-        stack.spill_slot_sizes.erase(frame_off);
-        free_stack_slot(frame_off, size);
-      }
-    } else {
       free_stack_slot(frame_off, size);
-    }
   }
 
   assignments.allocator.deallocate(assignment);
@@ -3315,51 +3276,9 @@ void CompilerBase<Adaptor, Derived, Config>::allocate_spill_slot(
   if (ap.assignment()->frame_off == 0) {
     assert(!ap.stack_valid() && "stack-valid set without spill slot");
 
-    bool reused_web_slot = false;
-    if (local_idx != INVALID_VAL_LOCAL_IDX) {
-      const u32 root_idx =
-          analyzer.find_web_idx(static_cast<u32>(local_idx));
-      auto &web_members = analyzer.web_members[root_idx];
-      if (web_members.size() >= 2) {
-        for (const auto member: web_members) {
-          ValueAssignment *candidate = val_assignment(member);
-          if (!candidate || candidate->variable_ref) {
-            continue;
-          }
-          if (
-            candidate->size() != ap.assignment()->size()) {
-            assert(false && "invalid candidate in web");
-          }
 
-          const bool candidate_has_stack = Config::FRAME_INDEXING_NEGATIVE
-                                             ? candidate->frame_off < 0
-                                             : candidate->frame_off != 0;
-          if (!candidate_has_stack) {
-            continue;
-          }
-
-          const i32 candidate_slot = candidate->frame_off;
-          //TPDE_LOG_ERR("reusing spill slot {}", candidate_slot);
-          ap.assignment()->frame_off = candidate_slot;
-
-          if (auto ref_it = stack.spill_slot_ref_counts.find(candidate_slot);
-            ref_it != stack.spill_slot_ref_counts.end()) {
-            ++ref_it->second;
-          } else {
-            stack.spill_slot_ref_counts.insert_or_assign(candidate_slot, 2);
-            stack.spill_slot_sizes.insert_or_assign(candidate_slot,
-                                                    candidate->size());
-          }
-
-          reused_web_slot = true;
-          break;
-        }
-      }
-    }
-
-    if (!reused_web_slot) {
       ap.assignment()->frame_off = allocate_stack_slot(ap.assignment()->size());
-    }
+
 
     assert(ap.assignment()->frame_off != 0);
   }
@@ -3370,41 +3289,9 @@ void CompilerBase<Adaptor, Derived, Config>::spill(AssignmentPartRef ap) {
   assert(may_change_value_state());
   if (!ap.stack_valid() && !ap.variable_ref()) {
     assert(ap.register_valid() && "cannot spill uninitialized assignment part");
-    if (ap.is_phi() && ap.assignment()->frame_off != 0) {
-      auto it = stack.spill_slot_ref_counts.find(ap.assignment()->frame_off);
-      auto local_idx = register_file.reg_local_idx(ap.get_reg());
-
-      if (it != stack.spill_slot_ref_counts.end() && it->second > 1) {
-        auto root_idx = analyzer.find_web_idx(static_cast<u32>(local_idx));
-        auto &web_members = analyzer.web_members[static_cast<u32>(root_idx)];
-        for (const auto member: web_members) {
-          if (member == local_idx) {
-            continue;
-          }
-          ValueAssignment *assignment = val_assignment(member);
-          if (!assignment) {
-            continue;
-          }
-          for (u32 i = 0; i < assignment->part_count; i++) {
-            AssignmentPartRef web_ap{assignment, i};
-            if (!web_ap.stack_valid()) {
-              continue;
-            }
-            ap.set_stack_valid();
-            //derived()->mov(ap.get_reg(), ap.get_reg(), ap.part_size()); // todo remove
-            return;
-          }
-        }
-      }
-    }
     allocate_spill_slot(ap);
     // argument stack slot will remain valid
     derived()->spill_reg(ap.get_reg(), ap.frame_off(), ap.part_size());
-    auto val_idx = register_file.reg_local_idx(ap.get_reg());
-    if (val_idx != INVALID_VAL_LOCAL_IDX && ap.part_size() == 1 &&
-        ap.assignment()->part_count == 1) {
-      block_stack_valid_single_part_values[cur_block_idx].insert(val_idx);
-    }
     ap.set_stack_valid();
 #ifndef NDEBUG
     {
@@ -3645,20 +3532,13 @@ bool CompilerBase<Adaptor, Derived, Config>::repair_argument(
     AsmReg current_reg) {
   auto &reg_file = register_file;
   Reg reg = Reg::make_invalid();
-  std::unordered_set<ValLocalIdx> operands;
-  // commented out current_instr usage
-  // for (auto operand:
-  // compiler->adaptor->inst_operands(*compiler->tree_ra_ctx->current_instr)) {
-  //   operands.insert(compiler->adaptor->val_local_idx(operand));
-  // }
   bool success = false;
   typename RegisterFile::RegBitSet allowed =
       constraints & (~forbidden); // todo(salto): constraints
   while (reg == Reg::make_invalid() && allowed != 0) {
     for (u64 candidate : util::BitSetIterator<>(allowed)) {
       if (reg_file.is_used(Reg{candidate}) &&
-          (!operands.contains(reg_file.reg_local_idx(Reg{candidate})) &&
-           !reg_file.is_fixed(Reg{candidate}))) {
+          !reg_file.is_fixed(Reg{candidate})) {
         reg = Reg{candidate};
         break;
       }
@@ -3837,7 +3717,6 @@ void CompilerBase<Adaptor, Derived, Config>::generate_switch(
     // If the target might need additional register moves, we can't branch there
     // immediately.
     // TODO: more precise condition?
-    BlockIndex target = this->analyzer.block_idx(cases[i].second);
 
     case_labels.push_back(this->text_writer.label_create());
     case_blocks.emplace_back(case_labels.back(), cases[i].second);
@@ -4242,7 +4121,6 @@ CompilerBase<Adaptor, Derived, Config>::move_to_phi_nodes_impl(
 
     ValueRef incoming_ref = val_ref(incoming_val);
     std::optional<DeferredIncomingOwner> incoming_ref_owner;
-    const bool incoming_last_ref = incoming_ref.last_ref();
 
     for (u32 part = 0; part < phi_assignment->part_count; ++part) {
       AssignmentPartRef phi_ap{phi_assignment, part};
@@ -4692,7 +4570,7 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
   analyzer.switch_func(func);
   derived()->analysis_end();
 
-  if (analyzer.liveness_epoch % 256 == 255) {
+  if (analyzer.liveness_epoch % 256 == 1) {
     global_regs.clear();
   }
   global_regs.resize(analyzer.liveness_max_value + 1);
@@ -4704,8 +4582,6 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
     e.clear();
   }
   stack.dynamic_free_lists.clear();
-  stack.spill_slot_ref_counts.clear();
-  stack.spill_slot_sizes.clear();
   // TODO: sort out the inconsistency about adaptor vs. compiler methods.
   stack.has_dynamic_alloca = this->adaptor->cur_has_dynamic_alloca();
   stack.is_leaf_function = !derived()->cur_func_may_emit_calls();
@@ -4730,7 +4606,6 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
   block_regs.clear();
   phi_regs.clear();
   block_spilled_values.clear();
-  block_stack_valid_single_part_values.clear();
   used_phi_regs_global = 0;
   branch_scratch_regs.fill(Reg::make_invalid());
   branch_scratch_mask = 0;
@@ -4915,10 +4790,10 @@ bool CompilerBase<Adaptor, Derived, Config>::compile_func(const IRFuncRef func,
 
 
 template <IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
-std::unordered_set<ValLocalIdx>
+llvm::SmallDenseSet<ValLocalIdx, 16>
 CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
   const IRBlockRef block) {
-  std::unordered_set<ValLocalIdx> dirtied_values;
+  llvm::SmallDenseSet<ValLocalIdx, 16> dirtied_values;
   auto state_it = block_regs.find(cur_block_idx);
   if (state_it == block_regs.end() && !analyzer.block_has_phis(cur_block_idx)) {
     return dirtied_values;
@@ -4928,18 +4803,11 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
   auto phi_block_it = phi_regs.find(cur_block_idx);
   const PhiRegMap *phi_reg_map =
       phi_block_it != phi_regs.end() ? &phi_block_it->second : nullptr;
-  std::unordered_set<ValLocalIdx> block_phi_local_idxs;
+  llvm::SmallDenseSet<ValLocalIdx, 16> block_phi_local_idxs;
   for (IRValueRef phi: adaptor->block_phis(block)) {
     block_phi_local_idxs.insert(adaptor->val_local_idx(phi));
   }
 
-  const BlockIndex idom_block = analyzer.immediate_dominator(cur_block_idx);
-  const auto idom_stack_valid_it =
-      block_stack_valid_single_part_values.find(idom_block);
-  const std::unordered_set<ValLocalIdx> *idom_stack_valid_single_part_values =
-      idom_stack_valid_it != block_stack_valid_single_part_values.end()
-        ? &idom_stack_valid_it->second
-        : nullptr;
 
   for (auto reg: register_file.used_regs()) {
     if (register_file.reg_local_idx(Reg{reg}) == INVALID_VAL_LOCAL_IDX ||
@@ -5084,20 +4952,8 @@ CompilerBase<Adaptor, Derived, Config>::initialize_block_register_state(
         }
       }
       if (!ap.variable_ref() && ap.stack_valid()) {
-        bool mark_modified = true;
-        if (i == 0 && assignment->part_count == 1 &&
-            !block_phi_local_idxs.contains(state.val_local_idx) &&
-            idom_stack_valid_single_part_values &&
-            idom_stack_valid_single_part_values->contains(
-              state.val_local_idx)) {
-          //mark_modified = false;
-          //TPDE_LOG_ERR("Skipping modification for {}",
-          //             static_cast<u32>(state.val_local_idx));
-        }
-        if (mark_modified) {
-          ap.set_modified(true);
-          dirtied_values.insert(state.val_local_idx);
-        }
+        ap.set_modified(true);
+        dirtied_values.insert(state.val_local_idx);
       }
       if (register_file.is_fixed(reg)) {
         // fixed assignment took our spot. Due to domination, it can't be used
@@ -5131,17 +4987,6 @@ template<IRAdaptor Adaptor, typename Derived, CompilerConfig Config>
 bool CompilerBase<Adaptor, Derived, Config>::compile_block(
   const IRBlockRef block, const u32 block_idx) {
   cur_block_idx = static_cast<BlockIndex>(block_idx);
-  auto &stack_valid_single_part_values =
-      block_stack_valid_single_part_values[cur_block_idx];
-  stack_valid_single_part_values.clear();
-  auto idom = analyzer.dominator_tree.get_idom(cur_block_idx);
-  if (idom != cur_block_idx) {
-    auto &idom_single_part_values = block_stack_valid_single_part_values[idom];
-    // todo(salto): perforamnce
-    for (auto idx: idom_single_part_values) {
-      stack_valid_single_part_values.insert(idx);
-    }
-  }
 
   label_place(block_labels[block_idx]);
 #ifndef NDEBUG
